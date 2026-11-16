@@ -1,5 +1,9 @@
 # Xboard
 
+> **线上源码脱敏快照分支**：仅用于对照现有业务行为。改造请优先使用包含后续安全修复的
+> [`master`](https://github.com/qunqin24/Xboard/tree/master)，范围说明见
+> [PRODUCTION_SNAPSHOT.md](PRODUCTION_SNAPSHOT.md)。不要直接用此旧快照覆盖生产服务。
+
 <div align="center">
 
 [![Telegram](https://img.shields.io/badge/Telegram-Channel-blue)](https://t.me/XboardOfficial)
