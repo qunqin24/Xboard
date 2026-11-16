@@ -32,3 +32,22 @@ compose.yaml
 compose.host.yaml
 compose.split.yaml
 .scribe
+
+# Never publish local credentials, production state or backups.
+.env.*
+!.env.example
+auth.json
+**/auth.json
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.key
+*.pem
+*.p12
+*.pfx
+.docker/.data/**
+.docker/backups/
+/backups/
+/storage/logs/**
+/storage/theme/**

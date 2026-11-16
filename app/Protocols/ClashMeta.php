@@ -618,6 +618,13 @@ class ClashMeta extends AbstractProtocol
             case 2:
                 $array['type'] = 'hysteria2';
                 $array['password'] = $password;
+                // Bandwidth is optional for Hy2. Explicit null/empty values are
+                // rejected by Mihomo's proxy-provider payload validation.
+                foreach (['up', 'down'] as $direction) {
+                    if ($array[$direction] === null || $array[$direction] === '') {
+                        unset($array[$direction]);
+                    }
+                }
                 if (data_get($protocol_settings, 'obfs.open')) {
                     $array['obfs'] = data_get($protocol_settings, 'obfs.type');
                     $array['obfs-password'] = data_get($protocol_settings, 'obfs.password');

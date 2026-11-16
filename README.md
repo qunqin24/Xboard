@@ -1,5 +1,12 @@
 # Xboard
 
+> **qunqin24 的个人开发 Fork** · [中文改造指南](FORK.md)
+>
+> `master` 保留上游安全维护更新，并包含本地 Hy2 订阅兼容性修复。
+> [`production-snapshot-20261116`](https://github.com/qunqin24/Xboard/tree/production-snapshot-20261116)
+> 是仅供对照的脱敏线上源码快照。此仓库不包含生产数据库、账户凭据或私钥，
+> 推送代码不会自动部署或重启线上服务。
+
 <div align="center">
 
 [![Telegram](https://img.shields.io/badge/Telegram-Channel-blue)](https://t.me/XboardOfficial)
@@ -24,18 +31,13 @@ Xboard is a modern panel system built on Laravel 11, focusing on providing a cle
 ## 🚀 Quick Start
 
 ```bash
-git clone -b compose --depth 1 https://github.com/cedar2025/Xboard && \
+git clone --recurse-submodules https://github.com/qunqin24/Xboard.git && \
 cd Xboard && \
-docker compose run -it --rm \
-    -e ENABLE_SQLITE=true \
-    -e ENABLE_REDIS=true \
-    -e ADMIN_ACCOUNT=admin@demo.com \
-    xboard php artisan xboard:install && \
-docker compose up -d
+cp .env.example .env
 ```
 
-> After installation, visit: http://SERVER_IP:7001  
-> ⚠️ Make sure to save the admin credentials shown during installation
+Then follow [FORK.md](FORK.md) to build and initialize an isolated local development
+instance. Do not run these commands in an existing production deployment.
 
 ## 📖 Documentation
 
