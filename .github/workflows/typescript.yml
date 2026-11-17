@@ -1,0 +1,33 @@
+name: TypeScript checks
+on:
+  push:
+    paths: ["apps/**", "packages/**", "pnpm-lock.yaml", "pnpm-workspace.yaml", "package.json", ".github/workflows/typescript.yml"]
+  pull_request:
+    paths: ["apps/**", "packages/**", "pnpm-lock.yaml", "pnpm-workspace.yaml", "package.json", ".github/workflows/typescript.yml"]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: xboard
+          POSTGRES_PASSWORD: xboard_ci
+          POSTGRES_DB: xboard
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U xboard" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://xboard:xboard_ci@127.0.0.1:5432/xboard
+      APP_ORIGIN: http://127.0.0.1:5173
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install -g pnpm@11.0.3
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:setup
+      - run: pnpm api:generate
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build

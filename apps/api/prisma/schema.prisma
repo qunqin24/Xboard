@@ -1,0 +1,263 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             Int       @id @default(autoincrement())
+  email          String    @unique
+  password       String
+  banned         Boolean   @default(false)
+  planId         Int?
+  transferEnable BigInt    @default(0)
+  upload         BigInt    @default(0)
+  download       BigInt    @default(0)
+  expiredAt      Int?
+  balance        Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  lastLoginAt    Int?
+  plan           Plan?     @relation(fields: [planId], references: [id])
+  sessions       Session[]
+  orders         Order[]
+  ledger         BalanceEntry[]
+  speedLimit     Int?
+  deviceLimit    Int?
+  role           Role      @default(user)
+  verifiedAt     DateTime?
+  proxyUuid      String    @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subscribeHash  String?   @unique
+  emailTokens    EmailToken[]
+  tickets        Ticket[]
+  traffic        TrafficRecord[]
+
+  @@index([planId, expiredAt])
+}
+
+enum BillingPeriod {
+  monthly
+  quarterly
+  yearly
+}
+
+model Plan {
+  id             Int         @id @default(autoincrement())
+  name           String
+  content        String?
+  transferEnable BigInt
+  speedLimit     Int?
+  deviceLimit    Int?
+  published      Boolean     @default(false)
+  sort           Int         @default(0)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  prices         PlanPrice[]
+  users          User[]
+  orders         Order[]
+  nodes          NodePlan[]
+}
+
+model PlanPrice {
+  id          Int           @id @default(autoincrement())
+  planId      Int
+  period      BillingPeriod
+  amountMinor Int
+  currency    String        @default("CNY") @db.VarChar(3)
+  plan        Plan          @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, period])
+}
+
+model Session {
+  id        String   @id
+  userId    Int
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+enum OrderStatus {
+  pending
+  paid
+  cancelled
+}
+
+model Order {
+  id             String        @id @default(uuid()) @db.Uuid
+  userId         Int
+  planId         Int
+  requestId      String        @db.Uuid
+  status         OrderStatus   @default(pending)
+  planName       String
+  period         BillingPeriod
+  amountMinor    Int
+  transferBytes  BigInt
+  speedLimit     Int?
+  deviceLimit    Int?
+  durationDays   Int
+  createdAt      DateTime      @default(now())
+  expiresAt      DateTime
+  paidAt         DateTime?
+  user           User          @relation(fields: [userId], references: [id])
+  plan           Plan          @relation(fields: [planId], references: [id])
+  entry          BalanceEntry?
+
+  @@unique([userId, requestId])
+  @@index([userId, createdAt])
+}
+
+model BalanceEntry {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      Int
+  orderId     String?  @unique @db.Uuid
+  requestId   String?  @unique @db.Uuid
+  reason      String?
+  actorId     Int?
+  amountMinor Int
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
+  order       Order?   @relation(fields: [orderId], references: [id])
+}
+
+enum Role {
+  user
+  admin
+}
+
+model Audit {
+  id        Int      @id @default(autoincrement())
+  actorId   Int
+  action    String
+  target    String
+  detail    Json
+  createdAt DateTime @default(now())
+}
+
+model EmailToken {
+  hash      String   @id
+  userId    Int
+  purpose   String
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Mail {
+  id          Int      @id @default(autoincrement())
+  to          String
+  subject     String
+  text        String
+  attempts    Int      @default(0)
+  sentAt      DateTime?
+  nextAttempt DateTime @default(now())
+  createdAt   DateTime @default(now())
+}
+
+enum NodeProtocol {
+  vmess
+  vless
+  trojan
+  shadowsocks
+  hysteria2
+  tuic
+}
+
+model Node {
+  id          Int          @id @default(autoincrement())
+  name        String
+  protocol    NodeProtocol
+  host        String
+  port        Int
+  serverName  String
+  cipher      String       @default("aes-128-gcm")
+  enabled     Boolean      @default(false)
+  tokenHash   String
+  lastSeenAt  DateTime?
+  status      Json?
+  createdAt   DateTime     @default(now())
+  plans       NodePlan[]
+  traffic     TrafficRecord[]
+  receipts    TrafficReceipt[]
+  online      OnlineDevice[]
+}
+
+model NodePlan {
+  nodeId Int
+  planId Int
+  node   Node @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  plan   Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  @@id([nodeId, planId])
+}
+
+model TrafficRecord {
+  id        Int      @id @default(autoincrement())
+  nodeId    Int
+  userId    Int
+  upload    BigInt
+  download  BigInt
+  createdAt DateTime @default(now())
+  node      Node     @relation(fields: [nodeId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+  @@index([userId, createdAt])
+}
+
+model TrafficReceipt {
+  nodeId Int
+  key    String
+  digest String
+  createdAt DateTime @default(now())
+  node Node @relation(fields: [nodeId], references: [id])
+  @@id([nodeId, key])
+}
+
+model OnlineDevice {
+  nodeId Int
+  userId Int
+  ip     String
+  seenAt DateTime @default(now())
+  node Node @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  @@id([nodeId, userId, ip])
+}
+
+model Notice {
+  id        Int      @id @default(autoincrement())
+  title     String
+  content   String
+  published Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Ticket {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  subject   String
+  closed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id])
+  messages  TicketMessage[]
+  @@index([userId, updatedAt])
+}
+
+model TicketMessage {
+  id        Int      @id @default(autoincrement())
+  ticketId  Int
+  authorId  Int
+  isStaff   Boolean
+  content   String
+  createdAt DateTime @default(now())
+  ticket    Ticket   @relation(fields: [ticketId], references: [id])
+}
+
+model RateLimit {
+  key          String   @id
+  hits         Int
+  expiresAt    DateTime
+  blockedUntil DateTime?
+}
