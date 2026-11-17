@@ -1001,6 +1001,415 @@ describe("development API slice", () => {
         });
     });
 
+    it("edits subscriptions, resets passwords, bulk bans and soft-deletes", async () => {
+        const auth = app.get(AuthService);
+        const admin = await prisma.user.findUniqueOrThrow({
+            where: { email: "admin@example.test" },
+        });
+        const viewer = await prisma.user.create({
+            data: {
+                email: "viewer@example.test",
+                password: await hashPassword("viewer-password-1"),
+            },
+        });
+        const viewerCookie = `xboard_session=${(await auth.login(viewer.email, "viewer-password-1")).token}`;
+        for (const [path, method] of [
+            ["/admin/users/1", "PUT"],
+            ["/admin/users/1/password", "POST"],
+            ["/admin/users/ban", "POST"],
+            ["/admin/plans/1", "DELETE"],
+            ["/admin/nodes/1", "DELETE"],
+            ["/admin/notices/1", "DELETE"],
+            ["/admin/settings", "GET"],
+            ["/admin/stats", "GET"],
+        ] as const)
+            assert.equal(
+                (
+                    await platform(
+                        path,
+                        method,
+                        method === "GET" || method === "DELETE"
+                            ? undefined
+                            : {},
+                        viewerCookie,
+                    )
+                ).status,
+                403,
+                `${method} ${path}`,
+            );
+
+        const plan = (await (
+            await platform("/admin/plans", "POST", {
+                name: "Ops plan",
+                content: "",
+                transferBytes: "10737418240",
+                published: true,
+                sort: 9,
+                prices: [{ period: "monthly", amountMinor: 900 }],
+            })
+        ).json()) as { id: number };
+        const user = await prisma.user.create({
+            data: {
+                email: "ops@example.test",
+                password: await hashPassword("ops-original-password"),
+            },
+        });
+        const userCookie = `xboard_session=${(await auth.login(user.email, "ops-original-password")).token}`;
+
+        const expiredAt = Math.floor(Date.now() / 1000) + 86400;
+        const edit = (planId: number | null) =>
+            platform(`/admin/users/${user.id}`, "PUT", {
+                planId,
+                expiredAt,
+                transferBytes: "1073741824",
+                speedLimit: 50,
+                deviceLimit: null,
+            });
+        assert.equal((await edit(plan.id)).status, 200);
+        const edited = await prisma.user.findUniqueOrThrow({
+            where: { id: user.id },
+        });
+        assert.equal(edited.planId, plan.id);
+        assert.equal(edited.expiredAt, expiredAt);
+        assert.equal(edited.transferEnable, 1_073_741_824n);
+        assert.equal(edited.speedLimit, 50);
+        assert.equal(edited.deviceLimit, null);
+        const audit = await prisma.audit.findFirstOrThrow({
+            where: { action: "user.update", target: String(user.id) },
+        });
+        assert.deepEqual((audit.detail as { after: unknown }).after, {
+            planId: plan.id,
+            expiredAt,
+            transferBytes: "1073741824",
+            speedLimit: 50,
+            deviceLimit: null,
+        });
+        assert.equal(
+            (
+                await platform(`/admin/users/${user.id}`, "PUT", {
+                    planId: plan.id,
+                    expiredAt,
+                    transferBytes: "-1",
+                    speedLimit: null,
+                    deviceLimit: null,
+                })
+            ).status,
+            400,
+        );
+
+        const reset = await platform(
+            `/admin/users/${user.id}/password`,
+            "POST",
+        );
+        assert.equal(reset.status, 201);
+        const { password } = (await reset.json()) as { password: string };
+        assert.match(password, /^[A-Za-z0-9]{16}$/);
+        assert.equal(
+            (
+                await fetch(`${baseUrl}/api/account`, {
+                    headers: { cookie: userCookie },
+                })
+            ).status,
+            401,
+        );
+        assert.ok((await auth.login(user.email, password)).token);
+        assert.equal(
+            (await platform(`/admin/users/${admin.id}/password`, "POST"))
+                .status,
+            400,
+        );
+        assert.equal(
+            await prisma.audit.count({
+                where: {
+                    action: "user.password_reset",
+                    target: String(user.id),
+                },
+            }),
+            1,
+        );
+
+        const ban = await platform("/admin/users/ban", "POST", {
+            ids: [user.id, admin.id],
+            banned: true,
+        });
+        assert.equal(ban.status, 201);
+        assert.deepEqual(await ban.json(), { updated: 1, skipped: 1 });
+        assert.equal(
+            (await prisma.user.findUniqueOrThrow({ where: { id: user.id } }))
+                .banned,
+            true,
+        );
+        assert.equal(
+            (await prisma.user.findUniqueOrThrow({ where: { id: admin.id } }))
+                .banned,
+            false,
+        );
+        await platform("/admin/users/ban", "POST", {
+            ids: [user.id],
+            banned: false,
+        });
+
+        assert.equal(
+            (await platform(`/admin/plans/${plan.id}`, "DELETE")).status,
+            409,
+        );
+        assert.equal((await edit(null)).status, 200);
+        assert.equal(
+            (await platform(`/admin/plans/${plan.id}`, "DELETE")).status,
+            200,
+        );
+        assert.equal(
+            (await platform(`/admin/plans/${plan.id}`, "DELETE")).status,
+            404,
+        );
+        assert.equal((await edit(plan.id)).status, 400);
+        const publicPlans = (await (
+            await fetch(`${baseUrl}/api/plans`, {
+                headers: { cookie: viewerCookie },
+            })
+        ).json()) as { id: number }[];
+        assert.ok(!publicPlans.some((p) => p.id === plan.id));
+        const adminPlans = (await (await platform("/admin/plans")).json()) as {
+            id: number;
+        }[];
+        assert.ok(!adminPlans.some((p) => p.id === plan.id));
+        assert.equal(
+            (
+                await platform(
+                    "/orders",
+                    "POST",
+                    {
+                        planId: plan.id,
+                        period: "monthly",
+                        requestId: randomUUID(),
+                    },
+                    viewerCookie,
+                )
+            ).status,
+            400,
+        );
+        assert.ok(
+            await prisma.plan.findUniqueOrThrow({ where: { id: plan.id } }),
+        );
+
+        const created = (await (
+            await platform("/admin/nodes", "POST", {
+                name: "Doomed node",
+                protocol: "vless",
+                host: "doomed.example.test",
+                port: 443,
+                serverName: "",
+                cipher: "aes-128-gcm",
+                enabled: true,
+                planIds: [],
+            })
+        ).json()) as { id: number; token: string };
+        const config = `${baseUrl}/api/v1/server/UniProxy/config?node_id=${created.id}&node_type=vless&token=${created.token}`;
+        assert.equal((await fetch(config)).status, 200);
+        assert.equal(
+            (
+                await platform("/admin/nodes", "POST", {
+                    name: "Bad link",
+                    protocol: "vless",
+                    host: "bad.example.test",
+                    port: 443,
+                    serverName: "",
+                    cipher: "aes-128-gcm",
+                    enabled: true,
+                    planIds: [plan.id],
+                })
+            ).status,
+            400,
+        );
+        assert.equal(
+            (await platform(`/admin/nodes/${created.id}`, "DELETE")).status,
+            200,
+        );
+        assert.equal((await fetch(config)).status, 401);
+        const nodes = (await (await platform("/admin/nodes")).json()) as {
+            id: number;
+        }[];
+        assert.ok(!nodes.some((n) => n.id === created.id));
+        assert.equal(
+            (await platform(`/admin/nodes/${created.id}/token`, "POST")).status,
+            404,
+        );
+
+        const notice = (await (
+            await platform("/admin/notices", "POST", {
+                title: "临时公告",
+                content: "即将删除",
+                published: true,
+            })
+        ).json()) as { id: number };
+        assert.equal(
+            (await platform(`/admin/notices/${notice.id}`, "DELETE")).status,
+            200,
+        );
+        assert.equal(
+            await prisma.notice.count({ where: { id: notice.id } }),
+            0,
+        );
+        assert.equal(
+            await prisma.audit.count({
+                where: {
+                    action: {
+                        in: ["plan.delete", "node.delete", "notice.delete"],
+                    },
+                    target: {
+                        in: [
+                            String(plan.id),
+                            String(created.id),
+                            String(notice.id),
+                        ],
+                    },
+                },
+            }),
+            3,
+        );
+    });
+
+    it("stores site settings and closes registration", async () => {
+        const site = async () =>
+            (await (await fetch(`${baseUrl}/api/site`)).json()) as Record<
+                string,
+                unknown
+            >;
+        assert.deepEqual(await site(), {
+            siteName: "Xboard",
+            registrationOpen: true,
+            supportNote: "",
+        });
+        const closed = {
+            siteName: "测试站",
+            registrationOpen: false,
+            supportNote: "工作日回复",
+        };
+        assert.equal(
+            (await platform("/admin/settings", "PUT", closed)).status,
+            200,
+        );
+        assert.deepEqual(await site(), closed);
+        assert.deepEqual(
+            await (await platform("/admin/settings")).json(),
+            closed,
+        );
+        assert.equal(
+            (
+                await platform("/admin/settings", "PUT", {
+                    ...closed,
+                    siteName: "   ",
+                })
+            ).status,
+            400,
+        );
+        const register = await fetch(`${baseUrl}/api/auth/register`, {
+            method: "POST",
+            headers: { "content-type": "application/json", ...origin },
+            body: JSON.stringify({
+                email: "closed@example.test",
+                password: "closed-registration",
+            }),
+        });
+        assert.equal(register.status, 403);
+        assert.equal(
+            await prisma.user.count({
+                where: { email: "closed@example.test" },
+            }),
+            0,
+        );
+        assert.equal(
+            await prisma.audit.count({ where: { action: "settings.update" } }),
+            1,
+        );
+        const open = { ...closed, registrationOpen: true };
+        assert.equal(
+            (await platform("/admin/settings", "PUT", open)).status,
+            200,
+        );
+        assert.equal((await site()).registrationOpen, true);
+    });
+
+    it("reports daily statistics in Shanghai days", async () => {
+        const stats = async (days?: number) => {
+            const response = await platform(
+                `/admin/stats${days === undefined ? "" : `?days=${days}`}`,
+            );
+            assert.equal(response.status, 200);
+            return (await response.json()) as {
+                days: {
+                    date: string;
+                    revenueMinor: number;
+                    paidOrders: number;
+                    newUsers: number;
+                    trafficBytes: string;
+                }[];
+                topPlans: {
+                    planName: string;
+                    orders: number;
+                    revenueMinor: number;
+                }[];
+            };
+        };
+        assert.equal((await platform("/admin/stats?days=0")).status, 400);
+        assert.equal((await platform("/admin/stats?days=181")).status, 400);
+        const week = await stats(7);
+        assert.equal(week.days.length, 7);
+        assert.equal((await stats()).days.length, 30);
+        const today = new Intl.DateTimeFormat("en-CA", {
+            timeZone: "Asia/Shanghai",
+        }).format(new Date());
+        assert.equal(week.days.at(-1)!.date, today);
+        assert.deepEqual(
+            week.days.map((d) => d.date),
+            [...week.days.map((d) => d.date)].sort(),
+        );
+
+        const before = (await stats(1)).days[0]!;
+        const buyer = await prisma.user.create({
+            data: {
+                email: "stats@example.test",
+                password: await hashPassword("stats-password-1"),
+            },
+        });
+        await prisma.order.create({
+            data: {
+                userId: buyer.id,
+                planId: platformPlan,
+                requestId: randomUUID(),
+                status: "paid",
+                planName: "Stats plan",
+                period: "monthly",
+                amountMinor: 4321,
+                transferBytes: 1n,
+                durationDays: 30,
+                expiresAt: new Date(),
+                paidAt: new Date(),
+            },
+        });
+        await prisma.trafficRecord.create({
+            data: {
+                nodeId: platformNode,
+                userId: buyer.id,
+                upload: 100n,
+                download: 23n,
+            },
+        });
+        const after = await stats(1);
+        const day = after.days[0]!;
+        assert.equal(day.revenueMinor - before.revenueMinor, 4321);
+        assert.equal(day.paidOrders - before.paidOrders, 1);
+        assert.equal(day.newUsers - before.newUsers, 1);
+        assert.equal(
+            BigInt(day.trafficBytes) - BigInt(before.trafficBytes),
+            123n,
+        );
+        assert.deepEqual(
+            after.topPlans.find((p) => p.planName === "Stats plan"),
+            { planName: "Stats plan", orders: 1, revenueMinor: 4321 },
+        );
+    });
+
     it("accepts same-port loopback origins only in development", async () => {
         await prisma.rateLimit.deleteMany();
         const previousEnv = process.env.NODE_ENV;

@@ -12,6 +12,7 @@ import { AdminModule } from "./modules/admin/admin.module";
 import { AccountModule } from "./modules/account/account.module";
 import { NodesModule } from "./modules/nodes/nodes.module";
 import { SupportModule } from "./modules/support/support.module";
+import { SiteModule } from "./modules/site/site.module";
 import { DatabaseRateLimit } from "./common/rate-limit";
 import { Maintenance } from "./common/maintenance";
 import { getConfig } from "./config";
@@ -58,6 +59,7 @@ class HealthController {
         AccountModule,
         NodesModule,
         SupportModule,
+        SiteModule,
     ],
     controllers: [HealthController],
     providers: [Maintenance, { provide: APP_GUARD, useClass: ThrottlerGuard }],

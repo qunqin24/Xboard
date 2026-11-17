@@ -1,5 +1,6 @@
 import {
     ConflictException,
+    ForbiddenException,
     Injectable,
     UnauthorizedException,
 } from "@nestjs/common";
@@ -7,6 +8,7 @@ import { Prisma } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
 import { PrismaService } from "../../database/prisma.service";
 import { hashPassword, normalizeEmail, verifyPassword } from "./password";
+import { SettingsService } from "../site/settings.service";
 
 export const SESSION_COOKIE = "xboard_session";
 export const SESSION_TTL_SECONDS = 60 * 60 * 8;
@@ -19,9 +21,14 @@ export function sessionDigest(token: string): string {
 
 @Injectable()
 export class AuthService {
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly settings: SettingsService,
+    ) {}
 
     async register(email: string, password: string) {
+        if (!(await this.settings.read()).registrationOpen)
+            throw new ForbiddenException("暂未开放注册。");
         try {
             const user = await this.prisma.user.create({
                 data: {

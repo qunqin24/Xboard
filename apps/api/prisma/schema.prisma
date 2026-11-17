@@ -55,6 +55,8 @@ model Plan {
   sort           Int         @default(0)
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
+  // Soft delete keeps order history intact; deleted plans are hidden everywhere.
+  deletedAt      DateTime?
   prices         PlanPrice[]
   users          User[]
   orders         Order[]
@@ -181,6 +183,8 @@ model Node {
   lastSeenAt  DateTime?
   status      Json?
   createdAt   DateTime     @default(now())
+  // Soft delete keeps traffic history; deleted nodes are disabled and keyless.
+  deletedAt   DateTime?
   plans       NodePlan[]
   traffic     TrafficRecord[]
   receipts    TrafficReceipt[]
@@ -260,4 +264,11 @@ model RateLimit {
   hits         Int
   expiresAt    DateTime
   blockedUntil DateTime?
+}
+
+// Site-wide settings as key/value rows; defaults live in SettingsService.
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
 }

@@ -1,6 +1,7 @@
 import { Type } from "class-transformer";
 import {
     ArrayMaxSize,
+    ArrayMinSize,
     ArrayUnique,
     IsArray,
     IsBoolean,
@@ -14,6 +15,7 @@ import {
     MaxLength,
     Min,
     MinLength,
+    ValidateIf,
     ValidateNested,
 } from "class-validator";
 import { BillingPeriod, NodeProtocol } from "@prisma/client";
@@ -68,4 +70,43 @@ export class NoticeInput {
     @IsString() @MinLength(1) @MaxLength(120) title!: string;
     @IsString() @MinLength(1) @MaxLength(10000) content!: string;
     @IsBoolean() published!: boolean;
+}
+
+export class UpdateUserInput {
+    @ValidateIf((o: UpdateUserInput) => o.planId !== null)
+    @IsInt()
+    @Min(1)
+    planId!: number | null;
+    // Unix seconds; null means a perpetual entitlement. Upper bound is 2100-01-01.
+    @ValidateIf((o: UpdateUserInput) => o.expiredAt !== null)
+    @IsInt()
+    @Min(0)
+    @Max(4102444800)
+    expiredAt!: number | null;
+    @IsString() @Matches(/^\d{1,15}$/) transferBytes!: string;
+    @ValidateIf((o: UpdateUserInput) => o.speedLimit !== null)
+    @IsInt()
+    @Min(1)
+    @Max(100000)
+    speedLimit!: number | null;
+    @ValidateIf((o: UpdateUserInput) => o.deviceLimit !== null)
+    @IsInt()
+    @Min(1)
+    @Max(1000)
+    deviceLimit!: number | null;
+}
+export class BulkBanInput {
+    @IsArray()
+    @ArrayMinSize(1)
+    @ArrayMaxSize(200)
+    @ArrayUnique()
+    @IsInt({ each: true })
+    @Min(1, { each: true })
+    ids!: number[];
+    @IsBoolean() banned!: boolean;
+}
+export class SettingsInput {
+    @IsString() @MinLength(1) @MaxLength(40) siteName!: string;
+    @IsBoolean() registrationOpen!: boolean;
+    @IsString() @MaxLength(500) supportNote!: string;
 }

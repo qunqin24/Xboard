@@ -95,6 +95,25 @@
                 "tags": ["auth"]
             }
         },
+        "/api/site": {
+            "get": {
+                "operationId": "SiteController_site",
+                "parameters": [],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SiteDto"
+                                }
+                            }
+                        }
+                    }
+                },
+                "tags": ["site"]
+            }
+        },
         "/api/account": {
             "get": {
                 "operationId": "UsersController_account",
@@ -344,6 +363,25 @@
                     }
                 },
                 "tags": ["Admin"]
+            },
+            "delete": {
+                "operationId": "AdminController_deletePlan",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "required": true,
+                        "in": "path",
+                        "schema": {
+                            "type": "number"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": ""
+                    }
+                },
+                "tags": ["Admin"]
             }
         },
         "/api/admin/users": {
@@ -560,6 +598,25 @@
                     }
                 },
                 "tags": ["Admin"]
+            },
+            "delete": {
+                "operationId": "AdminController_deleteNode",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "required": true,
+                        "in": "path",
+                        "schema": {
+                            "type": "number"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": ""
+                    }
+                },
+                "tags": ["Admin"]
             }
         },
         "/api/admin/nodes/{id}/token": {
@@ -638,6 +695,152 @@
                         }
                     }
                 },
+                "responses": {
+                    "200": {
+                        "description": ""
+                    }
+                },
+                "tags": ["Admin"]
+            },
+            "delete": {
+                "operationId": "AdminController_deleteNotice",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "required": true,
+                        "in": "path",
+                        "schema": {
+                            "type": "number"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": ""
+                    }
+                },
+                "tags": ["Admin"]
+            }
+        },
+        "/api/admin/users/{id}": {
+            "put": {
+                "operationId": "AdminController_updateUser",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "required": true,
+                        "in": "path",
+                        "schema": {
+                            "type": "number"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateUserInput"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": ""
+                    }
+                },
+                "tags": ["Admin"]
+            }
+        },
+        "/api/admin/users/{id}/password": {
+            "post": {
+                "operationId": "AdminController_resetPassword",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "required": true,
+                        "in": "path",
+                        "schema": {
+                            "type": "number"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": ""
+                    }
+                },
+                "tags": ["Admin"]
+            }
+        },
+        "/api/admin/users/ban": {
+            "post": {
+                "operationId": "AdminController_bulkBan",
+                "parameters": [],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/BulkBanInput"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": ""
+                    }
+                },
+                "tags": ["Admin"]
+            }
+        },
+        "/api/admin/settings": {
+            "get": {
+                "operationId": "AdminController_readSettings",
+                "parameters": [],
+                "responses": {
+                    "200": {
+                        "description": ""
+                    }
+                },
+                "tags": ["Admin"]
+            },
+            "put": {
+                "operationId": "AdminController_saveSettings",
+                "parameters": [],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SettingsInput"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": ""
+                    }
+                },
+                "tags": ["Admin"]
+            }
+        },
+        "/api/admin/stats": {
+            "get": {
+                "operationId": "AdminController_stats",
+                "parameters": [
+                    {
+                        "name": "days",
+                        "required": true,
+                        "in": "query",
+                        "schema": {
+                            "type": "number"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": ""
@@ -1146,6 +1349,22 @@
                 },
                 "required": ["email", "password"]
             },
+            "SiteDto": {
+                "type": "object",
+                "properties": {
+                    "siteName": {
+                        "type": "string"
+                    },
+                    "registrationOpen": {
+                        "type": "boolean"
+                    },
+                    "supportNote": {
+                        "type": "string",
+                        "description": "Plain text shown next to the ticket form."
+                    }
+                },
+                "required": ["siteName", "registrationOpen", "supportNote"]
+            },
             "PriceDto": {
                 "type": "object",
                 "properties": {
@@ -1347,6 +1566,18 @@
                 "properties": {}
             },
             "NoticeInput": {
+                "type": "object",
+                "properties": {}
+            },
+            "UpdateUserInput": {
+                "type": "object",
+                "properties": {}
+            },
+            "BulkBanInput": {
+                "type": "object",
+                "properties": {}
+            },
+            "SettingsInput": {
                 "type": "object",
                 "properties": {}
             },
