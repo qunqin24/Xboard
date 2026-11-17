@@ -33,6 +33,7 @@ export function usePlans(enabled: boolean) {
 export function useLogin() {
     const queryClient = useQueryClient();
     return useMutation({
+        meta: { silentError: true },
         mutationFn: async (input: { email: string; password: string }) =>
             requireData(await api.POST("/api/auth/login", { body: input })),
         onSuccess: async () => {

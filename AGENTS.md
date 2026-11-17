@@ -6,7 +6,7 @@ Xboard is a pnpm TypeScript monorepo. The former PHP implementation is available
 
 - `apps/api/src/modules/`: NestJS feature modules; shared infrastructure lives in `common/` and `database/`.
 - `apps/api/prisma/`: database schema and versioned migrations; `apps/api/test/` contains backend tests.
-- `apps/user/src/`: React pages, components, API hooks, and utilities for user and admin interfaces. Static assets live in `apps/user/public/`.
+- `apps/user/src/`: React frontend adapted from shadcn-admin. File-based routes live in `routes/` (the router plugin regenerates `routeTree.gen.ts`; commit it), pages in `features/`, shadcn/ui components in `components/ui/`, shared layout and data-table pieces in `components/`, and API hooks in `api/`. Static assets live in `apps/user/public/`.
 - `packages/api-client/`: OpenAPI specification, generated types, and client exports.
 - `ops/` and `docs/`: deployment configuration and operational guides. Read `ARCHITECTURE.md` for business rules.
 
@@ -25,7 +25,7 @@ Use Node.js 24 (supported range: `>=22.12 <26`), pnpm 11.0.3, and PostgreSQL. Ru
 
 ## Coding Style & Naming Conventions
 
-Follow `.editorconfig`: UTF-8, LF, final newline, four-space indentation; YAML uses two spaces. Use strict TypeScript, double quotes, and semicolons in application code. Name React components/pages in PascalCase (`PlanCard.tsx`); use NestJS suffixes such as `auth.service.ts`, `auth.controller.ts`, and `auth.dto.ts`. Regenerate client schemas instead of editing generated types manually.
+Follow `.editorconfig`: UTF-8, LF, final newline, four-space indentation; YAML uses two spaces. Use strict TypeScript, double quotes, and semicolons in application code. Name React components in PascalCase and frontend files in kebab-case, following the shadcn-admin layout (`features/admin/users.tsx`); use NestJS suffixes such as `auth.service.ts`, `auth.controller.ts`, and `auth.dto.ts`. Regenerate client schemas instead of editing generated types manually.
 
 ## Testing Guidelines
 

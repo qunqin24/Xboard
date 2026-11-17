@@ -21,3 +21,4 @@ auth.json
 *.p12
 *.pfx
 /backups/
+**/.tanstack/

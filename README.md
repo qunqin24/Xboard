@@ -33,7 +33,7 @@ pnpm dev
 | 路径 | 用途 |
 | --- | --- |
 | `apps/api` | API、数据库迁移及后端测试 |
-| `apps/user` | 用户端和管理后台 |
+| `apps/user` | 用户中心和管理后台，界面基于 [shadcn-admin](https://github.com/satnaing/shadcn-admin) |
 | `packages/api-client` | OpenAPI 与接口类型 |
 | `ops` | 生产环境配置示例、Caddy 配置 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 功能、业务规则、管理员初始化和开发说明 |
@@ -51,5 +51,7 @@ pnpm build
 ## 来源与许可证
 
 以 [Xboard](https://github.com/cedar2025/Xboard) 为功能参考重写，
+前端界面改编自 [shadcn-admin](https://github.com/satnaing/shadcn-admin)（MIT，
+许可证见 `apps/user/LICENSE.shadcn-admin`）。
 保留原仓库 Git 历史及 [MIT 许可证](LICENSE)。
 新项目不依赖 PHP，不兼容旧数据库或旧插件；推送代码不会自动部署线上服务。

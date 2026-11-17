@@ -4,28 +4,24 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="robots" content="noindex,nofollow" />
-        <meta
-            name="description"
-            content="Xboard 开发用户中心，查看账户、流量用量与套餐。"
-        />
+        <meta name="description" content="Xboard 用户中心与管理后台。" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
         <script>
-            // Resolve the theme before first paint to avoid a flash; mirrors src/lib/theme.ts.
+            // Apply the saved theme before first paint to avoid a flash;
+            // mirrors src/context/theme-provider.tsx (cookie "vite-ui-theme").
             (function () {
-                var stored = null;
-                try {
-                    stored = localStorage.getItem("xboard-theme");
-                } catch (e) {}
+                var match = document.cookie.match(
+                    /(?:^|; )vite-ui-theme=([^;]*)/,
+                );
+                var theme = match ? match[1] : "system";
                 var dark =
-                    stored === "dark" ||
-                    (stored !== "light" &&
+                    theme === "dark" ||
+                    (theme !== "light" &&
                         matchMedia("(prefers-color-scheme: dark)").matches);
-                document.documentElement.dataset.theme = dark
-                    ? "dark"
-                    : "light";
+                document.documentElement.classList.add(dark ? "dark" : "light");
             })();
         </script>
-        <title>Xboard · 用户中心</title>
+        <title>Xboard</title>
     </head>
     <body>
         <div id="root"></div>

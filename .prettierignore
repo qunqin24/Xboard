@@ -1,3 +1,4 @@
 node_modules
 **/dist
 packages/api-client/src/schema.d.ts
+apps/user/src/routeTree.gen.ts

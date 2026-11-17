@@ -7,11 +7,14 @@
 
 | 入口 | 功能 |
 | --- | --- |
-| `/login` | 注册、登录 |
-| `/recover` | 邮件验证、找回密码 |
-| `/` | 账户用量、选套餐、订单、余额支付、取消订单 |
-| `/manage` | 修改密码、邮件验证、订阅链接重置、余额流水、流量记录、公告、工单 |
-| `/admin/*` | 独立侧边栏后台，每个功能一个页面：概览、`plans` 套餐、`nodes` 节点、`users` 用户（入账、封禁、流量清零）、`orders` 订单、`ledger` 余额流水、`notices` 公告、`tickets` 工单、`audit` 审计、`mail` 邮件队列 |
+| `/sign-in`、`/sign-up`、`/forgot-password` | 登录、注册（可在系统设置中关闭）、找回密码；旧地址 `/login` 会跳转到 `/sign-in` |
+| `/recover` | 邮件链接落地页：`#verify:` 验证邮箱，`#reset:` 设置新密码 |
+| `/` | 用户中心总览：流量用量、套餐、余额、公告 |
+| `/plans`、`/orders` | 选购套餐、创建订单；订单列表中用余额支付或取消 |
+| `/subscription` | 生成订阅链接（会使旧链接失效） |
+| `/records`、`/tickets` | 余额流水与流量记录；工单 |
+| `/settings/*` | 账户与邮箱验证、修改密码、外观 |
+| `/admin/*` | 管理后台（侧边栏切换）：仪表盘、`plans` 套餐、`nodes` 节点、`users` 用户（编辑订阅、入账、清零流量、重置密码、封禁）、`orders` 订单、`ledger` 余额流水、`notices` 公告、`tickets` 工单、`audit` 审计、`mail` 邮件队列、`settings` 系统设置 |
 | `/api/docs` | 开发环境接口文档 |
 
 按用户选择，**外部支付和在线充值关闭**。管理员可手动入账，所有入账有请求去重、
@@ -101,7 +104,7 @@ docker compose -f compose.typescript.yaml up -d mailpit
 
 ```text
 apps/api/              NestJS API、持久化邮件队列、定时维护、Prisma 迁移
-apps/user/             React 用户端和受权限保护的管理入口
+apps/user/             React 用户中心和管理后台（基于 shadcn-admin，文件路由）
 packages/api-client/   OpenAPI 及生成的类型
 ops/                   HTTPS 反向代理与部署环境示例
 compose.typescript.yaml 本地 PostgreSQL、Mailpit
