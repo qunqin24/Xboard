@@ -1,28 +1,17 @@
-import { ShieldCheck } from "@phosphor-icons/react";
-import { useAccount } from "../api/hooks";
+import { GearSix, SignOut } from "@phosphor-icons/react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import type { ReactNode } from "react";
+import { useAccount, useLogout } from "../api/hooks";
+import { BrandMark } from "./primitives";
 
-export function AppShell({
-    children,
-    email,
-    onLogout,
-    busy,
-}: {
-    children: React.ReactNode;
-    email?: string;
-    onLogout?: () => void;
-    busy?: boolean;
-}) {
+const navLink =
+    "relative py-3.5 text-sm text-ink-muted transition-colors hover:text-ink data-[status=active]:font-medium data-[status=active]:text-ink data-[status=active]:after:absolute data-[status=active]:after:inset-x-0 data-[status=active]:after:-bottom-px data-[status=active]:after:h-0.5 data-[status=active]:after:rounded-full data-[status=active]:after:bg-ink";
+
+export function AppShell({ children }: { children: ReactNode }) {
     const account = useAccount();
-    const pathname =
-        typeof window !== "undefined" ? window.location.pathname : "/";
-
-    const navItems = [
-        { href: "/", label: "账户总览" },
-        { href: "/manage", label: "账户与服务" },
-        ...(account.data?.role === "admin"
-            ? [{ href: "/admin", label: "管理后台" }]
-            : []),
-    ];
+    const logout = useLogout();
+    const navigate = useNavigate();
+    const signedIn = account.isSuccess;
 
     return (
         <div className="flex min-h-dvh flex-col bg-paper text-ink">
@@ -32,109 +21,89 @@ export function AppShell({
             >
                 跳到主要内容
             </a>
-            <header className="sticky top-0 z-30 border-b border-line bg-surface/90 backdrop-blur-md">
-                <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
-                    <div className="flex items-center gap-3">
-                        <a
-                            href="/"
-                            className="flex items-center gap-2.5 text-ink transition-opacity hover:opacity-85"
-                        >
-                            <span
-                                aria-hidden
-                                className="grid size-6 place-items-center rounded-md bg-ink text-paper"
-                            >
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    className="size-3.5"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth={2.5}
-                                    strokeLinecap="round"
-                                >
-                                    <path d="m6 6 12 12M18 6 6 18" />
-                                </svg>
-                            </span>
-                            <span className="text-sm font-semibold tracking-tight">
-                                Xboard
-                            </span>
-                        </a>
-                        {account.data ? (
-                            <>
-                                <span
-                                    aria-hidden
-                                    className="text-sm text-line-strong"
-                                >
-                                    /
-                                </span>
-                                <span className="rounded-full border border-line bg-surface-raised px-2.5 py-0.5 text-xs text-ink-muted">
-                                    {account.data.plan?.name ?? "未开通套餐"}
-                                </span>
-                            </>
-                        ) : null}
+            <header className="sticky top-0 z-30 border-b border-line bg-surface/85 backdrop-blur-md">
+                <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
+                    <Link to="/" className="flex items-center gap-2.5">
+                        <BrandMark />
+                        <span className="text-sm font-semibold tracking-tight">
+                            Xboard
+                        </span>
                         {import.meta.env.DEV ? (
-                            <span className="hidden rounded-full border border-accent/30 bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent sm:inline-block">
+                            <span className="rounded border border-line px-1.5 text-[11px] font-medium text-ink-subtle">
                                 DEV
                             </span>
                         ) : null}
-                    </div>
-                    <div className="flex items-center gap-3">
-                        {email ? (
-                            <span className="hidden text-xs text-ink-muted sm:inline">
-                                {email}
+                    </Link>
+                    {signedIn ? (
+                        <div className="flex items-center gap-1">
+                            <span className="mr-2 hidden max-w-56 truncate text-xs text-ink-muted sm:inline">
+                                {account.data.email}
                             </span>
-                        ) : null}
-                        {onLogout ? (
+                            {account.data.role === "admin" ? (
+                                <Link
+                                    to="/admin"
+                                    className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-xs font-medium text-ink shadow-card transition-colors hover:border-line-strong"
+                                >
+                                    <GearSix aria-hidden className="size-3.5" />
+                                    管理后台
+                                </Link>
+                            ) : null}
                             <button
                                 type="button"
-                                disabled={busy}
-                                onClick={onLogout}
-                                className="rounded-md border border-line bg-surface-raised px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:border-line-strong hover:bg-surface-subtle disabled:opacity-50"
+                                aria-label="退出登录"
+                                title="退出登录"
+                                disabled={logout.isPending}
+                                onClick={async () => {
+                                    try {
+                                        await logout.mutateAsync();
+                                        await navigate({ to: "/login" });
+                                    } catch {
+                                        /* Error is shown below the header. */
+                                    }
+                                }}
+                                className="grid size-8 cursor-pointer place-items-center rounded-md text-ink-muted transition-colors hover:bg-surface-subtle hover:text-ink disabled:opacity-50"
                             >
-                                {busy ? "正在退出…" : "退出登录"}
+                                <SignOut aria-hidden className="size-4" />
                             </button>
-                        ) : null}
-                    </div>
+                        </div>
+                    ) : null}
                 </div>
-                {account.data ? (
+                {signedIn ? (
                     <nav
                         aria-label="主导航"
-                        className="mx-auto flex max-w-6xl gap-6 px-6 text-xs"
+                        className="mx-auto flex max-w-5xl gap-6 px-4 sm:px-6"
                     >
-                        {navItems.map((item) => {
-                            const active = pathname === item.href;
-                            return (
-                                <a
-                                    key={item.href}
-                                    href={item.href}
-                                    aria-current={active ? "page" : undefined}
-                                    className={`border-b-2 pb-3 pt-1 font-medium transition-colors ${
-                                        active
-                                            ? "border-ink text-ink"
-                                            : "border-transparent text-ink-muted hover:text-ink"
-                                    }`}
-                                >
-                                    {item.label}
-                                </a>
-                            );
-                        })}
+                        <Link
+                            to="/"
+                            activeOptions={{ exact: true }}
+                            className={navLink}
+                        >
+                            总览
+                        </Link>
+                        <Link to="/manage" className={navLink}>
+                            账户与服务
+                        </Link>
                     </nav>
                 ) : null}
             </header>
+            {logout.isError ? (
+                <p
+                    role="alert"
+                    className="bg-danger-soft px-6 py-2 text-center text-xs text-danger"
+                >
+                    {logout.error.message}
+                </p>
+            ) : null}
             <main
                 id="main"
-                className="mx-auto w-full max-w-6xl flex-1 px-6 py-8"
+                className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6 sm:py-10"
             >
                 {children}
             </main>
             <footer className="border-t border-line-subtle">
-                <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-6 py-6 text-xs text-ink-muted">
-                    <span className="inline-flex items-center gap-2">
-                        <ShieldCheck aria-hidden className="size-4" />
-                        <span>Xboard 用户中心</span>
-                    </span>
-                    <span className="numeric text-ink-subtle">
-                        Subscription Console
-                    </span>
+                <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-5 text-xs text-ink-subtle sm:px-6">
+                    <span>Xboard 用户中心</span>
+                    <span>需要帮助？在账户与服务页提交工单</span>
                 </div>
             </footer>
         </div>

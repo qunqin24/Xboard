@@ -1,15 +1,21 @@
-import { useNavigate } from "@tanstack/react-router";
-import { useAccount, useLogout, usePlans } from "../api/hooks";
+import { LinkSimple } from "@phosphor-icons/react";
+import { Link } from "@tanstack/react-router";
+import type { ReactNode } from "react";
+import { useAccount, usePlans } from "../api/hooks";
 import { AppShell } from "../components/AppShell";
+import { OrdersPanel } from "../components/OrdersPanel";
+import { PlanCard } from "../components/PlanCard";
 import {
+    Badge,
     Button,
+    buttonClass,
     Card,
+    EmptyState,
     Notice,
+    PageHeader,
     SectionLabel,
     Skeleton,
 } from "../components/primitives";
-import { PlanCard } from "../components/PlanCard";
-import { OrdersPanel } from "../components/OrdersPanel";
 import { TrafficRuler } from "../components/TrafficRuler";
 import {
     daysLeft,
@@ -21,11 +27,47 @@ import {
     usedPercent,
 } from "../lib/format";
 
+function Section({
+    id,
+    title,
+    description,
+    children,
+}: {
+    id: string;
+    title: string;
+    description?: string;
+    children: ReactNode;
+}) {
+    return (
+        <section aria-labelledby={id} className="space-y-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2
+                    id={id}
+                    className="text-base font-semibold tracking-tight text-ink"
+                >
+                    {title}
+                </h2>
+                {description ? (
+                    <p className="text-xs text-ink-muted">{description}</p>
+                ) : null}
+            </div>
+            {children}
+        </section>
+    );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+    return (
+        <div>
+            <dt className="text-xs text-ink-muted">{label}</dt>
+            <dd className="numeric mt-0.5 text-sm text-ink">{value}</dd>
+        </div>
+    );
+}
+
 export function AccountPage() {
-    const navigate = useNavigate();
     const account = useAccount();
     const plans = usePlans(account.isSuccess);
-    const logout = useLogout();
 
     if (account.isPending) {
         return (
@@ -35,14 +77,10 @@ export function AccountPage() {
                     aria-busy="true"
                     aria-label="正在加载账户"
                 >
-                    <Skeleton className="h-12 w-64" />
+                    <Skeleton className="h-10 w-48" />
                     <div className="grid gap-4 lg:grid-cols-3">
-                        <Skeleton className="h-48 lg:col-span-2" />
-                        <Skeleton className="h-48" />
-                    </div>
-                    <div className="grid gap-4 md:grid-cols-2">
-                        <Skeleton className="h-64" />
-                        <Skeleton className="h-64" />
+                        <Skeleton className="h-56 lg:col-span-2" />
+                        <Skeleton className="h-56" />
                     </div>
                 </div>
             </AppShell>
@@ -56,14 +94,15 @@ export function AccountPage() {
                     tone="warn"
                     title="账户信息没有加载出来"
                     action={
-                        <Button onClick={() => account.refetch()}>
+                        <Button
+                            variant="secondary"
+                            onClick={() => account.refetch()}
+                        >
                             重新加载
                         </Button>
                     }
                 >
-                    请确认本地 API 已启动（
-                    <code className="numeric">127.0.0.1:3001</code>
-                    ），然后重试。
+                    {account.error.message}
                 </Notice>
             </AppShell>
         );
@@ -75,183 +114,122 @@ export function AccountPage() {
     const leftBytes = remainingBytes(data.transferBytes, used);
     const days = daysLeft(data.expiredAt ?? null);
     const [leftValue, leftUnit] = formatTraffic(leftBytes).split(" ");
+    const expired = days !== null && days <= 0;
+    const status = !data.plan
+        ? ({ tone: "neutral", label: "未开通" } as const)
+        : expired
+          ? ({ tone: "danger", label: "已到期" } as const)
+          : percent >= 100
+            ? ({ tone: "danger", label: "流量已用完" } as const)
+            : percent >= 90
+              ? ({ tone: "warn", label: "流量即将用完" } as const)
+              : ({ tone: "success", label: "正常使用中" } as const);
 
     return (
-        <AppShell
-            email={data.email}
-            busy={logout.isPending}
-            onLogout={async () => {
-                try {
-                    await logout.mutateAsync();
-                    await navigate({ to: "/login" });
-                } catch {
-                    /* Render the mutation error below. */
-                }
-            }}
-        >
-            <div className="space-y-8">
-                {logout.isError ? (
-                    <p role="alert" className="text-xs text-warn">
-                        {logout.error.message}
-                    </p>
-                ) : null}
+        <AppShell>
+            <div className="space-y-10">
+                <PageHeader
+                    title="总览"
+                    description={
+                        data.plan ? (
+                            <>
+                                {data.plan.name}，有效期至{" "}
+                                <span className="numeric text-ink">
+                                    {formatDate(data.expiredAt ?? null)}
+                                </span>
+                                {days !== null && !expired
+                                    ? `，还剩 ${days} 天`
+                                    : ""}
+                            </>
+                        ) : (
+                            "还没有开通套餐。从下方选择套餐，用余额支付即可开通。"
+                        )
+                    }
+                    actions={
+                        data.plan ? (
+                            <Link
+                                to="/manage"
+                                className={buttonClass({
+                                    variant: "secondary",
+                                })}
+                            >
+                                <LinkSimple aria-hidden className="size-4" />
+                                获取订阅链接
+                            </Link>
+                        ) : null
+                    }
+                />
 
-                {/* Vercel Overview Header */}
-                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-6">
-                    <div>
-                        <h1 className="text-2xl font-semibold tracking-tight text-ink">
-                            Overview
-                        </h1>
-                        <p className="mt-1 text-xs text-ink-muted">
-                            {data.plan ? (
-                                <>
-                                    订阅有效期至{" "}
-                                    <span className="numeric text-ink">
-                                        {formatDate(data.expiredAt ?? null)}
-                                    </span>
-                                    {days !== null ? (
-                                        <span>
-                                            （剩余{" "}
-                                            <span className="numeric">
-                                                {Math.max(0, days)}
-                                            </span>{" "}
-                                            天）
-                                        </span>
-                                    ) : null}
-                                </>
-                            ) : (
-                                "尚未开通套餐 · 请从下方选择方案"
-                            )}
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-2.5">
-                        <a
-                            href="/manage"
-                            className="inline-flex items-center rounded-md border border-line bg-surface-raised px-3.5 py-2 text-xs font-medium text-ink transition-colors hover:border-line-strong hover:bg-surface-subtle"
-                        >
-                            查看流量明细
-                        </a>
-                        <a
-                            href="/manage"
-                            className="inline-flex items-center rounded-md bg-ink px-3.5 py-2 text-xs font-medium text-paper transition-colors hover:bg-ink-hover"
-                        >
-                            导出订阅配置
-                        </a>
-                    </div>
-                </div>
-
-                {/* Vercel 3-Column Metrics Grid */}
                 <div className="grid gap-4 lg:grid-cols-3">
-                    <Card className="flex flex-col justify-between lg:col-span-2">
-                        <div>
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                                <SectionLabel>
-                                    Bandwidth Usage · 周期流量
-                                </SectionLabel>
-                                {data.plan ? (
-                                    <span className="inline-flex items-center gap-1.5 text-xs text-signal">
-                                        <span className="size-1.5 rounded-full bg-signal" />
-                                        正常使用中
-                                    </span>
-                                ) : (
-                                    <span className="inline-flex items-center gap-1.5 text-xs text-ink-muted">
-                                        <span className="size-1.5 rounded-full bg-ink-subtle" />
-                                        未开通
-                                    </span>
-                                )}
-                            </div>
-                            <div className="mt-3 flex flex-wrap items-baseline justify-between gap-4">
-                                <p className="flex items-baseline gap-2">
-                                    <span className="numeric text-4xl font-semibold tracking-tight text-ink">
-                                        {leftValue}
-                                    </span>
-                                    <span className="text-sm font-medium text-ink-muted">
-                                        {leftUnit ?? "GB"} 剩余
-                                    </span>
-                                </p>
-                                <p className="numeric text-xs text-ink-muted">
-                                    {formatTraffic(used)} /{" "}
-                                    {formatTraffic(data.transferBytes)} (
-                                    {Math.round(percent)}%)
-                                </p>
-                            </div>
-                            <TrafficRuler
-                                used={used}
-                                total={data.transferBytes}
-                                percent={percent}
+                    <Card className="lg:col-span-2">
+                        <div className="flex items-center justify-between gap-2">
+                            <SectionLabel>剩余流量</SectionLabel>
+                            <Badge dot tone={status.tone}>
+                                {status.label}
+                            </Badge>
+                        </div>
+                        <p className="mt-3 flex items-baseline gap-1.5">
+                            <span className="numeric text-5xl font-medium tracking-tight text-ink">
+                                {leftValue}
+                            </span>
+                            <span className="text-sm text-ink-muted">
+                                {leftUnit ?? "GB"}
+                            </span>
+                        </p>
+                        <TrafficRuler
+                            used={used}
+                            total={data.transferBytes}
+                            percent={percent}
+                        />
+                        <dl className="mt-5 grid grid-cols-2 gap-4 border-t border-line-subtle pt-4 sm:grid-cols-4">
+                            <Metric
+                                label="已用"
+                                value={`${formatTraffic(used)} · ${Math.round(percent)}%`}
                             />
-                        </div>
-
-                        <div className="mt-4 flex flex-wrap gap-6 border-t border-line-subtle pt-4 text-xs text-ink-muted">
-                            <span>
-                                上传{" "}
-                                <strong className="numeric font-medium text-ink">
-                                    {formatTraffic(data.uploadBytes)}
-                                </strong>
-                            </span>
-                            <span>
-                                下载{" "}
-                                <strong className="numeric font-medium text-ink">
-                                    {formatTraffic(data.downloadBytes)}
-                                </strong>
-                            </span>
-                            <span>
-                                总额度{" "}
-                                <strong className="numeric font-medium text-ink">
-                                    {formatTraffic(data.transferBytes)}
-                                </strong>
-                            </span>
-                        </div>
+                            <Metric
+                                label="上传"
+                                value={formatTraffic(data.uploadBytes)}
+                            />
+                            <Metric
+                                label="下载"
+                                value={formatTraffic(data.downloadBytes)}
+                            />
+                            <Metric
+                                label="周期总额"
+                                value={formatTraffic(data.transferBytes)}
+                            />
+                        </dl>
                     </Card>
 
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-                        <Card className="flex flex-col justify-between">
-                            <div className="flex items-center justify-between gap-2">
-                                <SectionLabel>当前套餐</SectionLabel>
-                                <span className="numeric rounded border border-line bg-surface-raised px-2 py-0.5 text-xs text-ink">
-                                    {data.speedLimitMbps
-                                        ? `${data.speedLimitMbps} Mbps`
-                                        : "不限速"}
-                                </span>
-                            </div>
-                            {data.plan ? (
-                                <p className="mt-3 text-lg font-semibold text-ink">
-                                    {data.plan.name}
-                                </p>
-                            ) : (
-                                <p className="mt-3 text-xs text-ink-muted">
-                                    尚未开通套餐，可从下方选择方案下单。
-                                </p>
-                            )}
+                        <Card>
+                            <SectionLabel>当前套餐</SectionLabel>
+                            <p className="mt-2 text-lg font-medium text-ink">
+                                {data.plan?.name ?? "未开通"}
+                            </p>
+                            <p className="numeric mt-1 text-xs text-ink-muted">
+                                {data.speedLimitMbps
+                                    ? `限速 ${data.speedLimitMbps} Mbps`
+                                    : "不限速"}
+                            </p>
                         </Card>
-
-                        <Card className="flex flex-col justify-between">
-                            <SectionLabel>可用余额</SectionLabel>
-                            <div className="mt-3 flex items-baseline justify-between gap-2">
-                                <span className="numeric text-2xl font-semibold text-ink">
-                                    {formatMinor(data.balanceMinor)}
-                                </span>
-                                <span className="text-xs text-ink-muted">
-                                    CNY
-                                </span>
-                            </div>
+                        <Card>
+                            <SectionLabel>账户余额</SectionLabel>
+                            <p className="numeric mt-2 text-2xl font-medium tracking-tight text-ink">
+                                {formatMinor(data.balanceMinor)}
+                            </p>
+                            <p className="mt-1 text-xs text-ink-muted">
+                                暂不支持在线充值，请联系管理员入账。
+                            </p>
                         </Card>
                     </div>
                 </div>
 
-                {/* Plans Grid */}
-                <section aria-labelledby="plans-title" className="space-y-4">
-                    <div className="flex flex-wrap items-baseline justify-between gap-4">
-                        <h2
-                            id="plans-title"
-                            className="text-base font-semibold tracking-tight text-ink"
-                        >
-                            Plans · 可购套餐
-                        </h2>
-                        <p className="text-xs text-ink-muted">
-                            价格为人民币，含两位小数
-                        </p>
-                    </div>
+                <Section
+                    id="plans-title"
+                    title={data.plan ? "套餐" : "选择套餐"}
+                    description="月付 30 天 · 季付 90 天 · 年付 365 天；同套餐续费叠加时间与流量"
+                >
                     {plans.isPending ? (
                         <div className="grid gap-4 md:grid-cols-2">
                             <Skeleton className="h-72" />
@@ -262,17 +240,20 @@ export function AccountPage() {
                             tone="warn"
                             title="套餐列表没有加载出来"
                             action={
-                                <Button onClick={() => plans.refetch()}>
+                                <Button
+                                    variant="secondary"
+                                    onClick={() => plans.refetch()}
+                                >
                                     重新加载
                                 </Button>
                             }
                         >
-                            网络或 API 异常。账户数据不受影响。
+                            {plans.error.message}
                         </Notice>
                     ) : plans.data.length === 0 ? (
-                        <Notice title="目前没有在售套餐">
-                            所有套餐都已售罄或下架。稍后再试，或联系管理员确认上架计划。
-                        </Notice>
+                        <EmptyState title="目前没有在售套餐">
+                            稍后再来看看，或通过工单联系管理员。
+                        </EmptyState>
                     ) : (
                         <div className="grid gap-4 md:grid-cols-2">
                             {plans.data.map((plan) => (
@@ -284,9 +265,15 @@ export function AccountPage() {
                             ))}
                         </div>
                     )}
-                </section>
+                </Section>
 
-                <OrdersPanel balance={data.balanceMinor} />
+                <Section
+                    id="orders-title"
+                    title="订单"
+                    description="最近 50 笔；待支付订单保留 30 分钟"
+                >
+                    <OrdersPanel balance={data.balanceMinor} />
+                </Section>
             </div>
         </AppShell>
     );
