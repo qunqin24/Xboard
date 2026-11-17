@@ -74,12 +74,14 @@ export function TextArea({
     defaultValue,
     required = true,
     rows = 4,
+    maxLength = 10000,
 }: {
     label: string;
     name: string;
     defaultValue?: string;
     required?: boolean;
     rows?: number;
+    maxLength?: number;
 }) {
     const id = useId();
     return (
@@ -90,7 +92,7 @@ export function TextArea({
                 name={name}
                 defaultValue={defaultValue}
                 required={required}
-                maxLength={10000}
+                maxLength={maxLength}
                 rows={rows}
                 className={`${inputClass} h-auto py-2 leading-relaxed`}
             />

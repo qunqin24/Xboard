@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { useAccount } from "../api/hooks";
 import { useCommand, usePanel } from "../api/panel";
 import { AppShell } from "../components/AppShell";
+import { useConfirm } from "../components/overlays";
 import { Feedback, Field, Form, inputClass } from "../components/forms";
 import {
     Badge,
@@ -68,6 +69,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
 
 function SubscriptionCard({ hasPlan }: { hasPlan: boolean }) {
     const action = useCommand();
+    const confirm = useConfirm();
     const [links, setLinks] = useState<Links | null>(null);
 
     return (
@@ -80,12 +82,18 @@ function SubscriptionCard({ hasPlan }: { hasPlan: boolean }) {
                         variant={links ? "secondary" : "primary"}
                         busy={action.isPending}
                         disabled={!hasPlan}
-                        onClick={() => {
+                        onClick={async () => {
+                            // Generating always revokes the previous link, including
+                            // one imported into a client before this visit.
                             if (
-                                links &&
-                                !confirm(
-                                    "重新生成后，刚才的链接也会失效。继续吗？",
-                                )
+                                !(await confirm({
+                                    title: links
+                                        ? "重新生成订阅链接？"
+                                        : "生成新的订阅链接？",
+                                    description:
+                                        "之前的订阅链接会立即失效，客户端需要改用新链接才能更新节点。已导入的节点凭据不变，暂时仍可连接。",
+                                    confirmLabel: "生成",
+                                }))
                             )
                                 return;
                             action.mutate(

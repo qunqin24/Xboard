@@ -2,6 +2,8 @@ import { GearSix, SignOut } from "@phosphor-icons/react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useAccount, useLogout } from "../api/hooks";
+import { useSite } from "../api/panel";
+import { ThemeToggle } from "./chrome";
 import { BrandMark } from "./primitives";
 
 const navLink =
@@ -12,6 +14,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     const logout = useLogout();
     const navigate = useNavigate();
     const signedIn = account.isSuccess;
+    const site = useSite();
 
     return (
         <div className="flex min-h-dvh flex-col bg-paper text-ink">
@@ -26,7 +29,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     <Link to="/" className="flex items-center gap-2.5">
                         <BrandMark />
                         <span className="text-sm font-semibold tracking-tight">
-                            Xboard
+                            {site.data?.siteName ?? "Xboard"}
                         </span>
                         {import.meta.env.DEV ? (
                             <span className="rounded border border-line px-1.5 text-[11px] font-medium text-ink-subtle">
@@ -48,6 +51,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                                     管理后台
                                 </Link>
                             ) : null}
+                            <ThemeToggle />
                             <button
                                 type="button"
                                 aria-label="退出登录"

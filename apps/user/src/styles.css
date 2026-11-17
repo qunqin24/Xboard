@@ -6,9 +6,10 @@
 @import "@fontsource/geist-mono/500.css";
 
 /* Direction A: refined minimal. Neutral greys carry the hierarchy; colour is
-   reserved for status (signal / warn / danger) and focus (accent). */
+   reserved for status (signal / warn / danger) and focus (accent).
+   The resolved theme lives on <html data-theme>; see src/lib/theme.ts. */
 :root {
-    color-scheme: light dark;
+    color-scheme: light;
     --theme-paper: #fafafa;
     --theme-surface: #ffffff;
     --theme-surface-raised: #f6f6f6;
@@ -33,31 +34,30 @@
     --theme-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
 }
 
-@media (prefers-color-scheme: dark) {
-    :root {
-        --theme-paper: #0a0a0a;
-        --theme-surface: #111111;
-        --theme-surface-raised: #171717;
-        --theme-surface-subtle: #1d1d1d;
-        --theme-surface-active: #262626;
-        --theme-sidebar: #0e0e0e;
-        --theme-ink: #ededed;
-        --theme-ink-hover: #ffffff;
-        --theme-ink-muted: #a1a1a1;
-        --theme-ink-subtle: #707070;
-        --theme-line: #262626;
-        --theme-line-subtle: #1c1c1c;
-        --theme-line-strong: #3a3a3a;
-        --theme-accent: #52a8ff;
-        --theme-accent-soft: #0f2238;
-        --theme-signal: #45c58a;
-        --theme-signal-soft: #0f2a1d;
-        --theme-warn: #f0a44b;
-        --theme-warn-soft: #2e1f0c;
-        --theme-danger: #ff6369;
-        --theme-danger-soft: #331014;
-        --theme-shadow: 0 0 0 1px rgb(255 255 255 / 0.02);
-    }
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --theme-paper: #0a0a0a;
+    --theme-surface: #111111;
+    --theme-surface-raised: #171717;
+    --theme-surface-subtle: #1d1d1d;
+    --theme-surface-active: #262626;
+    --theme-sidebar: #0e0e0e;
+    --theme-ink: #ededed;
+    --theme-ink-hover: #ffffff;
+    --theme-ink-muted: #a1a1a1;
+    --theme-ink-subtle: #707070;
+    --theme-line: #262626;
+    --theme-line-subtle: #1c1c1c;
+    --theme-line-strong: #3a3a3a;
+    --theme-accent: #52a8ff;
+    --theme-accent-soft: #0f2238;
+    --theme-signal: #45c58a;
+    --theme-signal-soft: #0f2a1d;
+    --theme-warn: #f0a44b;
+    --theme-warn-soft: #2e1f0c;
+    --theme-danger: #ff6369;
+    --theme-danger-soft: #331014;
+    --theme-shadow: 0 0 0 1px rgb(255 255 255 / 0.02);
 }
 
 @theme inline {
@@ -126,5 +126,62 @@
     *::after {
         transition-duration: 1ms !important;
         animation-duration: 1ms !important;
+    }
+}
+
+@layer components {
+    dialog.app-dialog {
+        margin: auto;
+        max-height: calc(100dvh - 2rem);
+        padding: 0;
+        border: 1px solid var(--color-line);
+        border-radius: 0.75rem;
+        background: var(--color-surface);
+        color: var(--color-ink);
+        box-shadow: 0 16px 48px rgb(0 0 0 / 0.18);
+    }
+
+    dialog.app-dialog[open] {
+        animation: pop-in 160ms var(--ease-out-soft);
+    }
+
+    dialog.app-dialog::backdrop {
+        background: rgb(0 0 0 / 0.35);
+        backdrop-filter: blur(2px);
+    }
+
+    .animate-pop-in {
+        animation: pop-in 140ms var(--ease-out-soft);
+    }
+
+    .animate-slide-up {
+        animation: slide-up 200ms var(--ease-out-soft);
+    }
+
+    .animate-progress {
+        animation: progress 1.2s var(--ease-out-soft) infinite;
+    }
+}
+
+@keyframes pop-in {
+    from {
+        opacity: 0;
+        transform: translateY(4px) scale(0.98);
+    }
+}
+
+@keyframes slide-up {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+}
+
+@keyframes progress {
+    from {
+        transform: translateX(-100%);
+    }
+    to {
+        transform: translateX(250%);
     }
 }

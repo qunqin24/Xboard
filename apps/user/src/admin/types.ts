@@ -46,6 +46,8 @@ export type UserRow = {
     planId: number | null;
     expiredAt: number | null;
     verifiedAt: string | null;
+    speedLimit: number | null;
+    deviceLimit: number | null;
 };
 
 export type NoticeRow = {
@@ -94,4 +96,23 @@ export type MailRow = {
     sentAt: string | null;
     nextAttempt: string;
     createdAt: string;
+};
+
+export type SiteSettings = {
+    siteName: string;
+    registrationOpen: boolean;
+    supportNote: string;
+};
+
+export type StatsDay = {
+    date: string;
+    revenueMinor: number;
+    paidOrders: number;
+    newUsers: number;
+    trafficBytes: string;
+};
+
+export type Stats = {
+    days: StatsDay[];
+    topPlans: { planName: string; orders: number; revenueMinor: number }[];
 };

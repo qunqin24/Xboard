@@ -1,11 +1,22 @@
-import { Plus } from "@phosphor-icons/react";
-import { useState } from "react";
+import {
+    Eye,
+    EyeSlash,
+    PencilSimple,
+    Plus,
+    Trash,
+} from "@phosphor-icons/react";
 import { useCommand, usePanel } from "../api/panel";
 import { Checkbox, Feedback, Field, Form, TextArea } from "../components/forms";
+import { useToast } from "../components/overlays";
 import { Badge, Button, PageHeader } from "../components/primitives";
 import { TicketList } from "../components/Tickets";
 import { DataTable } from "./DataTable";
-import { EditorPanel, WithEditor } from "./Editor";
+import {
+    EditorPanel,
+    useAdminAction,
+    useEditorParam,
+    WithEditor,
+} from "./Editor";
 import type { NoticeRow } from "./types";
 
 function NoticeEditor({
@@ -16,6 +27,7 @@ function NoticeEditor({
     onClose: () => void;
 }) {
     const action = useCommand();
+    const toast = useToast();
     return (
         <EditorPanel title={notice ? "编辑公告" : "新建公告"} onClose={onClose}>
             <Form
@@ -40,7 +52,14 @@ function NoticeEditor({
                                 published: form.has("published"),
                             },
                         },
-                        { onSuccess: onClose },
+                        {
+                            onSuccess: () => {
+                                toast.success(
+                                    notice ? "公告已保存" : "公告已创建",
+                                );
+                                onClose();
+                            },
+                        },
                     )
                 }
             >
@@ -71,15 +90,19 @@ function NoticeEditor({
 
 export function NoticesPage() {
     const list = usePanel<NoticeRow[]>("/admin/notices");
-    const [editing, setEditing] = useState<NoticeRow | "new" | null>(null);
+    const editor = useEditorParam("/admin/notices");
+    const action = useAdminAction();
+    const editing = editor.isNew
+        ? "new"
+        : (list.data?.find((notice) => notice.id === editor.editId) ?? null);
 
     return (
         <div className="space-y-6">
             <PageHeader
                 title="公告"
-                description="已发布的公告会展示给所有用户。"
+                description="已发布的公告会展示在所有用户的账户与服务页顶部。"
                 actions={
-                    <Button onClick={() => setEditing("new")}>
+                    <Button onClick={() => editor.open("new")}>
                         <Plus aria-hidden className="size-4" />
                         新建公告
                     </Button>
@@ -90,24 +113,83 @@ export function NoticesPage() {
                     editing ? (
                         <NoticeEditor
                             notice={editing === "new" ? null : editing}
-                            onClose={() => setEditing(null)}
+                            onClose={() => editor.open(null)}
                         />
                     ) : null
                 }
             >
                 <DataTable
+                    id="notices"
                     query={list}
                     rowKey={(row) => row.id}
                     selectedKey={
                         editing && editing !== "new" ? editing.id : null
                     }
-                    onRowClick={setEditing}
+                    onRowClick={(notice) => editor.open(notice.id)}
                     empty={{ title: "还没有公告" }}
+                    searchText={(n) => `${n.title} ${n.content}`}
+                    searchPlaceholder="标题、正文"
+                    facets={[
+                        {
+                            key: "status",
+                            label: "状态",
+                            value: (n) => (n.published ? "published" : "draft"),
+                            labels: { published: "已发布", draft: "草稿" },
+                        },
+                    ]}
+                    rowActions={(notice) => [
+                        {
+                            label: "编辑",
+                            icon: PencilSimple,
+                            onSelect: () => editor.open(notice.id),
+                        },
+                        {
+                            label: notice.published ? "撤回" : "发布",
+                            icon: notice.published ? EyeSlash : Eye,
+                            onSelect: () =>
+                                void action.run({
+                                    path: `/admin/notices/${notice.id}`,
+                                    method: "PUT",
+                                    body: {
+                                        title: notice.title,
+                                        content: notice.content,
+                                        published: !notice.published,
+                                    },
+                                    success: notice.published
+                                        ? "公告已撤回"
+                                        : "公告已发布",
+                                }),
+                        },
+                        { separator: true },
+                        {
+                            label: "删除",
+                            icon: Trash,
+                            tone: "danger",
+                            onSelect: async () => {
+                                const done = await action.run({
+                                    path: `/admin/notices/${notice.id}`,
+                                    method: "DELETE",
+                                    success: "公告已删除",
+                                    confirm: {
+                                        title: `删除公告“${notice.title}”？`,
+                                        description:
+                                            "删除后无法恢复。只想暂时隐藏可以改为撤回。",
+                                        confirmLabel: "删除",
+                                        tone: "danger",
+                                    },
+                                });
+                                if (done && editor.editId === notice.id)
+                                    editor.open(null);
+                            },
+                        },
+                    ]}
                     columns={[
                         {
                             key: "title",
                             header: "公告",
+                            hideable: false,
                             className: "max-w-md whitespace-normal",
+                            sortValue: (n) => n.title,
                             cell: (n) => (
                                 <>
                                     <p className="font-medium">{n.title}</p>
@@ -121,6 +203,7 @@ export function NoticesPage() {
                             key: "status",
                             header: "状态",
                             align: "right",
+                            sortValue: (n) => n.published,
                             cell: (n) =>
                                 n.published ? (
                                     <Badge dot tone="success">

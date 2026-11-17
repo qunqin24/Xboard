@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useLogin, useRegister } from "../api/hooks";
+import { useSite } from "../api/panel";
 import { ApiError } from "@xboard/api-client";
 import { AuthLayout } from "../components/AuthLayout";
 import { inputClass } from "../components/forms";
@@ -36,6 +37,8 @@ export function LoginPage() {
     });
 
     const busy = login.isPending || registration.isPending;
+    const site = useSite();
+    const canRegister = site.data?.registrationOpen ?? true;
 
     const switchMode = (next: "login" | "register") => {
         setMode(next);
@@ -86,19 +89,27 @@ export function LoginPage() {
                     : "用邮箱注册，密码需要 12 至 128 个字符。"
             }
             headerAction={
-                <span className="text-xs text-ink-muted">
-                    {mode === "login" ? "还没有账户？" : "已有账户？"}
-                    <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() =>
-                            switchMode(mode === "login" ? "register" : "login")
-                        }
-                        className="ml-1 cursor-pointer font-medium text-ink underline-offset-4 hover:underline"
-                    >
-                        {mode === "login" ? "注册" : "登录"}
-                    </button>
-                </span>
+                !canRegister && mode === "login" ? (
+                    <span className="text-xs text-ink-subtle">
+                        暂未开放注册
+                    </span>
+                ) : (
+                    <span className="text-xs text-ink-muted">
+                        {mode === "login" ? "还没有账户？" : "已有账户？"}
+                        <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() =>
+                                switchMode(
+                                    mode === "login" ? "register" : "login",
+                                )
+                            }
+                            className="ml-1 cursor-pointer font-medium text-ink underline-offset-4 hover:underline"
+                        >
+                            {mode === "login" ? "注册" : "登录"}
+                        </button>
+                    </span>
+                )
             }
         >
             <form noValidate onSubmit={submit} className="space-y-4">

@@ -1,4 +1,12 @@
-import { Check, Copy, Key, Plus } from "@phosphor-icons/react";
+import {
+    Check,
+    Copy,
+    Key,
+    PencilSimple,
+    Plus,
+    Power,
+    Trash,
+} from "@phosphor-icons/react";
 import { useState } from "react";
 import { useCommand, usePanel } from "../api/panel";
 import {
@@ -9,10 +17,16 @@ import {
     inputClass,
     Select,
 } from "../components/forms";
+import { useToast } from "../components/overlays";
 import { Badge, Button, Card, PageHeader } from "../components/primitives";
 import { formatDateTime } from "../lib/format";
 import { DataTable } from "./DataTable";
-import { EditorPanel, WithEditor } from "./Editor";
+import {
+    EditorPanel,
+    useAdminAction,
+    useEditorParam,
+    WithEditor,
+} from "./Editor";
 import type { NodeRow, PlanRow } from "./types";
 
 const PROTOCOLS = [
@@ -101,6 +115,39 @@ function TokenCard({
     );
 }
 
+type Run = ReturnType<typeof useAdminAction>["run"];
+
+async function rotateToken(
+    run: Run,
+    node: NodeRow,
+    onToken: (value: { id: number; token: string }) => void,
+) {
+    const result = await run({
+        path: `/admin/nodes/${node.id}/token`,
+        success: "密钥已重置",
+        confirm: {
+            title: `重置“${node.name}”的密钥？`,
+            description:
+                "旧密钥立即失效，需要把新密钥填到节点后端，否则节点会断开上报。",
+            confirmLabel: "重置",
+            tone: "danger",
+        },
+    });
+    if (result) onToken({ id: node.id, token: String(result.token) });
+}
+
+/** Request body for PUT /admin/nodes/:id built from a listed node. */
+const nodeBody = (node: NodeRow, enabled = node.enabled) => ({
+    name: node.name,
+    protocol: node.protocol,
+    host: node.host,
+    port: node.port,
+    serverName: node.serverName,
+    cipher: node.cipher,
+    enabled,
+    planIds: node.plans.map((p) => p.planId),
+});
+
 function NodeEditor({
     node,
     plans,
@@ -113,7 +160,8 @@ function NodeEditor({
     onToken: (value: { id: number; token: string }) => void;
 }) {
     const action = useCommand();
-    const rotate = useCommand();
+    const admin = useAdminAction();
+    const toast = useToast();
     const [protocol, setProtocol] = useState(node?.protocol ?? "vless");
 
     return (
@@ -163,6 +211,9 @@ function NodeEditor({
                                         id: Number(result.id),
                                         token: result.token,
                                     });
+                                toast.success(
+                                    node ? "节点已保存" : "节点已创建",
+                                );
                                 onClose();
                             },
                         },
@@ -255,39 +306,62 @@ function NodeEditor({
                     <Button
                         className="mt-3"
                         variant="danger"
-                        busy={rotate.isPending}
-                        onClick={() => {
-                            if (!confirm(`确定重置节点 #${node.id} 的密钥吗？`))
-                                return;
-                            rotate.mutate(
-                                { path: `/admin/nodes/${node.id}/token` },
-                                {
-                                    onSuccess: (result) =>
-                                        onToken({
-                                            id: node.id,
-                                            token: String(result.token),
-                                        }),
-                                },
-                            );
-                        }}
+                        busy={admin.pending}
+                        onClick={() =>
+                            void rotateToken(admin.run, node, onToken)
+                        }
                     >
                         重置密钥
                     </Button>
-                    <Feedback error={rotate.error} />
                 </div>
             ) : null}
         </EditorPanel>
     );
 }
 
+const STATE_LABELS = {
+    在线: "在线",
+    离线: "离线",
+    未连接: "未连接",
+    已停用: "已停用",
+};
+
 export function NodesPage() {
     const list = usePanel<NodeRow[]>("/admin/nodes");
     const plans = usePanel<PlanRow[]>("/admin/plans");
-    const [editing, setEditing] = useState<NodeRow | "new" | null>(null);
+    const editor = useEditorParam("/admin/nodes");
+    const action = useAdminAction();
+    const toast = useToast();
     const [token, setToken] = useState<{ id: number; token: string } | null>(
         null,
     );
     const planName = new Map(plans.data?.map((p) => [p.id, p.name]));
+    const editing = editor.isNew
+        ? "new"
+        : (list.data?.find((node) => node.id === editor.editId) ?? null);
+
+    const setEnabled = async (
+        nodes: NodeRow[],
+        enabled: boolean,
+        clear: () => void,
+    ) => {
+        const targets = nodes.filter((node) => node.enabled !== enabled);
+        let failed = 0;
+        for (const node of targets)
+            if (
+                !(await action.run({
+                    path: `/admin/nodes/${node.id}`,
+                    method: "PUT",
+                    body: nodeBody(node, enabled),
+                }))
+            )
+                failed += 1;
+        if (targets.length - failed)
+            toast.success(
+                `已${enabled ? "启用" : "停用"} ${targets.length - failed} 个节点`,
+            );
+        clear();
+    };
 
     return (
         <div className="space-y-6">
@@ -295,7 +369,7 @@ export function NodesPage() {
                 title="节点"
                 description="支持 UniProxy（V2bX）与 XrayR 旧 V2board 接口；TCP + TLS 的 VMess / VLESS / Trojan、AEAD Shadowsocks、Hysteria2、TUIC。"
                 actions={
-                    <Button onClick={() => setEditing("new")}>
+                    <Button onClick={() => editor.open("new")}>
                         <Plus aria-hidden className="size-4" />
                         新建节点
                     </Button>
@@ -311,28 +385,119 @@ export function NodesPage() {
                             key={editing === "new" ? "new" : editing.id}
                             node={editing === "new" ? null : editing}
                             plans={plans.data ?? []}
-                            onClose={() => setEditing(null)}
+                            onClose={() => editor.open(null)}
                             onToken={setToken}
                         />
                     ) : null
                 }
             >
                 <DataTable
+                    id="nodes"
+                    exportName="节点"
                     query={list}
                     rowKey={(row) => row.id}
                     selectedKey={
                         editing && editing !== "new" ? editing.id : null
                     }
-                    onRowClick={setEditing}
+                    onRowClick={(node) => editor.open(node.id)}
                     empty={{
                         title: "还没有节点",
                         description:
                             "新建节点后，把生成的密钥填到节点后端即可开始上报。",
                     }}
+                    searchText={(n) => `${n.id} ${n.name} ${n.host}`}
+                    searchPlaceholder="名称、地址"
+                    facets={[
+                        {
+                            key: "state",
+                            label: "状态",
+                            value: (n) => nodeState(n).label,
+                            labels: STATE_LABELS,
+                        },
+                        {
+                            key: "protocol",
+                            label: "协议",
+                            value: (n) => n.protocol,
+                        },
+                    ]}
+                    bulkActions={(rows, clear) => (
+                        <>
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                busy={action.pending}
+                                onClick={() =>
+                                    void setEnabled(rows, true, clear)
+                                }
+                            >
+                                启用
+                            </Button>
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                busy={action.pending}
+                                onClick={() =>
+                                    void setEnabled(rows, false, clear)
+                                }
+                            >
+                                停用
+                            </Button>
+                        </>
+                    )}
+                    rowActions={(node) => [
+                        {
+                            label: "编辑",
+                            icon: PencilSimple,
+                            onSelect: () => editor.open(node.id),
+                        },
+                        {
+                            label: node.enabled ? "停用" : "启用",
+                            icon: Power,
+                            onSelect: () =>
+                                void action.run({
+                                    path: `/admin/nodes/${node.id}`,
+                                    method: "PUT",
+                                    body: nodeBody(node, !node.enabled),
+                                    success: node.enabled
+                                        ? "节点已停用"
+                                        : "节点已启用",
+                                }),
+                        },
+                        {
+                            label: "重置密钥",
+                            icon: Key,
+                            onSelect: () =>
+                                void rotateToken(action.run, node, setToken),
+                        },
+                        { separator: true },
+                        {
+                            label: "删除",
+                            icon: Trash,
+                            tone: "danger",
+                            onSelect: async () => {
+                                const done = await action.run({
+                                    path: `/admin/nodes/${node.id}`,
+                                    method: "DELETE",
+                                    success: "节点已删除",
+                                    confirm: {
+                                        title: `删除节点“${node.name}”？`,
+                                        description:
+                                            "节点会停用并作废密钥，用户订阅里不再出现它；历史流量记录保留。",
+                                        confirmLabel: "删除",
+                                        tone: "danger",
+                                    },
+                                });
+                                if (done && editor.editId === node.id)
+                                    editor.open(null);
+                            },
+                        },
+                    ]}
                     columns={[
                         {
                             key: "name",
                             header: "节点",
+                            hideable: false,
+                            sortValue: (n) => n.name,
                             cell: (n) => (
                                 <>
                                     <p className="font-medium">{n.name}</p>
@@ -345,6 +510,7 @@ export function NodesPage() {
                         {
                             key: "state",
                             header: "状态",
+                            sortValue: (n) => nodeState(n).label,
                             cell: (n) => {
                                 const state = nodeState(n);
                                 return (
@@ -357,6 +523,7 @@ export function NodesPage() {
                         {
                             key: "address",
                             header: "地址",
+                            sortValue: (n) => `${n.host}:${n.port}`,
                             cell: (n) => (
                                 <span className="numeric text-ink-muted">
                                     {n.host}:{n.port}
@@ -366,6 +533,14 @@ export function NodesPage() {
                         {
                             key: "plans",
                             header: "套餐",
+                            exportValue: (n) =>
+                                n.plans
+                                    .map(
+                                        (p) =>
+                                            planName.get(p.planId) ??
+                                            `#${p.planId}`,
+                                    )
+                                    .join("、"),
                             cell: (n) =>
                                 n.plans.length ? (
                                     <span className="text-ink-muted">
@@ -387,6 +562,9 @@ export function NodesPage() {
                             key: "seen",
                             header: "最近上报",
                             align: "right",
+                            sortValue: (n) =>
+                                n.lastSeenAt ? Date.parse(n.lastSeenAt) : null,
+                            exportValue: (n) => n.lastSeenAt,
                             cell: (n) => (
                                 <span className="numeric text-ink-muted">
                                     {formatDateTime(n.lastSeenAt)}

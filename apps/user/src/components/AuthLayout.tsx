@@ -1,6 +1,8 @@
 import { ShieldCheck } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { useSite } from "../api/panel";
+import { ThemeToggle } from "./chrome";
 import { BrandMark } from "./primitives";
 
 /** Centered single-card layout for sign-in, registration and recovery. */
@@ -15,16 +17,20 @@ export function AuthLayout({
     headerAction?: ReactNode;
     children: ReactNode;
 }) {
+    const site = useSite();
     return (
         <div className="flex min-h-dvh flex-col bg-paper text-ink">
             <header className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between px-6">
                 <Link to="/login" className="flex items-center gap-2.5">
                     <BrandMark />
                     <span className="text-sm font-semibold tracking-tight">
-                        Xboard
+                        {site.data?.siteName ?? "Xboard"}
                     </span>
                 </Link>
-                {headerAction}
+                <div className="flex items-center gap-3">
+                    {headerAction}
+                    <ThemeToggle />
+                </div>
             </header>
 
             <main className="flex flex-1 flex-col items-center justify-center px-6 pb-16">

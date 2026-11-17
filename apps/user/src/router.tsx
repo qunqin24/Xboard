@@ -11,23 +11,28 @@ import { accountQuery } from "./api/hooks";
 import { AccountPage } from "./pages/AccountPage";
 import { LoginPage } from "./pages/LoginPage";
 import { AppShell } from "./components/AppShell";
-import { Button, Notice } from "./components/primitives";
+import {
+    GeneralErrorPage,
+    NavProgress,
+    NotFoundPage,
+} from "./components/chrome";
 import { queryClient } from "./query-client";
 
 const rootRoute = createRootRoute({
-    component: Outlet,
+    component: () => (
+        <>
+            <NavProgress />
+            <Outlet />
+        </>
+    ),
     notFoundComponent: () => (
         <AppShell>
-            <Notice
-                title="这个页面不存在"
-                action={
-                    <Button variant="secondary" onClick={() => history.back()}>
-                        返回上一页
-                    </Button>
-                }
-            >
-                链接可能已失效，或地址输入有误。
-            </Notice>
+            <NotFoundPage />
+        </AppShell>
+    ),
+    errorComponent: ({ error }) => (
+        <AppShell>
+            <GeneralErrorPage error={error} />
         </AppShell>
     ),
 });
@@ -91,8 +96,8 @@ const recoverRoute = createRoute({
 });
 
 // The admin console has its own layout and one URL per function. The API
-// enforces the admin role on every request; this guard only avoids rendering
-// an unusable console for regular accounts.
+// enforces the admin role on every request; the layout shows a 403 page to
+// signed-in regular accounts instead of an unusable console.
 const adminRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/admin",
@@ -100,10 +105,22 @@ const adminRoute = createRoute({
         () => import("./admin/AdminLayout"),
         "AdminLayout",
     ),
-    beforeLoad: async () => {
-        const account = await authenticated();
-        if (account.role !== "admin") throw redirect({ to: "/" });
-    },
+    beforeLoad: authenticated,
+    notFoundComponent: () => <NotFoundPage home="/admin" />,
+    errorComponent: ({ error }) => <GeneralErrorPage error={error} />,
+});
+
+const positiveInt = (value: unknown) => {
+    const number = Number(value);
+    return Number.isSafeInteger(number) && number > 0 ? number : undefined;
+};
+
+/** `?edit=<id>` opens a record's editor, `?new=true` opens a blank one. */
+const editorSearch = (
+    search: Record<string, unknown>,
+): { edit?: number; new?: boolean } => ({
+    edit: positiveInt(search.edit),
+    new: search.new === true || search.new === "true" ? true : undefined,
 });
 
 // Generic over the path so links to admin pages stay type-checked.
@@ -121,26 +138,47 @@ const adminPage = <
         component: lazyRouteComponent(load, name),
     });
 
+const editorPage = <
+    TPath extends string,
+    TModule extends Record<string, unknown>,
+>(
+    path: TPath,
+    load: () => Promise<TModule>,
+    name: keyof TModule & string,
+) =>
+    createRoute({
+        getParentRoute: () => adminRoute,
+        path,
+        validateSearch: editorSearch,
+        component: lazyRouteComponent(load, name),
+    });
+
 const adminOverview = adminPage(
     "/",
     () => import("./admin/OverviewPage"),
     "OverviewPage",
 );
-const adminPlans = adminPage(
+const adminPlans = editorPage(
     "plans",
     () => import("./admin/PlansPage"),
     "PlansPage",
 );
-const adminNodes = adminPage(
+const adminNodes = editorPage(
     "nodes",
     () => import("./admin/NodesPage"),
     "NodesPage",
 );
-const adminUsers = adminPage(
-    "users",
-    () => import("./admin/UsersPage"),
-    "UsersPage",
-);
+const adminUsers = createRoute({
+    getParentRoute: () => adminRoute,
+    path: "users",
+    validateSearch: (search: Record<string, unknown>): { user?: number } => ({
+        user: positiveInt(search.user),
+    }),
+    component: lazyRouteComponent(
+        () => import("./admin/UsersPage"),
+        "UsersPage",
+    ),
+});
 const adminOrders = adminPage(
     "orders",
     () => import("./admin/RecordPages"),
@@ -161,7 +199,7 @@ const adminMail = adminPage(
     () => import("./admin/RecordPages"),
     "MailPage",
 );
-const adminNotices = adminPage(
+const adminNotices = editorPage(
     "notices",
     () => import("./admin/ContentPages"),
     "NoticesPage",
@@ -170,6 +208,11 @@ const adminTickets = adminPage(
     "tickets",
     () => import("./admin/ContentPages"),
     "TicketsPage",
+);
+const adminSettings = adminPage(
+    "settings",
+    () => import("./admin/SettingsPage"),
+    "SettingsPage",
 );
 
 export const router = createRouter({
@@ -189,6 +232,7 @@ export const router = createRouter({
             adminMail,
             adminNotices,
             adminTickets,
+            adminSettings,
         ]),
     ]),
     defaultPreload: "intent",

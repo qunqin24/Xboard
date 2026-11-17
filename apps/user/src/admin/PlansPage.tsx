@@ -1,7 +1,13 @@
-import { Plus } from "@phosphor-icons/react";
-import { useState } from "react";
+import {
+    Eye,
+    EyeSlash,
+    PencilSimple,
+    Plus,
+    Trash,
+} from "@phosphor-icons/react";
 import { useCommand, usePanel } from "../api/panel";
 import { Checkbox, Feedback, Field, Form, TextArea } from "../components/forms";
+import { useToast } from "../components/overlays";
 import { Badge, Button, PageHeader } from "../components/primitives";
 import { formatMinor, formatTraffic, periodLabel } from "../lib/format";
 import { DataTable } from "./DataTable";
@@ -10,6 +16,8 @@ import {
     EditorPanel,
     giBToBytes,
     minorToYuan,
+    useAdminAction,
+    useEditorParam,
     WithEditor,
     yuanToMinor,
 } from "./Editor";
@@ -27,6 +35,7 @@ function PlanEditor({
     onClose: () => void;
 }) {
     const action = useCommand();
+    const toast = useToast();
     return (
         <EditorPanel
             title={plan ? `编辑套餐` : "新建套餐"}
@@ -71,7 +80,14 @@ function PlanEditor({
                                 })),
                             },
                         },
-                        { onSuccess: onClose },
+                        {
+                            onSuccess: () => {
+                                toast.success(
+                                    plan ? "套餐已保存" : "套餐已创建",
+                                );
+                                onClose();
+                            },
+                        },
                     )
                 }
             >
@@ -174,9 +190,28 @@ function PlanEditor({
     );
 }
 
+/** Request body for PUT /admin/plans/:id built from a listed plan. */
+const planBody = (plan: PlanRow, published = plan.published) => ({
+    name: plan.name,
+    content: plan.content ?? "",
+    transferBytes: plan.transferEnable,
+    speedLimit: plan.speedLimit,
+    deviceLimit: plan.deviceLimit,
+    published,
+    sort: plan.sort,
+    prices: plan.prices.map(({ period, amountMinor }) => ({
+        period,
+        amountMinor,
+    })),
+});
+
 export function PlansPage() {
     const list = usePanel<PlanRow[]>("/admin/plans");
-    const [editing, setEditing] = useState<PlanRow | "new" | null>(null);
+    const editor = useEditorParam("/admin/plans");
+    const action = useAdminAction();
+    const editing = editor.isNew
+        ? "new"
+        : (list.data?.find((plan) => plan.id === editor.editId) ?? null);
 
     return (
         <div className="space-y-6">
@@ -184,7 +219,7 @@ export function PlansPage() {
                 title="套餐"
                 description="套餐决定流量、限速、设备数和价格。已下的订单保存当时的快照，修改不影响已售订单。"
                 actions={
-                    <Button onClick={() => setEditing("new")}>
+                    <Button onClick={() => editor.open("new")}>
                         <Plus aria-hidden className="size-4" />
                         新建套餐
                     </Button>
@@ -195,31 +230,92 @@ export function PlansPage() {
                     editing ? (
                         <PlanEditor
                             plan={editing === "new" ? null : editing}
-                            onClose={() => setEditing(null)}
+                            onClose={() => editor.open(null)}
                         />
                     ) : null
                 }
             >
                 <DataTable
+                    id="plans"
+                    exportName="套餐"
                     query={list}
                     rowKey={(row) => row.id}
                     selectedKey={
                         editing && editing !== "new" ? editing.id : null
                     }
-                    onRowClick={setEditing}
+                    onRowClick={(plan) => editor.open(plan.id)}
                     empty={{
                         title: "还没有套餐",
                         description: "先创建套餐，再到节点页把节点关联到套餐。",
                     }}
+                    searchText={(p) => `${p.id} ${p.name} ${p.content ?? ""}`}
+                    searchPlaceholder="套餐名称"
+                    facets={[
+                        {
+                            key: "status",
+                            label: "状态",
+                            value: (p) => (p.published ? "published" : "draft"),
+                            labels: { published: "销售中", draft: "草稿" },
+                        },
+                    ]}
+                    rowActions={(plan) => [
+                        {
+                            label: "编辑",
+                            icon: PencilSimple,
+                            onSelect: () => editor.open(plan.id),
+                        },
+                        {
+                            label: plan.published ? "下架" : "发布销售",
+                            icon: plan.published ? EyeSlash : Eye,
+                            disabled: !plan.published && !plan.prices.length,
+                            hint:
+                                !plan.published && !plan.prices.length
+                                    ? "未定价"
+                                    : undefined,
+                            onSelect: () =>
+                                void action.run({
+                                    path: `/admin/plans/${plan.id}`,
+                                    method: "PUT",
+                                    body: planBody(plan, !plan.published),
+                                    success: plan.published
+                                        ? "已下架"
+                                        : "已发布",
+                                }),
+                        },
+                        { separator: true },
+                        {
+                            label: "删除",
+                            icon: Trash,
+                            tone: "danger",
+                            onSelect: async () => {
+                                const done = await action.run({
+                                    path: `/admin/plans/${plan.id}`,
+                                    method: "DELETE",
+                                    success: "套餐已删除",
+                                    confirm: {
+                                        title: `删除套餐“${plan.name}”？`,
+                                        description:
+                                            "删除后用户不能再购买，节点也不再关联它；已有订单记录保留。仍有有效订阅时无法删除。",
+                                        confirmLabel: "删除",
+                                        tone: "danger",
+                                    },
+                                });
+                                if (done && editor.editId === plan.id)
+                                    editor.open(null);
+                            },
+                        },
+                    ]}
                     columns={[
                         {
                             key: "name",
                             header: "套餐",
+                            hideable: false,
+                            sortValue: (p) => p.name,
                             cell: (p) => (
                                 <>
                                     <p className="font-medium">{p.name}</p>
                                     <p className="numeric text-xs text-ink-subtle">
-                                        #{p.id} · 排序 {p.sort}
+                                        #{p.id}
                                     </p>
                                 </>
                             ),
@@ -227,6 +323,9 @@ export function PlansPage() {
                         {
                             key: "status",
                             header: "状态",
+                            sortValue: (p) => p.published,
+                            exportValue: (p) =>
+                                p.published ? "销售中" : "草稿",
                             cell: (p) =>
                                 p.published ? (
                                     <Badge dot tone="success">
@@ -238,11 +337,22 @@ export function PlansPage() {
                         },
                         {
                             key: "traffic",
-                            header: "流量 / 限制",
+                            header: "流量",
+                            sortValue: (p) => BigInt(p.transferEnable),
+                            exportValue: (p) => formatTraffic(p.transferEnable),
+                            cell: (p) => (
+                                <span className="numeric">
+                                    {formatTraffic(p.transferEnable)}
+                                </span>
+                            ),
+                        },
+                        {
+                            key: "limits",
+                            header: "限速 / 设备",
+                            exportValue: (p) =>
+                                `${p.speedLimit ? `${p.speedLimit} Mbps` : "不限速"} / ${p.deviceLimit ?? "不限"}`,
                             cell: (p) => (
                                 <span className="numeric text-ink-muted">
-                                    {formatTraffic(p.transferEnable)}
-                                    {" · "}
                                     {p.speedLimit
                                         ? `${p.speedLimit} Mbps`
                                         : "不限速"}
@@ -257,6 +367,21 @@ export function PlansPage() {
                             key: "prices",
                             header: "价格",
                             align: "right",
+                            sortValue: (p) =>
+                                p.prices.length
+                                    ? Math.min(
+                                          ...p.prices.map(
+                                              (price) => price.amountMinor,
+                                          ),
+                                      )
+                                    : null,
+                            exportValue: (p) =>
+                                p.prices
+                                    .map(
+                                        (price) =>
+                                            `${periodLabel(price.period)} ${(price.amountMinor / 100).toFixed(2)}`,
+                                    )
+                                    .join("; "),
                             cell: (p) =>
                                 p.prices.length ? (
                                     <div className="numeric space-y-0.5 text-xs">
@@ -274,6 +399,17 @@ export function PlansPage() {
                                         未定价
                                     </span>
                                 ),
+                        },
+                        {
+                            key: "sort",
+                            header: "排序",
+                            align: "right",
+                            sortValue: (p) => p.sort,
+                            cell: (p) => (
+                                <span className="numeric text-ink-muted">
+                                    {p.sort}
+                                </span>
+                            ),
                         },
                     ]}
                 />

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useCommand, usePanel } from "../api/panel";
+import { useCommand, usePanel, useSite } from "../api/panel";
 import { formatDateTime } from "../lib/format";
 import { Feedback, Field, Form, TextArea } from "./forms";
 import {
@@ -192,12 +192,18 @@ export function TicketList({ staff = false }: { staff?: boolean }) {
 
 export function NewTicketCard() {
     const action = useCommand();
+    const site = useSite();
     return (
         <Card>
             <CardHeader
                 title="提交新工单"
                 description="描述问题和出现时间，客服会在这里回复。"
             />
+            {site.data?.supportNote ? (
+                <p className="mt-3 whitespace-pre-wrap rounded-md bg-surface-raised px-3 py-2 text-xs leading-relaxed text-ink-muted">
+                    {site.data.supportNote}
+                </p>
+            ) : null}
             <div className="mt-4">
                 <Form
                     busy={action.isPending}

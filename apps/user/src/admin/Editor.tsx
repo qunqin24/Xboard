@@ -1,5 +1,8 @@
 import { X } from "@phosphor-icons/react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { useCommand } from "../api/panel";
+import { useConfirm, useToast } from "../components/overlays";
 import { Card } from "../components/primitives";
 
 /** Side panel used by admin pages to create or edit one record. */
@@ -73,3 +76,58 @@ export const yuanToMinor = (value: FormDataEntryValue | null) =>
     Math.round(Number(value) * 100);
 
 export const minorToYuan = (minor: number) => (minor / 100).toFixed(2);
+
+/** Editor state lives in the URL (`?edit=<id>` / `?new=true`) so it can be linked and survives reloads. */
+export function useEditorParam(
+    to: "/admin/plans" | "/admin/nodes" | "/admin/notices",
+) {
+    const search = useSearch({ strict: false }) as {
+        edit?: number;
+        new?: boolean;
+    };
+    const navigate = useNavigate();
+    return {
+        editId: search.edit,
+        isNew: search.new === true,
+        open: (target: number | "new" | null) =>
+            void navigate({
+                to,
+                search:
+                    target === "new"
+                        ? { new: true }
+                        : target === null
+                          ? {}
+                          : { edit: target },
+            }),
+    };
+}
+
+type ActionOptions = {
+    path: string;
+    method?: string;
+    body?: unknown;
+    success?: string;
+    confirm?: Parameters<ReturnType<typeof useConfirm>>[0];
+};
+
+/**
+ * Runs one admin request with an optional confirmation, then reports the
+ * outcome as a toast. Resolves to the response, or null if cancelled/failed.
+ */
+export function useAdminAction() {
+    const command = useCommand();
+    const toast = useToast();
+    const confirm = useConfirm();
+    const run = async (options: ActionOptions) => {
+        if (options.confirm && !(await confirm(options.confirm))) return null;
+        try {
+            const result = await command.mutateAsync(options);
+            if (options.success) toast.success(options.success);
+            return result;
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "操作失败");
+            return null;
+        }
+    };
+    return { run, pending: command.isPending };
+}
