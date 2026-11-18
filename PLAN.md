@@ -34,8 +34,9 @@
 - 协议格式、客户端配置一律以各项目的官方仓库和文档为准（Xray-core、sing-box、mihomo、V2bX、XrayR 等）。旧 PHP 版只能用来对照当初有哪些功能。
 - 查 GitHub 用 `gh`，查网页用 `curl --max-time 20`。
 
-## 现状（2026-11-18，`main` = 8a0dc1a）
+## 现状（2026-11-18）
 
+- **代码版本**：最后一次代码改动是 `8a0dc1a`。之后的提交只改了本计划，代码和测试没有变化。
 - **技术栈**：
     - 后端：Express 5 + zod + Prisma（PostgreSQL），在 `apps/api`。
     - 前端：React 19 + TanStack + shadcn/ui，在 `apps/user`。
