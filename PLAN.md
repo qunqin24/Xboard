@@ -50,6 +50,94 @@
 - **没有在真实环境跑过**：真实节点联网、真实 SMTP、Docker 镜像、公网 HTTPS、各客户端真机导入，都只在本地用模拟测过。
 - **没有在线支付**：用户只能用余额支付，余额由管理员入账，或由管理员确认“线下收款”。
 
+## 配置清单
+
+按待办第 5 项（配置移到后台）整理，2026-11-18 定稿。实现时照这里的名字取，不要另起名字；要改名或增减，先改这一节。
+
+### 环境变量（做完第 5 项后的最终状态）
+
+| 名字                                               | 谁来设               | 说明                                                                                                                                                                                                |
+| -------------------------------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APP_DOMAIN`                                       | 站长，`ops/.env`     | 面板域名，Caddy 用它申请证书                                                                                                                                                                        |
+| `POSTGRES_PASSWORD`                                | 站长，`ops/.env`     | 数据库密码                                                                                                                                                                                          |
+| `APP_ORIGIN`                                       | compose 自动生成     | 等于 `https://${APP_DOMAIN}`；本地开发写在 `apps/api/.env`，默认 `http://127.0.0.1:5173`                                                                                                            |
+| `DATABASE_URL`                                     | compose 自动生成     | 本地开发写在 `apps/api/.env`                                                                                                                                                                        |
+| `TRUSTED_PROXY`                                    | compose 固定         | Caddy 的内网地址                                                                                                                                                                                    |
+| `NODE_ENV`、`API_HOST`、`API_PORT`                 | 镜像固定             | 不变                                                                                                                                                                                                |
+| `APP_DATA_DIR`                                     | 镜像固定为 `/data`   | **新增，站长看不到。** 存放应用密钥文件（`<APP_DATA_DIR>/secrets/app.key`）。本地开发默认 `apps/api/.data`。镜像以 `node` 用户运行，要保证这个目录可写。compose 给 API 容器挂一个数据卷到 `/data`。 |
+| `DEMO_EMAIL`、`DEMO_PASSWORD`、`TEST_DATABASE_URL` | 只在本地开发和测试用 | 不变                                                                                                                                                                                                |
+
+删除：`SMTP_HOST`、`SMTP_PORT`、`SMTP_SECURE`、`SMTP_USER`、`SMTP_PASSWORD`、`MAIL_FROM`、`ALERT_WEBHOOK_URL`、`TOTP_ENCRYPTION_KEY`、`ADMIN_EMAIL`、`ADMIN_PASSWORD`。以后不再新增站长需要填的环境变量。
+
+### 后台设置项
+
+- 存储方式：沿用现在的 `Setting` 表（一行一个键，值是 JSON，键名用 camelCase），默认值写在代码里。
+- 接口按分组拆开：现在的 `PUT /admin/settings` 一次保存全部设置，以后改成每组一个接口，比如 `PUT /admin/settings/mail`。保存一组不会影响其他组，审计也按组记录。现有的设置归为“站点”组（`site`）。
+- 敏感项（下表标“敏感”的）：
+    - 用应用密钥加密后存储。
+    - 读取接口不返回值，只返回 `<键名>Set: boolean`，例如 `smtpPasswordSet`。
+    - 保存时，不传这个字段表示不改，传 `null` 表示清空，传字符串表示替换。
+    - 审计只记录“已修改”，不记录值。
+- 下表的默认值就是数据库里没有这一行时用的值。
+
+| 分组                  | 键名                        | 类型和默认值                                                   | 说明                                                                                      |
+| --------------------- | --------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| 邮件 `mail`           | `smtpHost`                  | 字符串，`""`                                                   | 为空表示不发信                                                                            |
+|                       | `smtpPort`                  | 整数，`587`                                                    |                                                                                           |
+|                       | `smtpSecure`                | 布尔，`false`                                                  | 465 端口设为 `true`                                                                       |
+|                       | `smtpUser`                  | 字符串，`""`                                                   |                                                                                           |
+|                       | `smtpPassword`              | 敏感                                                           |                                                                                           |
+|                       | `mailFrom`                  | 字符串，`""`                                                   | 例如 `Xboard <noreply@example.com>`；填了 `smtpHost` 时必填                               |
+| 告警 `alerts`         | `alertWebhookUrl`           | 敏感，必须是 HTTPS                                             | webhook 地址里常带令牌，所以按敏感处理                                                    |
+| 备份 `backup`         | `backupEnabled`             | 布尔，`false`                                                  |                                                                                           |
+|                       | `backupTime`                | `"HH:mm"`，`"04:00"`                                           | 按站点时区（目前代码里固定为 `Asia/Shanghai`）                                            |
+|                       | `backupStorage`             | `"r2"` 或 `"s3"`，`"r2"`                                       |                                                                                           |
+|                       | `backupR2AccountId`         | 字符串，`""`                                                   | 只在 R2 时使用                                                                            |
+|                       | `backupR2Jurisdiction`      | `"default"` 或 `"eu"`，`"default"`                             | 只在 R2 时使用                                                                            |
+|                       | `backupS3Endpoint`          | 字符串，`""`                                                   | 只在 S3 时使用                                                                            |
+|                       | `backupS3Region`            | 字符串，`""`                                                   | 只在 S3 时使用；R2 固定为 `auto`                                                          |
+|                       | `backupS3ForcePathStyle`    | 布尔，`false`                                                  | 只在 S3 时使用                                                                            |
+|                       | `backupBucket`              | 字符串，`""`                                                   |                                                                                           |
+|                       | `backupPrefix`              | 字符串，`""`                                                   | 放在 `daily/`、`weekly/`、`monthly/` 前面，例如 `xboard/`                                 |
+|                       | `backupAccessKeyId`         | 字符串，`""`                                                   |                                                                                           |
+|                       | `backupSecretAccessKey`     | 敏感                                                           |                                                                                           |
+|                       | `backupAgeRecipient`        | 字符串，`""`                                                   | age 公钥（`age1` 开头），不是敏感项                                                       |
+| 人机验证 `captcha`    | `captchaProvider`           | `"off"`、`"turnstile"`、`"recaptcha"` 或 `"hcaptcha"`，`"off"` |                                                                                           |
+|                       | `captchaSiteKey`            | 字符串，`""`                                                   | 前端要用，不是敏感项                                                                      |
+|                       | `captchaSecretKey`          | 敏感                                                           |                                                                                           |
+|                       | `captchaOnRegister`         | 布尔，`true`                                                   |                                                                                           |
+|                       | `captchaOnLogin`            | 布尔，`false`                                                  |                                                                                           |
+|                       | `captchaOnPasswordReset`    | 布尔，`true`                                                   |                                                                                           |
+| Telegram `telegram`   | `telegramBotToken`          | 敏感                                                           | 保存时调用 `getMe` 校验，并自动设置 webhook。webhook 的校验密钥由面板自动生成，不让站长填 |
+| 邀请佣金 `commission` | `commissionEnabled`         | 布尔，`false`                                                  |                                                                                           |
+|                       | `commissionRateBasisPoints` | 整数 0–10000，`1000`                                           | 万分比，1000 表示 10%。不用小数，和金额规则一致                                           |
+|                       | `commissionFirstOrderOnly`  | 布尔，`true`                                                   |                                                                                           |
+|                       | `withdrawEnabled`           | 布尔，`false`                                                  | 关闭时佣金只能转入余额                                                                    |
+|                       | `withdrawMinMinor`          | 整数（分），`10000`                                            | 最低提现金额                                                                              |
+|                       | `withdrawMethods`           | 字符串数组，`[]`                                               | 例如 `["支付宝", "USDT"]`，只用来让用户选择收款方式                                       |
+| 语言 `locale`         | `defaultLocale`             | `"zh-CN"` 或 `"en-US"`，`"zh-CN"`                              | 访客默认语言；用户可以自己切换                                                            |
+
+### 支付网关的配置
+
+支付网关可以启用多个，每个都有名称、图标、手续费和排序，所以不放 `Setting` 表，新建一张 `PaymentGateway` 表：
+
+| 字段                                                 | 说明                                                          |
+| ---------------------------------------------------- | ------------------------------------------------------------- |
+| `id`、`name`、`kind`、`enabled`、`sortOrder`、`icon` | `kind` 是 `"epay"` 或 `"stripe"`                              |
+| `feePercentBasisPoints`、`feeFixedMinor`             | 手续费：万分比加固定金额（分），默认都是 0                    |
+| `config`                                             | JSON，普通字段明文存储                                        |
+| `secrets`                                            | 用应用密钥加密后的 JSON，读取接口不返回，规则和敏感设置项一样 |
+
+各类网关的配置字段：
+
+- **易支付 `epay`**：先只做经典的 MD5 签名协议。
+    - `config`：`apiUrl`（网关地址）、`pid`（商户号）、`payType`（可选，如 `alipay`、`wxpay`，为空时由网关页面让用户选）。
+    - `secrets`：`key`（商户密钥）。
+- **Stripe `stripe`**：用 Checkout Session，按站点货币（目前固定 CNY）收款，不做汇率换算。
+    - `config`：无。
+    - `secrets`：`secretKey`（`sk_` 开头）、`webhookSecret`（`whsec_` 开头）。
+    - 后台显示 webhook 地址，供站长复制到 Stripe 控制台。
+
 ## 进行中
 
 （暂无）
@@ -116,6 +204,7 @@
         - 加一个自动测试：备份再恢复到临时库，核对上面这些数字。
 5. **配置移到后台，环境变量只留两个**（2026-11-18，用户决定：能在网页后台配的，都放到后台）
     - 目标：生产环境的 `ops/.env` 只剩 `APP_DOMAIN` 和 `POSTGRES_PASSWORD`。其他配置都在后台“系统设置”里改，保存后立即生效，不用重启。
+    - 所有环境变量和后台设置项的名字、类型、默认值，见上面的“配置清单”。
     - 必须留在环境变量里的，和原因：
         - `POSTGRES_PASSWORD`：连上数据库之前就要用，没法存在数据库里。
         - `APP_DOMAIN`：Caddy 启动时要用它申请证书，Caddy 读不了数据库。
