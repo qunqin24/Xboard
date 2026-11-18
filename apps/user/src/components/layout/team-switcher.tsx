@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { Check, ChevronsUpDown, LayoutGrid, ShieldCheck } from "lucide-react";
 import { useAccount } from "@/api/hooks";
+import { Logo } from "@/assets/logo";
 import { useSite } from "@/api/panel";
 import { useWorkspace, type Workspace } from "@/hooks/use-workspace";
 import {
@@ -41,9 +42,7 @@ export function TeamSwitcher() {
 
     const header = (
         <>
-            <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                <current.icon className="size-4" />
-            </div>
+            <Logo className="size-8" />
             <div className="grid flex-1 text-start text-sm leading-tight">
                 <span className="truncate font-semibold">
                     {site.data?.siteName ?? "Xboard"}
