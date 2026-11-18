@@ -1,5 +1,7 @@
 # Repository Guidelines
 
+Start every session by reading `PLAN.md`: current status, the prioritised backlog, decisions already made, and how to record progress. Keep it up to date in the same commit as your work.
+
 ## Project Structure & Module Organization
 
 Xboard is a pnpm TypeScript monorepo. The former PHP implementation is available only in Git history.
