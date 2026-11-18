@@ -39,7 +39,7 @@ type Tls = NodeSettings<"naive">["tls"];
 type Transport = NodeSettings<"vless">["transport"];
 type Multiplex = NodeSettings<"vless">["multiplex"];
 type V2ray = NodeSettings<"vless" | "vmess" | "trojan">;
-type Proxy = Record<string, unknown>;
+export type Proxy = Record<string, unknown>;
 
 /** Where Xray-compatible clients carry WebSocket early data. */
 const EARLY_DATA_HEADER = "Sec-WebSocket-Protocol";
@@ -393,10 +393,16 @@ function mihomoProxy(entry: Entry, uuid: string): Proxy | null {
     }
 }
 
-export function mihomo(entries: Entry[], uuid: string) {
-    const proxies = entries
+/** Mihomo proxies for the nodes it can express. */
+export function mihomoProxies(entries: Entry[], uuid: string): Proxy[] {
+    return entries
         .map((entry) => mihomoProxy(entry, uuid))
         .filter((proxy): proxy is Proxy => proxy !== null);
+}
+
+/** A bare config with one selector; subscriptions render the admin template instead. */
+export function mihomo(entries: Entry[], uuid: string) {
+    const proxies = mihomoProxies(entries, uuid);
     return {
         "mixed-port": 7890,
         mode: "rule",
@@ -700,10 +706,16 @@ function singOutbound(entry: Entry, uuid: string): Proxy | null {
     }
 }
 
-export function singbox(entries: Entry[], uuid: string) {
-    const outbounds = entries
+/** sing-box outbounds for the nodes it can express. */
+export function singboxOutbounds(entries: Entry[], uuid: string): Proxy[] {
+    return entries
         .map((entry) => singOutbound(entry, uuid))
         .filter((outbound): outbound is Proxy => outbound !== null);
+}
+
+/** A bare config with one selector; subscriptions render the admin template instead. */
+export function singbox(entries: Entry[], uuid: string) {
+    const outbounds = singboxOutbounds(entries, uuid);
     return {
         inbounds: [
             {

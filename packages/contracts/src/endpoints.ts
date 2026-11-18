@@ -2,6 +2,7 @@ import { z } from "zod";
 import * as account from "./account";
 import * as admin from "./admin";
 import * as nodes from "./nodes";
+import * as templates from "./templates";
 import * as auth from "./auth";
 import { errorSchema, okSchema, pagedSchema } from "./common";
 import * as operations from "./operations";
@@ -508,6 +509,31 @@ export const endpoints: Endpoint[] = [
         tag: "admin",
         auth: "admin",
         response: ok,
+    },
+    {
+        method: "get",
+        path: "/admin/subscription-templates",
+        summary: "订阅规则模板",
+        tag: "admin",
+        auth: "admin",
+        response: z.array(templates.subscriptionTemplateSchema),
+    },
+    {
+        method: "put",
+        path: "/admin/subscription-templates/:format",
+        summary: "保存订阅规则模板（校验后保存）",
+        tag: "admin",
+        auth: "admin",
+        body: templates.templateBody,
+        response: templates.subscriptionTemplateSchema,
+    },
+    {
+        method: "delete",
+        path: "/admin/subscription-templates/:format",
+        summary: "恢复默认订阅规则模板",
+        tag: "admin",
+        auth: "admin",
+        response: templates.subscriptionTemplateSchema,
     },
     {
         method: "get",

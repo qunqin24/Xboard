@@ -9,7 +9,16 @@ import { newToken, sessionDigest } from "../auth/service";
 import { loon } from "./loon";
 import { quantumultx } from "./quantumultx";
 import { shadowrocket } from "./shadowrocket";
-import { entryFor, mihomo, singbox } from "./subscription";
+import type { SubscriptionLinks } from "@xboard/contracts";
+import { readSettings } from "../site/service";
+import {
+    loadTemplate,
+    quantumultxFilters,
+    renderLoon,
+    renderMihomo,
+    renderSingbox,
+} from "../templates/service";
+import { entryFor, mihomoProxies, singboxOutbounds } from "./subscription";
 
 const FORMATS = [
     "mihomo",
@@ -17,6 +26,9 @@ const FORMATS = [
     "shadowrocket",
     "quantumultx",
     "loon",
+    // Rule/group configurations that pull the nodes from the formats above.
+    "loon-config",
+    "shadowrocket-rules",
 ] as const;
 type Format = (typeof FORMATS)[number];
 
@@ -38,12 +50,36 @@ export function formatForUserAgent(userAgent: string | undefined): Format {
 
 export const subscriptionRoutes = Router();
 
-function links(token: string) {
+/**
+ * The subscription URLs, and app links that also carry the rule templates.
+ * Quantumult X's add-resource takes the node subscription and the template's
+ * filter_remote entries at once; Loon installs a whole configuration whose
+ * [Remote Proxy] points back at the node list; Shadowrocket adds a rules
+ * configuration next to the node subscription.
+ */
+async function links(token: string): Promise<SubscriptionLinks> {
     const base = `${getConfig().origin}/api/subscription/${token}`;
+    const [{ siteName }, filters] = await Promise.all([
+        readSettings(),
+        loadTemplate("quantumultx").then((template) =>
+            quantumultxFilters(template, getConfig().origin),
+        ),
+    ]);
+    const resource = {
+        server_remote: [
+            `${base}?format=quantumultx, tag=${siteName.replace(/,/g, " ")}`,
+        ],
+        filter_remote: filters,
+    };
     return {
         url: base,
         mihomo: `${base}?format=mihomo`,
         singbox: `${base}?format=singbox`,
+        imports: {
+            quantumultx: `quantumult-x:///add-resource?remote-resource=${encodeURIComponent(JSON.stringify(resource))}`,
+            loon: `loon://import?sub=${encodeURIComponent(`${base}?format=loon-config`)}`,
+            shadowrocketRules: `shadowrocket://config/add/${base}?format=shadowrocket-rules`,
+        },
     };
 }
 
@@ -74,7 +110,7 @@ subscriptionRoutes.get(
             });
             return created;
         });
-        res.json(links(token));
+        res.json(await links(token));
     },
 );
 
@@ -88,7 +124,7 @@ subscriptionRoutes.post(
             where: { id: currentUser(req).id },
             data: { subscribeToken: token, subscribeHash: null },
         });
-        res.status(201).json(links(token));
+        res.status(201).json(await links(token));
     },
 );
 
@@ -136,6 +172,21 @@ subscriptionRoutes.get("/subscription/:token", async (req, res) => {
                 ? "当前套餐的节点均不支持此客户端格式。"
                 : "当前套餐暂无可用节点。",
         );
+    if (format === "loon-config" || format === "shadowrocket-rules") {
+        const template = await loadTemplate(
+            format === "loon-config" ? "loon" : "shadowrocket",
+        );
+        res.setHeader("subscription-userinfo", usage);
+        res.type("text/plain").send(
+            format === "loon-config"
+                ? renderLoon(
+                      template,
+                      `${getConfig().origin}/api/subscription/${token}?format=loon`,
+                  )
+                : template,
+        );
+        return;
+    }
     if (format === "shadowrocket") {
         const { body, count } = shadowrocket(
             entries,
@@ -163,17 +214,30 @@ subscriptionRoutes.get("/subscription/:token", async (req, res) => {
         res.type("text/plain").send(`${lines.join("\n")}\n`);
         return;
     }
-    const config =
-        format === "mihomo"
-            ? mihomo(entries, user.proxyUuid)
-            : singbox(entries, user.proxyUuid);
-    const count =
-        "proxies" in config
-            ? config.proxies.length
-            : config.outbounds.length - 1;
-    if (!count) throw empty();
+    // Mihomo and sing-box: the admin's template with the nodes injected.
+    if (format === "mihomo") {
+        if (!mihomoProxies(entries, user.proxyUuid).length) throw empty();
+        const yaml = renderMihomo(
+            await loadTemplate("mihomo"),
+            entries,
+            user.proxyUuid,
+            { stash: /stash/i.test(userAgent ?? "") },
+        );
+        res.setHeader("subscription-userinfo", usage);
+        res.setHeader(
+            "content-disposition",
+            'attachment; filename="xboard.yaml"',
+        );
+        res.type("text/yaml").send(yaml);
+        return;
+    }
+    if (!singboxOutbounds(entries, user.proxyUuid).length) throw empty();
+    const json = renderSingbox(
+        await loadTemplate("singbox"),
+        entries,
+        user.proxyUuid,
+    );
     res.setHeader("subscription-userinfo", usage);
     res.setHeader("content-disposition", 'attachment; filename="xboard.json"');
-    // JSON is valid YAML, so Mihomo reads it too, with no YAML string escaping to get wrong.
-    res.type("application/json").send(JSON.stringify(config));
+    res.type("application/json").send(json);
 });

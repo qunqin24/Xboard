@@ -13,6 +13,7 @@ import {
     Receipt,
     ScrollText,
     Server,
+    Split,
     Settings,
     ShieldCheck,
     TicketPercent,
@@ -82,6 +83,7 @@ export const adminNav: NavGroup[] = [
                 icon: TicketPercent,
             },
             { title: "节点", url: "/admin/nodes", icon: Server },
+            { title: "规则模板", url: "/admin/templates", icon: Split },
         ],
     },
     {

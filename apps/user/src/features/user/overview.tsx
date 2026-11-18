@@ -377,7 +377,7 @@ function ClientImport() {
                             {links.data ? (
                                 <a
                                     href={client.importUrl(
-                                        links.data.url,
+                                        links.data,
                                         site.data?.siteName ?? "Xboard",
                                     )}
                                 >

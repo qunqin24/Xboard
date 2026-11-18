@@ -2,6 +2,7 @@
 // and sing-box subscription output, validation, traffic rates and relays.
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
+import { parse as parseYaml } from "yaml";
 import type { Node } from "@prisma/client";
 import { nodeBody, type NodeProtocol } from "@xboard/contracts";
 import { db } from "../src/db";
@@ -1157,8 +1158,12 @@ describe("node admin, relays and rates end to end", () => {
     let userA = { id: 0, uuid: "" };
     let userB = { id: 0, uuid: "" };
 
+    // YAML is a superset of JSON: this reads API responses and Mihomo configs alike.
     const json = async (response: Response) => {
-        const body = (await response.json()) as Record<string, unknown>;
+        const body = parseYaml(await response.text()) as Record<
+            string,
+            unknown
+        >;
         return { status: response.status, body };
     };
     const node = (path: string, query: string) =>

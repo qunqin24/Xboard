@@ -367,6 +367,8 @@ export const AUDIT_LABELS: Record<string, string> = {
     "node.enable": "启用节点",
     "node.disable": "停用节点",
     "node.delete": "删除节点",
+    "template.save": "保存规则模板",
+    "template.reset": "恢复默认规则模板",
     "notice.create": "发布公告",
     "notice.update": "编辑公告",
     "notice.delete": "删除公告",

@@ -12,6 +12,7 @@ export * from "./support";
 export * from "./site";
 export * from "./admin";
 export * from "./nodes";
+export * from "./templates";
 export * from "./operations";
 export * from "./promotions";
 export * from "./security";

@@ -117,7 +117,7 @@ export function Subscription() {
                             )}
                         </CardContent>
                         <CardFooter className="border-t">
-                            <ClientPicker url={links.data?.url} />
+                            <ClientPicker links={links.data} />
                         </CardFooter>
                     </Card>
                     <div className="grid gap-page">
@@ -169,7 +169,7 @@ function CopyLink({ value }: { value: string }) {
  * Clients for one platform as tiles, the device's own platform first and its
  * suggested app highlighted. Tiles stay visible while the link loads.
  */
-function ClientPicker({ url }: { url: string | undefined }) {
+function ClientPicker({ links }: { links: SubscriptionLinks | undefined }) {
     const site = useSite();
     const device = useMemo(
         () => detectPlatform(navigator.userAgent, navigator.maxTouchPoints),
@@ -231,12 +231,21 @@ function ClientPicker({ url }: { url: string | undefined }) {
                                             <Badge variant="brand">推荐</Badge>
                                         ) : null}
                                     </div>
+                                    {client.rulesUrl && links ? (
+                                        // Apps that take the rules as a second import.
+                                        <a
+                                            href={client.rulesUrl(links)}
+                                            className="mt-1 inline-block text-xs font-medium text-primary underline-offset-4 hover:underline"
+                                        >
+                                            导入规则
+                                        </a>
+                                    ) : null}
                                 </div>
                                 <ImportButton
                                     href={
-                                        url &&
+                                        links &&
                                         client.importUrl(
-                                            url,
+                                            links,
                                             site.data?.siteName ?? "Xboard",
                                         )
                                     }
@@ -256,23 +265,33 @@ function ImportButton({
     href,
     primary,
     name,
+    label = "导入",
 }: {
     href: string | undefined;
     primary: boolean;
     name: string;
+    /** "规则" for the separate rules import (Shadowrocket). */
+    label?: string;
 }) {
     const variant = primary ? "default" : "outline";
     if (!href)
         return (
             <Button size="sm" variant={variant} disabled>
-                导入
+                {label}
             </Button>
         );
     return (
         <Button size="sm" variant={variant} asChild>
-            <a href={href} aria-label={`导入到 ${name}`}>
+            <a
+                href={href}
+                aria-label={
+                    label === "导入"
+                        ? `导入到 ${name}`
+                        : `导入${label}到 ${name}`
+                }
+            >
                 {primary ? <Download /> : null}
-                导入
+                {label}
             </a>
         </Button>
     );

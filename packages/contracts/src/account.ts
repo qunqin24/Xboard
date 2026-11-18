@@ -64,6 +64,17 @@ export const subscriptionLinksSchema = z.object({
     url: z.string(),
     mihomo: z.string(),
     singbox: z.string(),
+    /**
+     * App links that carry the panel's rule templates: Quantumult X adds the
+     * node subscription and the rule lists together, Loon installs a whole
+     * configuration that pulls the nodes, and Shadowrocket adds a rules
+     * configuration next to its node subscription.
+     */
+    imports: z.object({
+        quantumultx: z.string(),
+        loon: z.string(),
+        shadowrocketRules: z.string(),
+    }),
 });
 export type SubscriptionLinks = z.infer<typeof subscriptionLinksSchema>;
 

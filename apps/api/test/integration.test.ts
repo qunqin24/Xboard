@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
+import { parse as parseYaml } from "yaml";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { hashPassword } from "../src/modules/auth/password";
@@ -548,7 +549,8 @@ describe("development API slice", () => {
                 `${baseUrl}/api/subscription/${subscriptionToken}?format=${format}`,
             );
             assert.equal(sub.status, 200);
-            const body = (await sub.json()) as Record<string, unknown>;
+            // Mihomo is YAML, sing-box JSON; YAML reads both.
+            const body = parseYaml(await sub.text()) as Record<string, unknown>;
             assert.ok(format === "mihomo" ? body.proxies : body.outbounds);
             assert.ok(!JSON.stringify(body).includes(nodeToken));
         }

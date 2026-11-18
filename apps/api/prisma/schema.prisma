@@ -428,3 +428,10 @@ model Setting {
   value     Json
   updatedAt DateTime @updatedAt
 }
+
+/// An admin's replacement for a built-in subscription template; no row means the default is used.
+model SubscriptionTemplate {
+  format    String   @id
+  content   String
+  updatedAt DateTime @updatedAt
+}

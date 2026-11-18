@@ -1,3 +1,5 @@
+import type { SubscriptionLinks } from "@xboard/contracts";
+
 // Proxy clients the subscription link can be imported into. The link is the
 // same for all of them: the API picks Mihomo, sing-box, Shadowrocket share
 // links or Quantumult X / Loon node lines from the client's User-Agent. `importUrl` builds the app's own "add
@@ -17,16 +19,19 @@ export type Client = {
     id: string;
     name: string;
     /** What the app reads: Mihomo (Clash) YAML, sing-box JSON, share links or its own node list. */
-    core: "Mihomo" | "sing-box" | "分享链接" | "节点列表";
+    core: "Mihomo" | "sing-box" | "分享链接" | "节点列表" | "配置文件";
     platforms: Platform[];
-    importUrl: (subscription: string, name: string) => string;
+    importUrl: (links: SubscriptionLinks, name: string) => string;
+    /** A second link that adds the panel's rules, for apps that import them apart from the nodes. */
+    rulesUrl?: (links: SubscriptionLinks) => string;
 };
 
 const enc = encodeURIComponent;
 /** UTF-8 safe base64 (btoa alone rejects non-Latin-1 text). */
 const base64 = (text: string) =>
     btoa(String.fromCharCode(...new TextEncoder().encode(text)));
-const clash = (url: string) => `clash://install-config?url=${enc(url)}`;
+const clash = ({ url }: SubscriptionLinks) =>
+    `clash://install-config?url=${enc(url)}`;
 
 export const CLIENTS: Client[] = [
     {
@@ -55,21 +60,21 @@ export const CLIENTS: Client[] = [
         name: "Stash",
         core: "Mihomo",
         platforms: ["ios", "mac"],
-        importUrl: (url) => `stash://install-config?url=${enc(url)}`,
+        importUrl: ({ url }) => `stash://install-config?url=${enc(url)}`,
     },
     {
         id: "hiddify",
         name: "Hiddify",
         core: "sing-box",
         platforms: ["ios", "android", "windows", "mac", "linux"],
-        importUrl: (url) => `hiddify://import/${url}`,
+        importUrl: ({ url }) => `hiddify://import/${url}`,
     },
     {
         id: "singbox",
         name: "sing-box",
         core: "sing-box",
         platforms: ["ios", "android", "mac"],
-        importUrl: (url, name) =>
+        importUrl: ({ url }, name) =>
             `sing-box://import-remote-profile?url=${enc(url)}#${enc(name)}`,
     },
     {
@@ -77,7 +82,7 @@ export const CLIENTS: Client[] = [
         name: "Karing",
         core: "sing-box",
         platforms: ["ios", "android", "windows", "mac"],
-        importUrl: (url, name) =>
+        importUrl: ({ url }, name) =>
             `karing://install-config?url=${enc(url)}&name=${enc(name)}`,
     },
     {
@@ -86,8 +91,11 @@ export const CLIENTS: Client[] = [
         core: "分享链接",
         // Paid. On a Mac it runs as the iPad app (Apple silicon only).
         platforms: ["ios", "mac"],
-        importUrl: (url, name) =>
+        importUrl: ({ url }, name) =>
             `shadowrocket://add/sub://${base64(url)}?remark=${enc(name)}`,
+        // Shadowrocket's configuration file cannot reference a subscription,
+        // so the rules come as a second import.
+        rulesUrl: (links) => links.imports.shadowrocketRules,
     },
     {
         id: "quantumultx",
@@ -95,23 +103,20 @@ export const CLIENTS: Client[] = [
         core: "节点列表",
         // Paid; on a Mac it runs as the iPad app (Apple silicon only).
         platforms: ["ios", "mac"],
-        // add-resource keeps the user's other resources (crossutility/Quantumult-X url-scheme.md).
-        importUrl: (url, name) =>
-            `quantumult-x:///add-resource?remote-resource=${enc(
-                JSON.stringify({
-                    server_remote: [`${url}, tag=${name.replace(/,/g, " ")}`],
-                }),
-            )}`,
+        // add-resource (crossutility/Quantumult-X url-scheme.md) adds the node
+        // subscription and the panel's filter_remote rules, keeping the user's
+        // other resources; the API builds it from the rule template.
+        importUrl: (links) => links.imports.quantumultx,
     },
     {
         id: "loon",
         name: "Loon",
-        core: "节点列表",
+        core: "配置文件",
         // Paid; on a Mac it runs as the iPad app (Apple silicon only).
         platforms: ["ios", "mac"],
-        // nodelist imports a node subscription; sub= would install a whole
-        // configuration file (Loon manual, docs/cn/scheme.md).
-        importUrl: (url) => `loon://import?nodelist=${enc(url)}`,
+        // import?sub= installs the panel's Loon configuration, whose
+        // [Remote Proxy] pulls the node list (Loon manual, docs/cn/scheme.md).
+        importUrl: (links) => links.imports.loon,
     },
 ];
 

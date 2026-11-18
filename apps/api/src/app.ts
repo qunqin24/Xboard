@@ -17,6 +17,7 @@ import { adminRoutes } from "./modules/admin/routes";
 import { authRoutes } from "./modules/auth/routes";
 import { nodeRoutes } from "./modules/nodes/routes";
 import { subscriptionRoutes } from "./modules/nodes/subscription-routes";
+import { ruleListRoutes } from "./modules/templates/public-routes";
 import { orderRoutes } from "./modules/orders/routes";
 import { planRoutes } from "./modules/plans/routes";
 import { siteRoutes } from "./modules/site/routes";
@@ -82,7 +83,7 @@ export function createApp(options: { logging?: boolean } = {}) {
         helpRoutes,
         redemptionRoutes,
     );
-    api.use(subscriptionRoutes, nodeRoutes);
+    api.use(subscriptionRoutes, ruleListRoutes, nodeRoutes);
     api.use("/admin", adminRoutes);
     api.use(notFoundHandler);
 
