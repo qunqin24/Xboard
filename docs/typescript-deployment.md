@@ -3,9 +3,9 @@
 ## 本地与生产区别
 
 本地 `pnpm dev` 使用 Vite 代理及 HTTP Cookie。
-生产候选使用 Caddy HTTPS、静态 React 产物、NestJS、PostgreSQL；
+生产候选使用 Caddy HTTPS、静态 React 产物、Express、PostgreSQL；
 Cookie 自动 `Secure`，写操作 Origin 必须匹配 `APP_ORIGIN`。
-Swagger 只在非生产模式启用。
+接口文档 `/api/docs` 只在非生产模式启用。
 
 限流和邮件队列共享 PostgreSQL，当前无 Redis/BullMQ 依赖。
 任务量较大时可独立 worker，但不需要为了部署基础版本先搭一套微服务。
@@ -35,11 +35,11 @@ API 与数据库不映射宿主机端口。Caddy 以固定容器 IP 被 API 信�
 docker compose --env-file ops/.env -f compose.production.yaml exec \
   -e ADMIN_EMAIL=admin@example.com \
   -e ADMIN_PASSWORD='替换为强密码' \
-  api pnpm --filter @xboard/api admin:create
+  api node dist/admin.js
 ```
 
-可先注册再只传 `ADMIN_EMAIL` 提升角色，避免命令行输入密码。
-已有账户的密码不会被覆盖。访问 `/admin` 后配置套餐、节点、公告等。
+`ADMIN_EMAIL` 是已注册的账户时，命令会把它提升为管理员，同时把密码改为 `ADMIN_PASSWORD`、
+退出该账户的所有会话并标记邮箱已验证，所以两个变量都必须提供。访问 `/admin` 后配置套餐、节点、公告等。
 
 ### SMTP
 

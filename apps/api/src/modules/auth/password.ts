@@ -1,8 +1,6 @@
 import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 
-export function normalizeEmail(value: string): string {
-    return value.trim().normalize("NFC").toLowerCase();
-}
+export { normalizeEmail } from "@xboard/contracts";
 
 function derive(password: string, salt: Buffer): Promise<Buffer> {
     return new Promise((resolve, reject) => {

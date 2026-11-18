@@ -1,8 +1,7 @@
-import { PrismaService } from "../src/database/prisma.service";
+import { closeDb, db as prisma } from "../src/db";
 import { hashPassword, normalizeEmail } from "../src/modules/auth/password";
 
 async function main() {
-    const prisma = new PrismaService();
     const email = normalizeEmail(
         process.env.DEMO_EMAIL ?? "developer@example.test",
     );
@@ -69,7 +68,7 @@ async function main() {
                     upload: 412_316_860n,
                     download: 24_856_789_012n,
                     balance: 1280,
-                    expiredAt: Math.floor(Date.now() / 1000) + 26 * 86400,
+                    expiredAt: new Date(Date.now() + 26 * 86_400_000),
                 },
             });
         });
@@ -77,7 +76,7 @@ async function main() {
             `Created isolated development account: ${email}. No production data was imported.`,
         );
     } finally {
-        await prisma.$disconnect();
+        await closeDb();
     }
 }
 

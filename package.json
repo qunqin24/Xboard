@@ -7,12 +7,14 @@
   },
   "scripts": {
     "dev": "pnpm --parallel --filter @xboard/api --filter @xboard/user dev",
+    "api": "pnpm --filter @xboard/api dev",
+    "web": "pnpm --filter @xboard/user dev",
     "build": "pnpm --filter @xboard/api build && pnpm --filter @xboard/user build",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm --filter @xboard/api test && pnpm --filter @xboard/user test",
     "db:setup": "pnpm --filter @xboard/api db:setup",
     "db:seed": "pnpm --filter @xboard/api db:seed",
-    "api:generate": "pnpm --filter @xboard/api openapi && pnpm --filter @xboard/api-client generate",
+    "api:generate": "pnpm --filter @xboard/api openapi",
     "format": "prettier --write \"apps/**/*.{ts,tsx,css,json,html}\" \"packages/**/*.{ts,tsx,json}\"",
     "format:check": "prettier --check \"apps/**/*.{ts,tsx,css,json,html}\" \"packages/**/*.{ts,tsx,json}\""
   },

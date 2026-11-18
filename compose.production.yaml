@@ -21,7 +21,7 @@ services:
       context: .
       dockerfile: apps/Dockerfile
       target: api
-    command: ["pnpm", "--filter", "@xboard/api", "exec", "prisma", "migrate", "deploy"]
+    command: ["node_modules/.bin/prisma", "migrate", "deploy"]
     environment: &api-environment
       NODE_ENV: production
       API_HOST: 0.0.0.0

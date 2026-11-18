@@ -3,39 +3,37 @@
     "version": "0.1.0",
     "private": true,
     "scripts": {
-        "dev": "node --watch -r ts-node/register src/main.ts",
-        "build": "tsc -p tsconfig.json",
-        "start": "node dist/src/main.js",
+        "dev": "tsx watch --clear-screen=false src/server.ts",
+        "build": "tsup",
+        "start": "node dist/server.js",
         "typecheck": "tsc --noEmit",
-        "test": "pnpm build && node --test --test-concurrency=1 dist/test/*.test.js",
+        "test": "node --import tsx --test --test-concurrency=1 test/*.test.ts",
         "db:setup": "node scripts/setup-database.mjs",
-        "db:seed": "node -r ts-node/register scripts/seed.ts",
-        "admin:create": "node -r ts-node/register scripts/admin.ts",
-        "openapi": "node -r ts-node/register scripts/openapi.ts"
+        "db:seed": "tsx scripts/seed.ts",
+        "admin:create": "tsx scripts/admin.ts",
+        "openapi": "tsx scripts/openapi.ts"
     },
     "dependencies": {
-        "@fastify/cookie": "^11.0.2",
-        "@fastify/helmet": "^13.0.2",
-        "@fastify/static": "^10.1.2",
-        "@nestjs/common": "^11.1.0",
-        "@nestjs/core": "^11.1.0",
-        "@nestjs/platform-fastify": "^11.1.0",
-        "@nestjs/swagger": "^11.2.0",
-        "@nestjs/throttler": "^6.4.0",
         "@prisma/client": "6.19.3",
-        "class-transformer": "^0.5.1",
-        "class-validator": "^0.14.2",
+        "@xboard/contracts": "workspace:*",
+        "cookie-parser": "^1.4.7",
         "dotenv": "^17.2.3",
-        "fastify": "^5.6.0",
+        "express": "^5.3.0",
+        "helmet": "^8.3.0",
         "nodemailer": "^7.0.0",
-        "reflect-metadata": "^0.2.2",
-        "rxjs": "^7.8.2"
+        "prisma": "6.19.3",
+        "swagger-ui-express": "^5.0.1",
+        "zod": "^4.6.7"
     },
     "devDependencies": {
+        "@types/cookie-parser": "^1.4.10",
+        "@types/express": "^5.0.6",
         "@types/node": "^24.10.0",
         "@types/nodemailer": "^7.0.0",
-        "prisma": "6.19.3",
-        "ts-node": "^10.9.2",
+        "@types/swagger-ui-express": "^4.1.8",
+        "tsup": "^8.5.1",
+        "tsx": "^4.23.15",
         "typescript": "~5.9.3"
-    }
+    },
+    "type": "module"
 }

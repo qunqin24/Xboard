@@ -1,6 +1,6 @@
 # Xboard TypeScript
 
-独立的 React + NestJS + PostgreSQL 订阅管理项目。原 PHP 实现已从工作区移除，
+独立的 React + Express + PostgreSQL 订阅管理项目。原 PHP 实现已从工作区移除，
 可通过 Git 历史查阅；新应用不运行 PHP、不读取旧配置或迁移旧数据库。
 
 ## 功能入口
@@ -103,18 +103,23 @@ docker compose -f compose.typescript.yaml up -d mailpit
 ## 工程与运行
 
 ```text
-apps/api/              NestJS API、持久化邮件队列、定时维护、Prisma 迁移
+apps/api/              Express API、持久化邮件队列、定时维护、Prisma 迁移
 apps/user/             React 用户中心和管理后台（基于 shadcn-admin，文件路由）
-packages/api-client/   OpenAPI 及生成的类型
+packages/contracts/    前后端共用的 zod 接口定义，生成 /api/docs 的 OpenAPI
 ops/                   HTTPS 反向代理与部署环境示例
 compose.typescript.yaml 本地 PostgreSQL、Mailpit
 compose.production.yaml 生产候选部署配置
 ```
 
 模块化单体。限流共享 PostgreSQL 存储，支持多实例；邮件任务用行锁领取。
-定时维护清理过期会话、邮件令牌、在线记录和限流状态，并取消超时订单。
-余额流水、审计及流量记录不自动删除；大规模部署需根据留存需求归档。
-列表当前显式限制最近 50/100/200 条，未实现全量分页导出。
+定时维护清理过期会话、邮件令牌、在线记录和限流状态，取消超时订单，
+并删除 180 天前的流量记录（统计最多回看 180 天）。每项清理独立执行，失败只记日志。
+余额流水和审计记录不自动删除；大规模部署需根据留存需求归档。
+后台的用户、订单、余额流水、审计四个列表为服务端分页和搜索；其余列表限制最近 100/200 条。
+
+限流：每个接口按 IP 每分钟 120 次（IPv6 按 /64 计）；登录每 IP 每分钟 5 次，
+同一邮箱 15 分钟内失败 10 次后锁定 15 分钟；注册、找回密码每 IP 每分钟 3 次，
+找回密码同一邮箱每小时 5 次，且 60 秒内重复请求不再发信，之前的链接仍然有效。
 
 ## 检查与部署
 
@@ -126,7 +131,8 @@ pnpm build
 ```
 
 集成测试使用随机 PostgreSQL schema，不删除开发数据库；覆盖权限、并发入账/支付、
-节点鉴权与用量、订阅撤销、工单隔离、邮件链接及真实 SMTP 协议投递。
+节点鉴权与用量、订阅撤销、工单隔离、邮件链接及真实 SMTP 协议投递、邮件失败重试、
+限流、分页、2038 年之后的到期时间，以及后台读接口与 contracts 的结构一致性。
 GitHub Actions 运行同一流程。部署步骤见 [docs/typescript-deployment.md](docs/typescript-deployment.md)。
 
 当前完成的是应用实现及本地测试。真实节点联网、用户提供的 SMTP、容器镜像和公网 TLS

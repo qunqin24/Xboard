@@ -3,24 +3,24 @@ import { after, before, describe, it } from "node:test";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { hashPassword } from "../src/modules/auth/password";
-import { createApp } from "../src/bootstrap";
-import { appDirectory } from "../src/config";
-import { PrismaService } from "../src/database/prisma.service";
-import { AuthService } from "../src/modules/auth/auth.service";
-import { sessionDigest } from "../src/modules/auth/auth.service";
 import { randomBytes } from "node:crypto";
-import { MailService } from "../src/modules/account/account.module";
 import { createServer } from "node:net";
-import { DatabaseRateLimit } from "../src/common/rate-limit";
-import { Maintenance } from "../src/common/maintenance";
+import type { PrismaClient } from "@prisma/client";
+import { createApp, type App } from "../src/app";
+import { appDirectory } from "../src/config";
+import { closeDb, db } from "../src/db";
+import { flushMail } from "../src/jobs/mail-queue";
+import { runMaintenance } from "../src/jobs/maintenance";
+import { hitRateLimit } from "../src/http/rate-limit";
+import { login, sessionDigest } from "../src/modules/auth/service";
 
 // Each run owns an isolated schema, with cleanup limited to that random name.
 const testSchema = `test_${randomUUID().replaceAll("-", "")}`;
 
 describe("development API slice", () => {
-    let app: Awaited<ReturnType<typeof createApp>>["app"];
+    let app: App | undefined;
     let baseUrl = "";
-    let prisma: PrismaService;
+    let prisma: PrismaClient;
     let adminCookie = "";
     let normalCookie = "";
     let platformUser = 0;
@@ -48,10 +48,10 @@ describe("development API slice", () => {
         );
         assert.equal(migrate.status, 0, migrate.stderr?.toString());
 
-        ({ app } = await createApp({ logging: false }));
+        app = createApp({ logging: false });
         await app.listen(0, "127.0.0.1");
-        baseUrl = await app.getUrl();
-        prisma = app.get(PrismaService);
+        baseUrl = app.getUrl();
+        prisma = db;
         const plan = await prisma.plan.create({
             data: {
                 name: "测试套餐",
@@ -87,6 +87,7 @@ describe("development API slice", () => {
                 `DROP SCHEMA "${testSchema}" CASCADE`,
             );
         await app?.close();
+        await closeDb();
     });
 
     const origin = { origin: "http://127.0.0.1:5173" };
@@ -226,9 +227,7 @@ describe("development API slice", () => {
                 balance: 10000,
             },
         });
-        const session = await app
-            .get(AuthService)
-            .login(user.email, "buyer-test-password");
+        const session = await login(user.email, "buyer-test-password");
         const cookie = `xboard_session=${session.token}`;
         const post = (path: string, body?: unknown, auth = cookie) =>
             fetch(`${baseUrl}/api${path}`, {
@@ -264,9 +263,7 @@ describe("development API slice", () => {
                 .status,
             409,
         );
-        const other = await app
-            .get(AuthService)
-            .login("new@example.test", "new-account-password");
+        const other = await login("new@example.test", "new-account-password");
         assert.equal(
             (
                 await post(
@@ -310,7 +307,10 @@ describe("development API slice", () => {
         const renewed = await prisma.user.findUniqueOrThrow({
             where: { id: user.id },
         });
-        assert.equal(renewed.expiredAt, updated.expiredAt! + 30 * 86400);
+        assert.equal(
+            renewed.expiredAt!.getTime(),
+            updated.expiredAt!.getTime() + 30 * 86_400_000,
+        );
         assert.equal(renewed.transferEnable, plan.transferEnable * 2n);
         assert.equal(renewed.balance, 5510);
     });
@@ -319,9 +319,7 @@ describe("development API slice", () => {
         const user = await prisma.user.findUniqueOrThrow({
             where: { email: "new@example.test" },
         });
-        const session = await app
-            .get(AuthService)
-            .login(user.email, "new-account-password");
+        const session = await login(user.email, "new-account-password");
         const post = (path: string, body?: unknown) =>
             fetch(`${baseUrl}/api${path}`, {
                 method: "POST",
@@ -384,7 +382,7 @@ describe("development API slice", () => {
     }
 
     it("enforces admin role and atomically audits idempotent manual credits", async () => {
-        const auth = app.get(AuthService);
+        const auth = { login };
         await prisma.user.create({
             data: {
                 email: "admin@example.test",
@@ -447,9 +445,13 @@ describe("development API slice", () => {
         );
         const response = await platform("/admin/users");
         assert.equal(response.status, 200);
-        const users = (await response.json()) as Record<string, unknown>[];
+        const body = (await response.json()) as {
+            items: Record<string, unknown>[];
+            total: number;
+        };
+        assert.ok(body.total >= 2 && body.items.length === body.total);
         assert.ok(
-            users.every(
+            body.items.every(
                 (user) => !("password" in user) && !("proxyUuid" in user),
             ),
         );
@@ -633,7 +635,7 @@ describe("development API slice", () => {
         await platform(`/admin/users/${platformUser}/ban`, "POST", {
             banned: false,
         });
-        normalCookie = `xboard_session=${(await app.get(AuthService).login("platform@example.test", "platform-password")).token}`;
+        normalCookie = `xboard_session=${(await login("platform@example.test", "platform-password")).token}`;
         await platform(
             "/account/subscription",
             "POST",
@@ -683,7 +685,7 @@ describe("development API slice", () => {
             normalCookie,
         );
         const ticket = (await created.json()) as { id: number };
-        const other = `xboard_session=${(await app.get(AuthService).login("new@example.test", "new-account-password")).token}`;
+        const other = `xboard_session=${(await login("new@example.test", "new-account-password")).token}`;
         assert.equal(
             (
                 await platform(
@@ -697,7 +699,7 @@ describe("development API slice", () => {
         );
         assert.equal(
             (
-                await platform(`/tickets/${ticket.id}/reply`, "POST", {
+                await platform(`/admin/tickets/${ticket.id}/reply`, "POST", {
                     content: "Support reply",
                 })
             ).status,
@@ -812,7 +814,7 @@ describe("development API slice", () => {
                 .status,
             400,
         );
-        normalCookie = `xboard_session=${(await app.get(AuthService).login("platform@example.test", "new-platform-password")).token}`;
+        normalCookie = `xboard_session=${(await login("platform@example.test", "new-platform-password")).token}`;
         assert.equal(
             (
                 await platform(
@@ -886,20 +888,18 @@ describe("development API slice", () => {
     });
 
     it("shares rate limits across storage instances and expires maintenance state", async () => {
-        const first = new DatabaseRateLimit(prisma);
-        const second = new DatabaseRateLimit(prisma);
         const key = randomUUID();
         const results = await Promise.all([
-            first.increment(key, 10000, 2, 10000),
-            second.increment(key, 10000, 2, 10000),
-            first.increment(key, 10000, 2, 10000),
+            hitRateLimit(key, 10000, 2, 10000),
+            hitRateLimit(key, 10000, 2, 10000),
+            hitRateLimit(key, 10000, 2, 10000),
         ]);
-        assert.equal(results.filter((result) => result.isBlocked).length, 1);
+        assert.equal(results.filter((result) => result.blocked).length, 1);
         await prisma.rateLimit.update({
             where: { key },
             data: { expiresAt: new Date(0), blockedUntil: new Date(0) },
         });
-        await app.get(Maintenance).clean();
+        assert.deepEqual(await runMaintenance(), []);
         assert.equal(
             await prisma.rateLimit.findUnique({ where: { key } }),
             null,
@@ -956,7 +956,7 @@ describe("development API slice", () => {
                     text: "SMTP integration message",
                 },
             });
-            await app.get(MailService).flush();
+            await flushMail();
             const delivered = await prisma.mail.findUniqueOrThrow({
                 where: { id: job.id },
             });
@@ -1002,7 +1002,7 @@ describe("development API slice", () => {
     });
 
     it("edits subscriptions, resets passwords, bulk bans and soft-deletes", async () => {
-        const auth = app.get(AuthService);
+        const auth = { login };
         const admin = await prisma.user.findUniqueOrThrow({
             where: { email: "admin@example.test" },
         });
@@ -1070,7 +1070,7 @@ describe("development API slice", () => {
             where: { id: user.id },
         });
         assert.equal(edited.planId, plan.id);
-        assert.equal(edited.expiredAt, expiredAt);
+        assert.equal(edited.expiredAt!.getTime(), expiredAt * 1000);
         assert.equal(edited.transferEnable, 1_073_741_824n);
         assert.equal(edited.speedLimit, 50);
         assert.equal(edited.deviceLimit, null);
@@ -1414,12 +1414,11 @@ describe("development API slice", () => {
         await prisma.rateLimit.deleteMany();
         const previousEnv = process.env.NODE_ENV;
         process.env.NODE_ENV = "development";
-        let development:
-            Awaited<ReturnType<typeof createApp>>["app"] | undefined;
+        let development: App | undefined;
         try {
-            ({ app: development } = await createApp({ logging: false }));
+            development = createApp({ logging: false });
             await development.listen(0, "127.0.0.1");
-            const url = await development.getUrl();
+            const url = development.getUrl();
             for (const [requestOrigin, expected] of [
                 ["http://localhost:5173", 200],
                 ["http://127.0.0.1:5173", 200],
@@ -1452,12 +1451,11 @@ describe("development API slice", () => {
             previousOrigin = process.env.APP_ORIGIN;
         process.env.NODE_ENV = "production";
         process.env.APP_ORIGIN = "https://panel.example.test";
-        let production:
-            Awaited<ReturnType<typeof createApp>>["app"] | undefined;
+        let production: App | undefined;
         try {
-            ({ app: production } = await createApp({ logging: false }));
+            production = createApp({ logging: false });
             await production.listen(0, "127.0.0.1");
-            const url = await production.getUrl();
+            const url = production.getUrl();
             assert.equal(
                 (
                     await fetch(`${url}/api/auth/login`, {

@@ -16,11 +16,11 @@ model User {
   transferEnable BigInt    @default(0)
   upload         BigInt    @default(0)
   download       BigInt    @default(0)
-  expiredAt      Int?
+  expiredAt      DateTime?
   balance        Int       @default(0)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
-  lastLoginAt    Int?
+  lastLoginAt    DateTime?
   plan           Plan?     @relation(fields: [planId], references: [id])
   sessions       Session[]
   orders         Order[]
@@ -158,6 +158,7 @@ model Mail {
   attempts    Int      @default(0)
   sentAt      DateTime?
   nextAttempt DateTime @default(now())
+  lastError   String?
   createdAt   DateTime @default(now())
 }
 

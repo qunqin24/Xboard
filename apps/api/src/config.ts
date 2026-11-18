@@ -13,7 +13,7 @@ function findAppDirectory(start: string): string {
     throw new Error("Could not locate apps/api from the running file.");
 }
 
-export const appDirectory = findAppDirectory(__dirname);
+export const appDirectory = findAppDirectory(import.meta.dirname);
 config({ path: resolve(appDirectory, ".env"), quiet: true });
 
 export function getConfig() {
@@ -53,5 +53,33 @@ export function getConfig() {
         port,
         origin: origin.origin,
         databaseUrl,
+        trustProxy: parseTrustProxy(process.env.TRUSTED_PROXY),
+    };
+}
+
+export type Config = ReturnType<typeof getConfig>;
+
+/**
+ * Express "trust proxy": unset means the socket address is the client.
+ * Production sets the reverse proxy's address, e.g. TRUSTED_PROXY=172.30.56.2.
+ */
+function parseTrustProxy(value: string | undefined): boolean | number | string {
+    if (!value || value === "false") return false;
+    if (value === "true") return true;
+    if (/^\d+$/.test(value)) return Number(value);
+    return value;
+}
+
+/** SMTP settings are read per use, so tests and restarts pick up changes. */
+export function getSmtpConfig() {
+    const host = process.env.SMTP_HOST;
+    if (!host) return null;
+    return {
+        host,
+        port: Number(process.env.SMTP_PORT ?? 587),
+        secure: process.env.SMTP_SECURE === "true",
+        user: process.env.SMTP_USER,
+        password: process.env.SMTP_PASSWORD,
+        from: process.env.MAIL_FROM ?? "Xboard <noreply@example.test>",
     };
 }

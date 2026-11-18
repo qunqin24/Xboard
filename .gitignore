@@ -22,3 +22,5 @@ auth.json
 *.pfx
 /backups/
 **/.tanstack/
+packages/contracts/openapi.json
+*.tsbuildinfo

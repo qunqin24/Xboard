@@ -1,13 +1,15 @@
 {
     "extends": "../../tsconfig.base.json",
     "compilerOptions": {
-        "module": "CommonJS",
-        "moduleResolution": "Node",
-        "outDir": "dist",
-        "rootDir": ".",
-        "experimentalDecorators": true,
-        "emitDecoratorMetadata": true,
-        "sourceMap": true
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "types": ["node"],
+        "noEmit": true
     },
-    "include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"]
+    "include": [
+        "src/**/*.ts",
+        "test/**/*.ts",
+        "scripts/**/*.ts",
+        "tsup.config.ts"
+    ]
 }

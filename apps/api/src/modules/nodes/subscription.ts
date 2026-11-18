@@ -1,4 +1,4 @@
-import { Node } from "@prisma/client";
+import type { Node } from "@prisma/client";
 
 // Keep backend and client parameters in lockstep: TCP + TLS, no Reality/WS.
 export function mihomo(nodes: Node[], uuid: string) {
@@ -23,6 +23,7 @@ export function mihomo(nodes: Node[], uuid: string) {
                     alterId: 0,
                     cipher: "auto",
                     network: "tcp",
+                    udp: true,
                 };
             case "vless":
                 return {
@@ -40,6 +41,7 @@ export function mihomo(nodes: Node[], uuid: string) {
                     password: uuid,
                     sni: tls.servername,
                     "skip-cert-verify": false,
+                    udp: true,
                 };
             case "shadowsocks":
                 return {
