@@ -1,5 +1,5 @@
 import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
-import { ApiError } from "@xboard/api-client";
+import { ApiError } from "@/api/client";
 import { handleServerError } from "@/lib/handle-server-error";
 
 declare module "@tanstack/react-query" {
@@ -31,7 +31,13 @@ export function makeQueryClient(options: { onUnauthorized?: () => void } = {}) {
         // unless it sets `meta: { silentError: true }` and reports the error itself.
         mutationCache: new MutationCache({
             onError: (error, _variables, _context, mutation) => {
-                if (!mutation.meta?.silentError) handleServerError(error);
+                if (mutation.meta?.silentError) return;
+                handleServerError(error);
+                // A session that expired mid-task goes back to sign-in, as a
+                // failed query does. (Sign-in itself is silent: its 401 means a
+                // wrong password.)
+                if (error instanceof ApiError && error.status === 401)
+                    options.onUnauthorized?.();
             },
         }),
     });

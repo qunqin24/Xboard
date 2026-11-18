@@ -9,11 +9,11 @@ export function Tickets() {
     return (
         <Page
             title="工单"
-            description="遇到问题时提交工单，客服会在这里回复。"
             fixed
             actions={
                 <Button onClick={() => setOpen(true)}>
-                    <MessageSquarePlus /> 提交工单
+                    <MessageSquarePlus />
+                    提交工单
                 </Button>
             }
         >

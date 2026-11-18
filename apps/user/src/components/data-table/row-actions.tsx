@@ -16,6 +16,8 @@ export type RowAction =
           onSelect: () => void;
           destructive?: boolean;
           disabled?: boolean;
+          /** Shown under a disabled item; a disabled menu item cannot host a tooltip. */
+          disabledReason?: string;
       }
     | "separator";
 
@@ -50,7 +52,16 @@ export function RowActions({ actions }: { actions: RowAction[] }) {
                             }
                             onClick={action.onSelect}
                         >
-                            {action.label}
+                            {action.disabled && action.disabledReason ? (
+                                <span className="flex flex-col">
+                                    {action.label}
+                                    <span className="text-xs text-muted-foreground">
+                                        {action.disabledReason}
+                                    </span>
+                                </span>
+                            ) : (
+                                action.label
+                            )}
                             {action.icon ? (
                                 <DropdownMenuShortcut>
                                     <action.icon size={16} />

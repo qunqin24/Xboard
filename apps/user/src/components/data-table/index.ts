@@ -4,3 +4,4 @@ export { DataTableToolbar } from "./toolbar";
 export { DataTableBulkActions } from "./bulk-actions";
 export { DataTable, inFilter, selectColumn } from "./data-table";
 export { RowActions, type RowAction } from "./row-actions";
+export { useServerTable, type ServerTableState } from "./server-table";

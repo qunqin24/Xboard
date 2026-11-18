@@ -1,57 +1,35 @@
 import { Outlet } from "@tanstack/react-router";
 import { Palette, ShieldCheck, UserCog } from "lucide-react";
-import { Separator } from "@/components/ui/separator";
-import { ConfigDrawer } from "@/components/config-drawer";
-import { Header } from "@/components/layout/header";
-import { Main } from "@/components/layout/main";
-import { ProfileDropdown } from "@/components/profile-dropdown";
-import { Search } from "@/components/search";
-import { ThemeSwitch } from "@/components/theme-switch";
+import { Page } from "@/components/layout/page";
 import { SidebarNav } from "./components/sidebar-nav";
 
 const sidebarNavItems = [
-    { title: "账户", href: "/settings", icon: <UserCog size={18} /> },
+    { title: "账户", href: "/settings", icon: <UserCog className="size-4" /> },
     {
         title: "安全",
         href: "/settings/security",
-        icon: <ShieldCheck size={18} />,
+        icon: <ShieldCheck className="size-4" />,
     },
     {
         title: "外观",
         href: "/settings/appearance",
-        icon: <Palette size={18} />,
+        icon: <Palette className="size-4" />,
     },
 ];
 
 export function Settings() {
     return (
-        <>
-            <Header>
-                <Search className="me-auto" />
-                <ThemeSwitch />
-                <ConfigDrawer />
-                <ProfileDropdown />
-            </Header>
-
-            <Main fixed>
-                <div className="space-y-0.5">
-                    <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
-                        账户设置
-                    </h1>
-                    <p className="text-muted-foreground">
-                        管理邮箱、密码和界面外观。
-                    </p>
+        <Page title="账户设置" fixed>
+            {/* Each clipping layer keeps 4px (-mx-1 px-1) so focus rings at the
+                left and right edges are not cut off; content stays aligned. */}
+            <div className="-mx-1 flex flex-1 flex-col gap-page overflow-hidden px-1 lg:flex-row">
+                <aside className="top-0 lg:sticky lg:w-1/5">
+                    <SidebarNav items={sidebarNavItems} />
+                </aside>
+                <div className="-mx-1 flex overflow-y-hidden px-1 lg:flex-1">
+                    <Outlet />
                 </div>
-                <Separator className="my-4 lg:my-6" />
-                <div className="flex flex-1 flex-col space-y-2 overflow-hidden md:space-y-2 lg:flex-row lg:space-y-0 lg:space-x-12">
-                    <aside className="top-0 lg:sticky lg:w-1/5">
-                        <SidebarNav items={sidebarNavItems} />
-                    </aside>
-                    <div className="flex w-full overflow-y-hidden p-1">
-                        <Outlet />
-                    </div>
-                </div>
-            </Main>
-        </>
+            </div>
+        </Page>
     );
 }

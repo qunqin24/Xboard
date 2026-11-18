@@ -1,28 +1,24 @@
-import { useNavigate, useRouter } from "@tanstack/react-router";
+import { Link, useRouter } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
+import { ErrorResult } from "./error-result";
 
 export function UnauthorisedError() {
-    const navigate = useNavigate();
     const { history } = useRouter();
     return (
-        <div className="h-svh">
-            <div className="m-auto flex h-full w-full flex-col items-center justify-center gap-2">
-                <h1 className="text-[7rem] leading-tight font-bold">401</h1>
-                <span className="font-medium">需要登录</span>
-                <p className="text-center text-muted-foreground">
-                    请先登录，
-                    <br />
-                    再访问此页面。
-                </p>
-                <div className="mt-6 flex gap-4">
+        <ErrorResult
+            code="401"
+            title="需要登录"
+            description="请登录后访问此页面。"
+            actions={
+                <>
                     <Button variant="outline" onClick={() => history.go(-1)}>
                         返回上一页
                     </Button>
-                    <Button onClick={() => navigate({ to: "/" })}>
-                        回到首页
+                    <Button asChild>
+                        <Link to="/sign-in">登录</Link>
                     </Button>
-                </div>
-            </div>
-        </div>
+                </>
+            }
+        />
     );
 }

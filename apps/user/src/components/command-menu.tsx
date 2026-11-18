@@ -11,6 +11,7 @@ import {
     User,
 } from "lucide-react";
 import { useAccount } from "@/api/hooks";
+import { queryString } from "@/api/client";
 import { usePanel } from "@/api/panel";
 import { useSearch } from "@/context/search-provider";
 import { useTheme } from "@/context/theme-provider";
@@ -24,7 +25,7 @@ import {
     CommandList,
     CommandSeparator,
 } from "@/components/ui/command";
-import type { NodeRow, PlanRow, UserRow } from "@/features/admin/types";
+import type { NodeRow, Paged, PlanRow, UserRow } from "@/features/admin/types";
 import { adminNav, userNav } from "./layout/data/sidebar-data";
 import { ScrollArea } from "./ui/scroll-area";
 
@@ -37,7 +38,18 @@ export function CommandMenu() {
     const isAdmin = account.data?.role === "admin";
     // Records are searchable from the admin console only, fetched when opened.
     const records = open && isAdmin && workspace === "admin";
-    const users = usePanel<UserRow[]>("/admin/users", { enabled: records });
+    // Users are matched on the server: the list is paged, so loading one
+    // page and filtering it here would miss most accounts.
+    const [input, setInput] = React.useState("");
+    const [term, setTerm] = React.useState("");
+    React.useEffect(() => {
+        const timer = setTimeout(() => setTerm(input.trim()), 300);
+        return () => clearTimeout(timer);
+    }, [input]);
+    const users = usePanel<Paged<UserRow>>(
+        `/admin/users${queryString({ q: term, pageSize: 8 })}`,
+        { enabled: records && term.length > 0, keepPrevious: true },
+    );
     const plans = usePanel<PlanRow[]>("/admin/plans", { enabled: records });
     const nodes = usePanel<NodeRow[]>("/admin/nodes", { enabled: records });
     const groups =
@@ -57,7 +69,11 @@ export function CommandMenu() {
 
     return (
         <CommandDialog modal open={open} onOpenChange={setOpen}>
-            <CommandInput placeholder="搜索页面、操作或记录…" />
+            <CommandInput
+                placeholder="搜索页面、操作或记录…"
+                value={input}
+                onValueChange={setInput}
+            />
             <CommandList>
                 <ScrollArea type="hover" className="h-72 pe-1">
                     <CommandEmpty>没有找到结果。</CommandEmpty>
@@ -103,9 +119,9 @@ export function CommandMenu() {
                             })}
                         </CommandGroup>
                     ))}
-                    {records && users.data?.length ? (
+                    {records && term && users.data?.items.length ? (
                         <CommandGroup heading="用户">
-                            {users.data.map((user) => (
+                            {users.data.items.map((user) => (
                                 <CommandItem
                                     key={`user-${user.id}`}
                                     value={`用户 ${user.email} ${user.id}`}

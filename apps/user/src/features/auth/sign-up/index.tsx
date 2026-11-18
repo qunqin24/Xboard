@@ -1,22 +1,24 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Loader2, UserPlus } from "lucide-react";
+import { Info, Loader2, UserPlus } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { useRegister } from "@/api/hooks";
 import { useSite } from "@/api/panel";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
     Card,
     CardContent,
-    CardDescription,
+    CardFooter,
     CardHeader,
     CardTitle,
 } from "@/components/ui/card";
 import {
     Form,
     FormControl,
+    FormDescription,
     FormField,
     FormItem,
     FormLabel,
@@ -66,32 +68,25 @@ export function SignUp() {
 
     return (
         <AuthLayout>
-            <Card className="max-w-sm gap-4">
+            <Card className="w-full gap-group">
                 <CardHeader>
-                    <CardTitle className="text-lg tracking-tight">
-                        创建账户
-                    </CardTitle>
-                    <CardDescription>
-                        {closed
-                            ? "暂未开放注册。"
-                            : "用邮箱注册，密码需要 12 至 128 个字符。"}
-                        已有账户？{" "}
-                        <Link
-                            to="/sign-in"
-                            className="underline underline-offset-4 hover:text-primary"
-                        >
-                            登录
-                        </Link>
-                    </CardDescription>
+                    <CardTitle>创建账户</CardTitle>
                 </CardHeader>
-                {closed ? null : (
+                {closed ? (
+                    <CardContent>
+                        <Alert variant="info">
+                            <Info />
+                            <AlertDescription>暂未开放注册。</AlertDescription>
+                        </Alert>
+                    </CardContent>
+                ) : (
                     <CardContent>
                         <Form {...form}>
                             <form
                                 onSubmit={form.handleSubmit((data) =>
                                     onSubmit(data).catch(() => undefined),
                                 )}
-                                className="grid gap-3"
+                                className="space-y-group"
                             >
                                 <FormField
                                     control={form.control}
@@ -118,11 +113,13 @@ export function SignUp() {
                                             <FormLabel>密码</FormLabel>
                                             <FormControl>
                                                 <PasswordInput
-                                                    placeholder="至少 12 个字符"
                                                     autoComplete="new-password"
                                                     {...field}
                                                 />
                                             </FormControl>
+                                            <FormDescription>
+                                                12–128 个字符
+                                            </FormDescription>
                                             <FormMessage />
                                         </FormItem>
                                     )}
@@ -144,7 +141,7 @@ export function SignUp() {
                                     )}
                                 />
                                 <Button
-                                    className="mt-2"
+                                    className="w-full"
                                     disabled={register.isPending}
                                 >
                                     {register.isPending ? (
@@ -158,6 +155,12 @@ export function SignUp() {
                         </Form>
                     </CardContent>
                 )}
+                <CardFooter className="justify-center gap-1 text-sm text-muted-foreground">
+                    已有账户？
+                    <Button asChild variant="link" className="h-auto p-0">
+                        <Link to="/sign-in">登录</Link>
+                    </Button>
+                </CardFooter>
             </Card>
         </AuthLayout>
     );

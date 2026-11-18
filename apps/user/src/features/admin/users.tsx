@@ -1,11 +1,21 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { type ColumnDef } from "@tanstack/react-table";
-import { Ban, Check, Copy, KeyRound, UserCheck, UserRound } from "lucide-react";
+import {
+    Ban,
+    Check,
+    Copy,
+    KeyRound,
+    Loader2,
+    RefreshCw,
+    UserCheck,
+    UserRound,
+} from "lucide-react";
 import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
+import { queryString } from "@/api/client";
 import { useCommand, usePanel } from "@/api/panel";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
@@ -14,8 +24,10 @@ import {
     inFilter,
     RowActions,
     selectColumn,
+    useServerTable,
 } from "@/components/data-table";
 import { DatePicker } from "@/components/date-picker";
+import { InfoTip } from "@/components/info-tip";
 import { Page } from "@/components/layout/page";
 import { LongText } from "@/components/long-text";
 import { Badge } from "@/components/ui/badge";
@@ -31,13 +43,13 @@ import {
 import {
     Form,
     FormControl,
-    FormDescription,
     FormField,
     FormItem,
     FormLabel,
     FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import {
     Select,
     SelectContent,
@@ -61,8 +73,7 @@ import {
     sumBytes,
     usedPercent,
 } from "@/lib/format";
-import { cn } from "@/lib/utils";
-import type { PlanRow, UserRow } from "./types";
+import type { Paged, PlanRow, UserRow } from "./types";
 import {
     bytesToGiB,
     fromDateInput,
@@ -92,7 +103,8 @@ const creditSchema = z.object({
     amount: z
         .string()
         .regex(/^\d{1,7}(\.\d{1,2})?$/, "最多两位小数")
-        .refine((v) => Number(v) > 0, "金额必须大于 0"),
+        .refine((v) => Number(v) > 0, "金额必须大于 0")
+        .refine((v) => Number(v) <= 1_000_000, "单笔最多 ¥1,000,000"),
     reason: z.string().trim().min(3, "至少 3 个字").max(200, "最多 200 个字"),
 });
 
@@ -143,7 +155,7 @@ function SubscriptionForm({
     return (
         <Form {...form}>
             <form
-                className="space-y-4"
+                className="space-y-group"
                 onSubmit={form.handleSubmit((v) =>
                     save.mutate(
                         {
@@ -154,8 +166,16 @@ function SubscriptionForm({
                                     v.planId === "none"
                                         ? null
                                         : Number(v.planId),
-                                expiredAt: secondsFromDate(v.expiry),
-                                transferBytes: giBToBytes(v.transferGiB),
+                                // Untouched fields go back unchanged: the form
+                                // shows rounded GB and whole days, and saving
+                                // those would quietly rewrite the exact values.
+                                expiredAt: form.formState.dirtyFields.expiry
+                                    ? secondsFromDate(v.expiry)
+                                    : user.expiredAt,
+                                transferBytes: form.formState.dirtyFields
+                                    .transferGiB
+                                    ? giBToBytes(v.transferGiB)
+                                    : user.transferEnable,
                                 speedLimit: v.speedLimit
                                     ? Number(v.speedLimit)
                                     : null,
@@ -204,14 +224,19 @@ function SubscriptionForm({
                     name="expiry"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel>到期日</FormLabel>
+                            <div className="flex items-center gap-1">
+                                <FormLabel>到期日</FormLabel>
+                                <InfoTip>
+                                    到期时间为北京时间当日 23:59:59。
+                                </InfoTip>
+                            </div>
                             <DatePicker
                                 selected={field.value}
                                 onSelect={field.onChange}
                                 placeholder="长期有效"
                                 className="w-full"
                             />
-                            <div className="flex flex-wrap gap-1.5">
+                            <div className="flex flex-wrap gap-2">
                                 {[30, 90, 365].map((days) => (
                                     <Button
                                         key={days}
@@ -232,9 +257,6 @@ function SubscriptionForm({
                                     长期
                                 </Button>
                             </div>
-                            <FormDescription>
-                                按北京时间当天 23:59:59 到期；清空为长期有效。
-                            </FormDescription>
                         </FormItem>
                     )}
                 />
@@ -251,7 +273,7 @@ function SubscriptionForm({
                         </FormItem>
                     )}
                 />
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-group">
                     <FormField
                         control={form.control}
                         name="speedLimit"
@@ -287,12 +309,15 @@ function SubscriptionForm({
                         )}
                     />
                 </div>
-                <p className="text-xs text-muted-foreground">
-                    直接修改订阅，不扣款，也不改动已用流量；写入审计日志。
-                </p>
-                <Button type="submit" disabled={save.isPending}>
-                    保存订阅
-                </Button>
+                <div className="flex items-center gap-inline">
+                    <Button type="submit" disabled={save.isPending}>
+                        {save.isPending ? (
+                            <Loader2 className="animate-spin" />
+                        ) : null}
+                        保存订阅
+                    </Button>
+                    <InfoTip>修改不产生扣费，不影响已用流量。</InfoTip>
+                </div>
             </form>
         </Form>
     );
@@ -303,41 +328,49 @@ function CreditForm({ user }: { user: UserRow }) {
     // Retrying the same amount and reason reuses the request id, so a double
     // submit can never credit twice.
     const request = useRef<{ signature: string; id: string } | null>(null);
+    // Validated values waiting for the administrator's confirmation.
+    const [confirming, setConfirming] = useState<{
+        amountMinor: number;
+        reason: string;
+    } | null>(null);
     const form = useForm<z.infer<typeof creditSchema>>({
         resolver: zodResolver(creditSchema),
         defaultValues: { amount: "", reason: "" },
     });
+    const submit = () => {
+        if (!confirming) return;
+        const body = confirming;
+        const signature = JSON.stringify(body);
+        if (request.current?.signature !== signature)
+            request.current = {
+                signature,
+                id: crypto.randomUUID(),
+            };
+        credit.mutate(
+            {
+                path: `/admin/users/${user.id}/credit`,
+                body: { ...body, requestId: request.current.id },
+            },
+            {
+                onSuccess: () => {
+                    request.current = null;
+                    toast.success(`已入账 ${formatMinor(body.amountMinor)}`);
+                    form.reset();
+                },
+                onSettled: () => setConfirming(null),
+            },
+        );
+    };
     return (
         <Form {...form}>
             <form
-                className="space-y-4"
-                onSubmit={form.handleSubmit((v) => {
-                    const body = {
+                className="space-y-group"
+                onSubmit={form.handleSubmit((v) =>
+                    setConfirming({
                         amountMinor: yuanToMinor(v.amount),
                         reason: v.reason,
-                    };
-                    const signature = JSON.stringify(body);
-                    if (request.current?.signature !== signature)
-                        request.current = {
-                            signature,
-                            id: crypto.randomUUID(),
-                        };
-                    credit.mutate(
-                        {
-                            path: `/admin/users/${user.id}/credit`,
-                            body: { ...body, requestId: request.current.id },
-                        },
-                        {
-                            onSuccess: () => {
-                                request.current = null;
-                                toast.success(
-                                    `已入账 ${formatMinor(body.amountMinor)}`,
-                                );
-                                form.reset();
-                            },
-                        },
-                    );
-                })}
+                    }),
+                )}
             >
                 <FormField
                     control={form.control}
@@ -360,7 +393,7 @@ function CreditForm({ user }: { user: UserRow }) {
                             <FormLabel>凭证或原因</FormLabel>
                             <FormControl>
                                 <Input
-                                    placeholder="转账单号 2026111700123"
+                                    placeholder="例如：转账单号 2026111700123"
                                     {...field}
                                 />
                             </FormControl>
@@ -368,19 +401,31 @@ function CreditForm({ user }: { user: UserRow }) {
                         </FormItem>
                     )}
                 />
-                <p className="text-xs text-muted-foreground">
-                    写入余额流水和审计日志。
-                </p>
                 <Button type="submit" disabled={credit.isPending}>
+                    {credit.isPending ? (
+                        <Loader2 className="animate-spin" />
+                    ) : null}
                     确认入账
                 </Button>
             </form>
+            <ConfirmDialog
+                open={confirming !== null}
+                onOpenChange={(open) => !open && setConfirming(null)}
+                title="确认入账？"
+                desc={`将向 ${user.email} 的账户入账 ${formatMinor(confirming?.amountMinor ?? 0)}，并写入余额流水和审计日志。`}
+                confirmText="确认入账"
+                isLoading={credit.isPending}
+                handleConfirm={submit}
+            />
         </Form>
     );
 }
 
 function ResetTrafficForm({ user }: { user: UserRow }) {
     const reset = useCommand();
+    const [confirming, setConfirming] = useState<{ reason: string } | null>(
+        null,
+    );
     const form = useForm<z.infer<typeof resetSchema>>({
         resolver: zodResolver(resetSchema),
         defaultValues: { reason: "" },
@@ -388,18 +433,8 @@ function ResetTrafficForm({ user }: { user: UserRow }) {
     return (
         <Form {...form}>
             <form
-                className="space-y-4"
-                onSubmit={form.handleSubmit((body) =>
-                    reset.mutate(
-                        { path: `/admin/users/${user.id}/reset-traffic`, body },
-                        {
-                            onSuccess: () => {
-                                toast.success("流量已清零");
-                                form.reset();
-                            },
-                        },
-                    ),
-                )}
+                className="space-y-group"
+                onSubmit={form.handleSubmit((body) => setConfirming(body))}
             >
                 <FormField
                     control={form.control}
@@ -410,21 +445,46 @@ function ResetTrafficForm({ user }: { user: UserRow }) {
                             <FormControl>
                                 <Input {...field} />
                             </FormControl>
-                            <FormDescription>
-                                上传和下载归零，额度和到期时间不变。
-                            </FormDescription>
                             <FormMessage />
                         </FormItem>
                     )}
                 />
                 <Button
                     type="submit"
-                    variant="outline"
+                    variant="destructive"
                     disabled={reset.isPending}
                 >
+                    {reset.isPending ? (
+                        <Loader2 className="animate-spin" />
+                    ) : null}
                     清零已用流量
                 </Button>
             </form>
+            <ConfirmDialog
+                open={confirming !== null}
+                onOpenChange={(open) => !open && setConfirming(null)}
+                title={`清零 ${user.email} 的已用流量？`}
+                desc="将清零上传与下载流量，不影响流量额度和到期时间。"
+                confirmText="清零"
+                destructive
+                isLoading={reset.isPending}
+                handleConfirm={() => {
+                    if (!confirming) return;
+                    reset.mutate(
+                        {
+                            path: `/admin/users/${user.id}/reset-traffic`,
+                            body: confirming,
+                        },
+                        {
+                            onSuccess: () => {
+                                toast.success("流量已清零");
+                                form.reset();
+                            },
+                            onSettled: () => setConfirming(null),
+                        },
+                    );
+                }}
+            />
         </Form>
     );
 }
@@ -435,12 +495,14 @@ function UserSheet({
     onClose,
     onResetPassword,
     onToggleBan,
+    onRotateCredentials,
 }: {
     user: UserRow | undefined;
     plans: PlanRow[];
     onClose: () => void;
     onResetPassword: (user: UserRow) => void;
     onToggleBan: (user: UserRow) => void;
+    onRotateCredentials: (user: UserRow) => void;
 }) {
     const plan = plans.find((p) => p.id === user?.planId);
     const used = user ? sumBytes(user.upload, user.download) : "0";
@@ -453,18 +515,18 @@ function UserSheet({
                             <SheetTitle className="flex items-center gap-2">
                                 <span className="truncate">{user.email}</span>
                                 {user.role === "admin" ? (
-                                    <Badge>管理员</Badge>
+                                    <Badge variant="secondary">管理员</Badge>
                                 ) : null}
                                 {user.banned ? (
-                                    <Badge variant="destructive">已封禁</Badge>
+                                    <Badge variant="danger">已封禁</Badge>
                                 ) : null}
                             </SheetTitle>
                             <SheetDescription className="numeric">
                                 用户 #{user.id}
                             </SheetDescription>
                         </SheetHeader>
-                        <div className="flex-1 space-y-5 overflow-y-auto px-4 pb-6">
-                            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg bg-muted p-3 text-sm">
+                        <div className="flex-1 space-y-group overflow-y-auto px-card pb-card">
+                            <dl className="grid grid-cols-2 gap-group text-sm">
                                 <div>
                                     <dt className="text-xs text-muted-foreground">
                                         余额
@@ -479,18 +541,13 @@ function UserSheet({
                                     </dt>
                                     <dd>
                                         {plan?.name ??
-                                            (user.planId
-                                                ? `#${user.planId}`
-                                                : "未开通")}
-                                    </dd>
-                                </div>
-                                <div>
-                                    <dt className="text-xs text-muted-foreground">
-                                        已用流量
-                                    </dt>
-                                    <dd className="numeric">
-                                        {formatTraffic(used)} /{" "}
-                                        {formatTraffic(user.transferEnable)}
+                                            (user.planId ? (
+                                                `#${user.planId}`
+                                            ) : (
+                                                <span className="text-muted-foreground">
+                                                    未开通
+                                                </span>
+                                            ))}
                                     </dd>
                                 </div>
                                 <div>
@@ -502,6 +559,30 @@ function UserSheet({
                                             ? formatDate(user.expiredAt)
                                             : "—"}
                                     </dd>
+                                </div>
+                                <div className="col-span-2">
+                                    <dt className="text-xs text-muted-foreground">
+                                        已用流量
+                                    </dt>
+                                    <dd className="numeric">
+                                        {formatTraffic(used)} /{" "}
+                                        {formatTraffic(user.transferEnable)}
+                                    </dd>
+                                    <Progress
+                                        className="mt-2 h-1.5"
+                                        value={usedPercent(
+                                            used,
+                                            user.transferEnable,
+                                        )}
+                                        tone={
+                                            usedPercent(
+                                                used,
+                                                user.transferEnable,
+                                            ) >= 90
+                                                ? "warning"
+                                                : "default"
+                                        }
+                                    />
                                 </div>
                             </dl>
                             <Tabs defaultValue="subscription">
@@ -518,7 +599,7 @@ function UserSheet({
                                 </TabsList>
                                 <TabsContent
                                     value="subscription"
-                                    className="pt-3"
+                                    className="pt-4"
                                 >
                                     <SubscriptionForm
                                         key={JSON.stringify(user)}
@@ -526,28 +607,40 @@ function UserSheet({
                                         plans={plans}
                                     />
                                 </TabsContent>
-                                <TabsContent value="credit" className="pt-3">
+                                <TabsContent value="credit" className="pt-4">
                                     <CreditForm user={user} />
                                 </TabsContent>
-                                <TabsContent value="traffic" className="pt-3">
+                                <TabsContent value="traffic" className="pt-4">
                                     <ResetTrafficForm user={user} />
                                 </TabsContent>
                             </Tabs>
                             <Separator />
-                            <div className="space-y-2">
-                                <p className="text-sm font-medium">账户安全</p>
-                                <p className="text-xs text-muted-foreground">
-                                    {user.role === "admin"
-                                        ? "管理员账户不能在这里重置密码或封禁。"
-                                        : "重置密码和封禁都会立即撤销该用户的全部登录。"}
-                                </p>
-                                <div className="flex flex-wrap gap-2">
+                            <div className="space-y-field">
+                                <div className="flex items-center gap-1">
+                                    <h3 className="text-sm font-medium">
+                                        账户安全
+                                    </h3>
+                                    {user.role === "admin" ? (
+                                        <InfoTip>
+                                            管理员账户不支持在此重置密码或封禁。
+                                        </InfoTip>
+                                    ) : null}
+                                </div>
+                                <div className="flex flex-wrap gap-inline">
                                     <Button
                                         variant="outline"
                                         disabled={user.role === "admin"}
                                         onClick={() => onResetPassword(user)}
                                     >
                                         <KeyRound /> 重置密码
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        onClick={() =>
+                                            onRotateCredentials(user)
+                                        }
+                                    >
+                                        <RefreshCw /> 更换节点凭据
                                     </Button>
                                     <Button
                                         variant={
@@ -584,15 +677,19 @@ function TemporaryPassword({
             open={value !== null}
             onOpenChange={(open) => !open && (setCopied(false), onClose())}
         >
-            <DialogContent>
+            <DialogContent
+                showCloseButton={false}
+                onInteractOutside={(e) => e.preventDefault()}
+                onEscapeKeyDown={(e) => e.preventDefault()}
+            >
                 <DialogHeader>
                     <DialogTitle>临时密码</DialogTitle>
                     <DialogDescription>
-                        这是 {value?.email}{" "}
-                        的新密码，只显示这一次。请通过安全渠道告诉用户，并提醒对方登录后修改。
+                        {value?.email}{" "}
+                        的临时密码仅显示一次。请通过安全渠道发送给用户，并提示其登录后修改密码。
                     </DialogDescription>
                 </DialogHeader>
-                <div className="flex gap-2">
+                <div className="flex gap-inline">
                     <Input
                         readOnly
                         value={value?.password ?? ""}
@@ -618,7 +715,14 @@ function TemporaryPassword({
                     </Button>
                 </div>
                 <DialogFooter>
-                    <Button onClick={onClose}>我已保存</Button>
+                    <Button
+                        onClick={() => {
+                            setCopied(false);
+                            onClose();
+                        }}
+                    >
+                        我已保存
+                    </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -627,11 +731,21 @@ function TemporaryPassword({
 
 type Pending =
     | { kind: "password"; user: UserRow }
+    | { kind: "credentials"; user: UserRow }
     | { kind: "ban"; user: UserRow }
     | { kind: "bulk-ban"; users: UserRow[]; clear: () => void };
 
 export function AdminUsers() {
-    const list = usePanel<UserRow[]>("/admin/users");
+    const table = useServerTable();
+    const list = usePanel<Paged<UserRow>>(
+        `/admin/users${queryString({
+            ...table.query,
+            status: table.filter("status"),
+            plan: table.filter("plan"),
+            verified: table.filter("verified"),
+        })}`,
+        { keepPrevious: true },
+    );
     const plans = usePanel<PlanRow[]>("/admin/plans");
     const search = useSearch({ strict: false }) as { user?: number };
     const navigate = useNavigate();
@@ -642,7 +756,12 @@ export function AdminUsers() {
         password: string;
     } | null>(null);
     const planName = new Map(plans.data?.map((p) => [p.id, p.name]));
-    const selected = list.data?.find((u) => u.id === search.user);
+    // The user in the URL may be on another page; then load it on its own.
+    const onPage = list.data?.items.find((u) => u.id === search.user);
+    const single = usePanel<UserRow>(`/admin/users/${search.user ?? 0}`, {
+        enabled: Boolean(search.user) && !onPage && !list.isPending,
+    });
+    const selected = onPage ?? (search.user ? single.data : undefined);
     const select = (id: number | null) =>
         void navigate({
             to: "/admin/users",
@@ -684,17 +803,19 @@ export function AdminUsers() {
             ),
             cell: ({ row }) => (
                 <div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-2">
                         <LongText className="max-w-52">
                             {row.original.email}
                         </LongText>
                         {row.original.role === "admin" ? (
                             <Badge variant="secondary">管理员</Badge>
                         ) : null}
+                        {row.original.verifiedAt ? null : (
+                            <Badge variant="warning">未验证</Badge>
+                        )}
                     </div>
                     <p className="numeric text-xs text-muted-foreground">
                         #{row.original.id}
-                        {row.original.verifiedAt ? "" : " · 邮箱未验证"}
                     </p>
                 </div>
             ),
@@ -708,11 +829,7 @@ export function AdminUsers() {
                 <DataTableColumnHeader column={column} title="状态" />
             ),
             cell: ({ getValue }) => (
-                <Badge
-                    variant={
-                        getValue() === "已封禁" ? "destructive" : "outline"
-                    }
-                >
+                <Badge variant={getValue() === "已封禁" ? "danger" : "success"}>
                     {getValue<string>()}
                 </Badge>
             ),
@@ -728,6 +845,12 @@ export function AdminUsers() {
             header: ({ column }) => (
                 <DataTableColumnHeader column={column} title="套餐" />
             ),
+            cell: ({ getValue }) =>
+                getValue<string>() === "未开通" ? (
+                    <span className="text-muted-foreground">未开通</span>
+                ) : (
+                    getValue<string>()
+                ),
             filterFn: inFilter,
             meta: { title: "套餐" },
         },
@@ -735,6 +858,13 @@ export function AdminUsers() {
             id: "verified",
             accessorFn: (u) => (u.verifiedAt ? "已验证" : "未验证"),
             header: "邮箱验证",
+            cell: ({ getValue }) => (
+                <Badge
+                    variant={getValue() === "已验证" ? "success" : "warning"}
+                >
+                    {getValue<string>()}
+                </Badge>
+            ),
             filterFn: inFilter,
             enableSorting: false,
             meta: { title: "邮箱验证" },
@@ -779,17 +909,11 @@ export function AdminUsers() {
                             )}{" "}
                             / {formatTraffic(row.original.transferEnable)}
                         </p>
-                        <div className="mt-1 h-1.5 rounded-full bg-muted">
-                            <div
-                                className={cn(
-                                    "h-full rounded-full",
-                                    percent >= 90
-                                        ? "bg-amber-500"
-                                        : "bg-primary",
-                                )}
-                                style={{ width: `${percent}%` }}
-                            />
-                        </div>
+                        <Progress
+                            className="mt-1 h-1.5"
+                            value={percent}
+                            tone={percent >= 90 ? "warning" : "default"}
+                        />
                     </div>
                 );
             },
@@ -853,18 +977,27 @@ export function AdminUsers() {
     const confirmTitle =
         pending?.kind === "password"
             ? `重置 ${pending.user.email} 的密码？`
-            : pending?.kind === "ban"
-              ? `封禁 ${pending.user.email}？`
-              : `封禁选中的 ${pending?.users.length ?? 0} 个用户？`;
+            : pending?.kind === "credentials"
+              ? `更换 ${pending.user.email} 的节点凭据？`
+              : pending?.kind === "ban"
+                ? `封禁 ${pending.user.email}？`
+                : `封禁选中的 ${pending?.users.length ?? 0} 个用户？`;
 
     return (
         <Page
             title="用户"
-            description="最近注册的 200 个用户。点一行查看详情，可编辑订阅、入账、清零流量、重置密码或封禁。"
+            description={list.data ? `共 ${list.data.total} 位用户` : undefined}
         >
             <DataTable
-                data={list.data}
+                data={list.data?.items}
+                server={{
+                    state: table.state,
+                    onStateChange: table.setState,
+                    rowCount: list.data?.total,
+                }}
                 isLoading={list.isPending}
+                error={list.isError ? list.error : undefined}
+                onRetry={() => void list.refetch()}
                 columns={columns}
                 getRowId={(u) => String(u.id)}
                 searchPlaceholder="邮箱或编号…"
@@ -877,30 +1010,40 @@ export function AdminUsers() {
                     {
                         columnId: "status",
                         title: "状态",
-                        options: ["正常", "已封禁"].map((v) => ({
-                            value: v,
-                            label: v,
-                        })),
+                        options: [
+                            { value: "active", label: "正常" },
+                            { value: "banned", label: "已封禁" },
+                        ],
                     },
                     {
                         columnId: "plan",
                         title: "套餐",
                         options: [
-                            "未开通",
-                            ...(plans.data?.map((p) => p.name) ?? []),
-                        ].map((v) => ({ value: v, label: v })),
+                            { value: "none", label: "未开通" },
+                            ...(plans.data?.map((p) => ({
+                                value: String(p.id),
+                                label: p.name,
+                            })) ?? []),
+                        ],
                     },
                     {
                         columnId: "verified",
                         title: "邮箱验证",
-                        options: ["已验证", "未验证"].map((v) => ({
-                            value: v,
-                            label: v,
-                        })),
+                        options: [
+                            { value: "verified", label: "已验证" },
+                            { value: "unverified", label: "未验证" },
+                        ],
                     },
                 ]}
                 bulkActions={(rows, clear) => (
                     <>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => bulkUnban(rows, clear)}
+                        >
+                            <UserCheck /> 解封
+                        </Button>
                         <Button
                             size="sm"
                             variant="destructive"
@@ -914,13 +1057,6 @@ export function AdminUsers() {
                         >
                             <Ban /> 封禁
                         </Button>
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => bulkUnban(rows, clear)}
-                        >
-                            <UserCheck /> 解封
-                        </Button>
                     </>
                 )}
             />
@@ -932,6 +1068,9 @@ export function AdminUsers() {
                     setPending({ kind: "password", user })
                 }
                 onToggleBan={toggleBan}
+                onRotateCredentials={(user) =>
+                    setPending({ kind: "credentials", user })
+                }
             />
             <ConfirmDialog
                 open={pending !== null}
@@ -939,12 +1078,20 @@ export function AdminUsers() {
                 title={confirmTitle}
                 desc={
                     pending?.kind === "password"
-                        ? "会生成一个临时密码并撤销该用户的全部登录，旧密码立即失效。"
-                        : pending?.kind === "ban"
-                          ? "立即撤销该用户的全部登录，节点也不再下发该用户。可以随时解除。"
-                          : "管理员会被跳过。被封禁的用户立即退出登录，节点不再下发。"
+                        ? "将生成临时密码并使该用户所有登录会话失效，原密码立即作废。"
+                        : pending?.kind === "credentials"
+                          ? "原节点凭据在节点下次同步用户时失效，用户需要重新导入订阅。"
+                          : pending?.kind === "ban"
+                            ? "该用户所有登录会话将立即失效，节点将停止为其提供服务。可随时解除封禁。"
+                            : "所选管理员账户将被跳过。被封禁用户将立即登出，节点停止为其提供服务。"
                 }
-                confirmText={pending?.kind === "password" ? "重置" : "封禁"}
+                confirmText={
+                    pending?.kind === "password"
+                        ? "重置"
+                        : pending?.kind === "credentials"
+                          ? "更换"
+                          : "封禁"
+                }
                 destructive
                 isLoading={action.isPending}
                 handleConfirm={() => {
@@ -960,6 +1107,18 @@ export function AdminUsers() {
                                         email: pending.user.email,
                                         password: String(result.password),
                                     });
+                                    setPending(null);
+                                },
+                            },
+                        );
+                    else if (pending.kind === "credentials")
+                        action.mutate(
+                            {
+                                path: `/admin/users/${pending.user.id}/credentials`,
+                            },
+                            {
+                                onSuccess: () => {
+                                    toast.success("已更换节点凭据");
                                     setPending(null);
                                 },
                             },

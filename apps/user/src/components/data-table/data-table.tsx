@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
     flexRender,
     getCoreRowModel,
@@ -12,10 +12,13 @@ import {
     type ColumnFiltersState,
     type Row,
     type SortingState,
+    type TableOptions,
+    type Updater,
     type VisibilityState,
 } from "@tanstack/react-table";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ErrorState } from "@/components/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
     Table,
@@ -27,6 +30,7 @@ import {
 } from "@/components/ui/table";
 import { DataTableBulkActions } from "./bulk-actions";
 import { DataTablePagination } from "./pagination";
+import type { ServerTableState } from "./server-table";
 import { DataTableToolbar } from "./toolbar";
 
 /** Faceted-filter match: the cell value is one of the selected options. */
@@ -83,7 +87,12 @@ type Filter = {
 /**
  * Upstream's table recipe (toolbar + faceted filters + sortable headers +
  * pagination + bulk-action bar) behind one component, so feature pages only
- * declare columns. All state is local; lists are the API's most recent rows.
+ * declare columns.
+ *
+ * By default all state is local and `data` is the whole list. With `server`,
+ * `data` is one page from the API; paging, search and facet filters are sent
+ * to the server (see useServerTable), and column sorting is turned off because
+ * it could only reorder the visible page.
  */
 export function DataTable<TData>({
     data,
@@ -100,13 +109,16 @@ export function DataTable<TData>({
     pageSize = 10,
     onRowClick,
     selectedRowId,
-    emptyText = "没有记录。",
+    emptyText = "暂无记录",
+    error,
+    onRetry,
+    server,
 }: {
     data: TData[] | undefined;
     columns: ColumnDef<TData>[];
     getRowId?: (row: TData) => string;
     isLoading?: boolean;
-    searchPlaceholder?: string;
+    searchPlaceholder?: string | false;
     filters?: Filter[];
     exportName?: string;
     entityName?: string;
@@ -116,7 +128,17 @@ export function DataTable<TData>({
     pageSize?: number;
     onRowClick?: (row: TData) => void;
     selectedRowId?: string | null;
-    emptyText?: string;
+    /** Empty-table text or a full EmptyState (with an action). */
+    emptyText?: ReactNode;
+    /** A failed load; shown instead of rows so it never reads as "no records". */
+    error?: unknown;
+    onRetry?: () => void;
+    server?: {
+        state: ServerTableState;
+        onStateChange: (state: ServerTableState) => void;
+        /** Matching rows across all pages. */
+        rowCount: number | undefined;
+    };
 }) {
     const [sorting, setSorting] = useState<SortingState>(initialSorting);
     const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -126,11 +148,11 @@ export function DataTable<TData>({
     const [rowSelection, setRowSelection] = useState({});
     const [pagination, setPagination] = useState({ pageIndex: 0, pageSize });
 
-    // eslint-disable-next-line react-hooks/incompatible-library
-    const table = useReactTable({
-        data: data ?? [],
-        columns,
-        getRowId,
+    const resolve = <T,>(updater: Updater<T>, old: T): T =>
+        typeof updater === "function"
+            ? (updater as (old: T) => T)(old)
+            : updater;
+    const local: Partial<TableOptions<TData>> = {
         state: {
             sorting,
             columnFilters,
@@ -139,27 +161,80 @@ export function DataTable<TData>({
             rowSelection,
             pagination,
         },
-        enableRowSelection: Boolean(bulkActions),
         autoResetPageIndex: false,
         onSortingChange: setSorting,
         onColumnFiltersChange: (updater) => {
             setColumnFilters(updater);
             setPagination((p) => ({ ...p, pageIndex: 0 }));
         },
-        onGlobalFilterChange: (value) => {
+        onGlobalFilterChange: (value?: string) => {
             setGlobalFilter(value ?? "");
             setPagination((p) => ({ ...p, pageIndex: 0 }));
         },
-        onColumnVisibilityChange: setColumnVisibility,
-        onRowSelectionChange: setRowSelection,
         onPaginationChange: setPagination,
-        getCoreRowModel: getCoreRowModel(),
         getFilteredRowModel: getFilteredRowModel(),
         getSortedRowModel: getSortedRowModel(),
         getPaginationRowModel: getPaginationRowModel(),
         getFacetedRowModel: getFacetedRowModel(),
         getFacetedUniqueValues: getFacetedUniqueValues(),
+    };
+    const remote: Partial<TableOptions<TData>> | undefined = server && {
+        state: {
+            columnFilters: server.state.filters,
+            globalFilter: server.state.search,
+            columnVisibility,
+            rowSelection,
+            pagination: {
+                pageIndex: server.state.pageIndex,
+                pageSize: server.state.pageSize,
+            },
+        },
+        manualPagination: true,
+        manualFiltering: true,
+        enableSorting: false,
+        rowCount: server.rowCount ?? 0,
+        onColumnFiltersChange: (updater) =>
+            server.onStateChange({
+                ...server.state,
+                filters: resolve(updater, server.state.filters),
+                pageIndex: 0,
+            }),
+        onGlobalFilterChange: (value?: string) =>
+            server.onStateChange({
+                ...server.state,
+                search: value ?? "",
+                pageIndex: 0,
+            }),
+        onPaginationChange: (updater) =>
+            server.onStateChange({
+                ...server.state,
+                ...resolve(updater, {
+                    pageIndex: server.state.pageIndex,
+                    pageSize: server.state.pageSize,
+                }),
+            }),
+    };
+
+    // eslint-disable-next-line react-hooks/incompatible-library
+    const table = useReactTable<TData>({
+        data: data ?? [],
+        columns,
+        getRowId,
+        enableRowSelection: Boolean(bulkActions),
+        onColumnVisibilityChange: setColumnVisibility,
+        onRowSelectionChange: setRowSelection,
+        getCoreRowModel: getCoreRowModel(),
+        ...(remote ?? local),
     });
+
+    // After deletes or a narrower filter the current page can fall past the
+    // end; move back to the last page that still has rows.
+    const pageCount = table.getPageCount();
+    const pageIndex = table.getState().pagination.pageIndex;
+    useEffect(() => {
+        if (isLoading || pageCount < 1 || pageIndex < pageCount) return;
+        table.setPageIndex(pageCount - 1);
+    }, [isLoading, pageCount, pageIndex, table]);
 
     const selectedRows = table
         .getFilteredSelectedRowModel()
@@ -194,9 +269,11 @@ export function DataTable<TData>({
                 table={table}
                 searchPlaceholder={searchPlaceholder}
                 filters={filters}
-                exportName={exportName}
+                // Export covers loaded rows only, which in server mode is one page.
+                exportName={server ? undefined : exportName}
+                facetCounts={!server}
             />
-            <div className="overflow-hidden rounded-md border">
+            <div className="overflow-hidden rounded-surface border">
                 <Table>
                     <TableHeader>
                         {table.getHeaderGroups().map((headerGroup) => (
@@ -229,7 +306,16 @@ export function DataTable<TData>({
                         ))}
                     </TableHeader>
                     <TableBody>
-                        {isLoading ? (
+                        {error ? (
+                            <TableRow>
+                                <TableCell colSpan={columnCount}>
+                                    <ErrorState
+                                        error={error}
+                                        onRetry={onRetry}
+                                    />
+                                </TableCell>
+                            </TableRow>
+                        ) : isLoading ? (
                             Array.from({ length: 4 }, (_, i) => (
                                 <TableRow key={i}>
                                     <TableCell colSpan={columnCount}>
@@ -278,7 +364,7 @@ export function DataTable<TData>({
                             <TableRow>
                                 <TableCell
                                     colSpan={columnCount}
-                                    className="h-24 text-center text-muted-foreground"
+                                    className="h-24 text-center text-muted-foreground hover:bg-transparent"
                                 >
                                     {emptyText}
                                 </TableCell>

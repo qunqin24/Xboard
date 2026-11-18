@@ -31,8 +31,8 @@ export function AccountIdentity() {
     const email = account.data?.email ?? "";
     return (
         <>
-            <Avatar className="h-8 w-8 rounded-lg">
-                <AvatarFallback className="rounded-lg uppercase">
+            <Avatar className="size-8 rounded-control">
+                <AvatarFallback className="rounded-control uppercase">
                     {email.slice(0, 2) || "?"}
                 </AvatarFallback>
             </Avatar>
@@ -67,13 +67,13 @@ export function NavUser() {
                             </SidebarMenuButton>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent
-                            className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
+                            className="w-(--radix-dropdown-menu-trigger-width) min-w-56"
                             side={isMobile ? "bottom" : "right"}
                             align="end"
                             sideOffset={4}
                         >
                             <DropdownMenuLabel className="p-0 font-normal">
-                                <div className="flex items-center gap-2 px-1 py-1.5 text-start text-sm">
+                                <div className="flex items-center gap-2 p-1 text-start text-sm">
                                     <AccountIdentity />
                                 </div>
                             </DropdownMenuLabel>

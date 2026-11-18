@@ -1,28 +1,25 @@
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
+import { ErrorResult } from "./error-result";
 
 export function ForbiddenError() {
     const navigate = useNavigate();
     const { history } = useRouter();
     return (
-        <div className="h-svh">
-            <div className="m-auto flex h-full w-full flex-col items-center justify-center gap-2">
-                <h1 className="text-[7rem] leading-tight font-bold">403</h1>
-                <span className="font-medium">没有访问权限</span>
-                <p className="text-center text-muted-foreground">
-                    当前账户无权访问此页面。
-                    <br />
-                    如需权限，请联系站点管理员。
-                </p>
-                <div className="mt-6 flex gap-4">
+        <ErrorResult
+            code="403"
+            title="没有访问权限"
+            description="当前账户无权访问此页面。如需权限，请联系站点管理员。"
+            actions={
+                <>
                     <Button variant="outline" onClick={() => history.go(-1)}>
                         返回上一页
                     </Button>
                     <Button onClick={() => navigate({ to: "/" })}>
                         回到首页
                     </Button>
-                </div>
-            </div>
-        </div>
+                </>
+            }
+        />
     );
 }

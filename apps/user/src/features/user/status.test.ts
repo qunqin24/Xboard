@@ -46,12 +46,12 @@ describe("subscriptionStatus", () => {
             subscriptionStatus({ ...base, downloadBytes: "95" } as never, now)
                 .label,
         ).toBe("流量即将用完");
-        expect(subscriptionStatus(base as never, now).label).toBe("正常使用中");
+        expect(subscriptionStatus(base as never, now).label).toBe("正常");
     });
     it("treats a null expiry as perpetual", () => {
         expect(
             subscriptionStatus({ ...base, expiredAt: null } as never, now)
                 .label,
-        ).toBe("正常使用中");
+        ).toBe("正常");
     });
 });

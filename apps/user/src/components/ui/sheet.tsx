@@ -69,7 +69,7 @@ function SheetContent({
                 {...props}
             >
                 {children}
-                <SheetPrimitive.Close className="absolute inset-e-4 top-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-secondary">
+                <SheetPrimitive.Close className="absolute inset-e-4 top-4 rounded-inner opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-secondary">
                     <XIcon className="size-4" />
                     <span className="sr-only">关闭</span>
                 </SheetPrimitive.Close>
@@ -82,7 +82,7 @@ function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
     return (
         <div
             data-slot="sheet-header"
-            className={cn("flex flex-col gap-1.5 p-4", className)}
+            className={cn("flex flex-col gap-2 p-card", className)}
             {...props}
         />
     );
@@ -92,7 +92,7 @@ function SheetFooter({ className, ...props }: React.ComponentProps<"div">) {
     return (
         <div
             data-slot="sheet-footer"
-            className={cn("mt-auto flex flex-col gap-2 p-4", className)}
+            className={cn("mt-auto flex flex-col gap-2 p-card", className)}
             {...props}
         />
     );

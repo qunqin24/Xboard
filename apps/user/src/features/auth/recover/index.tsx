@@ -1,12 +1,12 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link } from "@tanstack/react-router";
-import { Loader2 } from "lucide-react";
+import { CircleCheck, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useCommand } from "@/api/panel";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
     Card,
     CardContent,
@@ -55,32 +55,37 @@ export function Recover() {
 
     return (
         <AuthLayout>
-            <Card className="max-w-sm gap-4">
+            <Card className="w-full gap-group">
                 <CardHeader>
-                    <CardTitle className="text-lg tracking-tight">
-                        {verifying
-                            ? "验证邮箱"
-                            : resetting
-                              ? "设置新密码"
-                              : "链接无效"}
+                    <CardTitle>
+                        {done
+                            ? verifying
+                                ? "邮箱已验证"
+                                : "密码已重置"
+                            : verifying
+                              ? "验证邮箱"
+                              : resetting
+                                ? "设置新密码"
+                                : "链接无效"}
                     </CardTitle>
-                    <CardDescription>
-                        {verifying
-                            ? "确认这是你的邮箱，完成验证。"
-                            : resetting
-                              ? "设置新密码后，所有设备上的登录都会失效。"
-                              : "链接不完整或已经使用过。可以重新申请找回密码。"}
-                    </CardDescription>
+                    {done || verifying ? null : (
+                        <CardDescription>
+                            {resetting
+                                ? "重置后，所有设备将退出登录。"
+                                : "链接无效或已使用。"}
+                        </CardDescription>
+                    )}
                 </CardHeader>
-                <CardContent className="grid gap-3">
+                <CardContent className="grid gap-group">
                     {done ? (
                         <>
-                            <Alert>
+                            <Alert variant="success">
+                                <CircleCheck />
                                 <AlertDescription>{done}</AlertDescription>
                             </Alert>
-                            <Link to="/sign-in" className={buttonVariants()}>
-                                去登录
-                            </Link>
+                            <Button asChild>
+                                <Link to="/sign-in">前往登录</Link>
+                            </Button>
                         </>
                     ) : verifying ? (
                         <Button
@@ -90,7 +95,7 @@ export function Recover() {
                                     { path: "/auth/verify", body: { token } },
                                     {
                                         onSuccess: () =>
-                                            setDone("邮箱已验证。"),
+                                            setDone("邮箱已验证，可前往登录。"),
                                     },
                                 )
                             }
@@ -112,12 +117,12 @@ export function Recover() {
                                         {
                                             onSuccess: () =>
                                                 setDone(
-                                                    "密码已重置，请用新密码登录。",
+                                                    "密码已重置，请使用新密码登录。",
                                                 ),
                                         },
                                     ),
                                 )}
-                                className="grid gap-3"
+                                className="space-y-group"
                             >
                                 <FormField
                                     control={form.control}
@@ -143,13 +148,14 @@ export function Recover() {
                                 </Button>
                             </form>
                         </Form>
+                    ) : purpose === "reset" ? (
+                        <Button asChild variant="outline">
+                            <Link to="/forgot-password">重新申请重置</Link>
+                        </Button>
                     ) : (
-                        <Link
-                            to="/forgot-password"
-                            className={buttonVariants({ variant: "outline" })}
-                        >
-                            重新找回密码
-                        </Link>
+                        <Button asChild variant="outline">
+                            <Link to="/sign-in">前往登录</Link>
+                        </Button>
                     )}
                 </CardContent>
             </Card>

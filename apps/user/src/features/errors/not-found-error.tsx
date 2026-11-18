@@ -1,28 +1,25 @@
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
+import { ErrorResult } from "./error-result";
 
 export function NotFoundError() {
     const navigate = useNavigate();
     const { history } = useRouter();
     return (
-        <div className="h-svh">
-            <div className="m-auto flex h-full w-full flex-col items-center justify-center gap-2">
-                <h1 className="text-[7rem] leading-tight font-bold">404</h1>
-                <span className="font-medium">页面不存在</span>
-                <p className="text-center text-muted-foreground">
-                    链接可能已失效，
-                    <br />
-                    或地址输入有误。
-                </p>
-                <div className="mt-6 flex gap-4">
+        <ErrorResult
+            code="404"
+            title="页面不存在"
+            description="链接可能已失效或地址有误。"
+            actions={
+                <>
                     <Button variant="outline" onClick={() => history.go(-1)}>
                         返回上一页
                     </Button>
                     <Button onClick={() => navigate({ to: "/" })}>
                         回到首页
                     </Button>
-                </div>
-            </div>
-        </div>
+                </>
+            }
+        />
     );
 }

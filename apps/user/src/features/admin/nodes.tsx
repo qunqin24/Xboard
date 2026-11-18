@@ -1,19 +1,24 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Link } from "@tanstack/react-router";
 import { type ColumnDef } from "@tanstack/react-table";
 import {
     Check,
     Copy,
     KeyRound,
+    Loader2,
     Pencil,
     Plus,
     Power,
+    PowerOff,
+    Server,
     Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { useCommand, usePanel } from "@/api/panel";
+import { CheckRow } from "@/components/check-row";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
     DataTable,
@@ -22,6 +27,8 @@ import {
     RowActions,
     selectColumn,
 } from "@/components/data-table";
+import { EmptyState } from "@/components/empty-state";
+import { InfoTip } from "@/components/info-tip";
 import { Page } from "@/components/layout/page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,6 +51,7 @@ import {
     FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
     Select,
     SelectContent,
@@ -51,10 +59,10 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { formatDateTime } from "@/lib/format";
 import { useEditorSearch } from "./editor-search";
 import { EditorSheet } from "./editor-sheet";
+import { NODE_STATE_TONE } from "./status";
 import type { NodeRow, PlanRow } from "./types";
 import { nodeState } from "./units";
 
@@ -71,12 +79,6 @@ const CIPHERS = [
     "aes-256-gcm",
     "chacha20-ietf-poly1305",
 ] as const;
-const STATE_VARIANT = {
-    在线: "default",
-    离线: "destructive",
-    未连接: "outline",
-    已停用: "secondary",
-} as const;
 
 const schema = z.object({
     name: z.string().trim().min(1, "请输入名称").max(80, "名称最多 80 个字"),
@@ -118,20 +120,25 @@ function TokenDialog({
     onClose: () => void;
 }) {
     const [copied, setCopied] = useState(false);
+    const close = () => {
+        setCopied(false);
+        onClose();
+    };
     return (
-        <Dialog
-            open={value !== null}
-            onOpenChange={(open) => !open && onClose()}
-        >
-            <DialogContent>
+        <Dialog open={value !== null}>
+            <DialogContent
+                showCloseButton={false}
+                onInteractOutside={(e) => e.preventDefault()}
+                onEscapeKeyDown={(e) => e.preventDefault()}
+            >
                 <DialogHeader>
                     <DialogTitle>节点 #{value?.id} 的通信密钥</DialogTitle>
                     <DialogDescription>
-                        只显示这一次。填到节点后端的 ApiKey /
-                        Key，关闭后无法再查看。
+                        密钥仅显示一次，关闭后无法再次查看。请将其配置为节点后端的
+                        ApiKey。
                     </DialogDescription>
                 </DialogHeader>
-                <div className="flex gap-2">
+                <div className="flex gap-inline">
                     <Input
                         readOnly
                         value={value?.token ?? ""}
@@ -156,12 +163,18 @@ function TokenDialog({
                         {copied ? "已复制" : "复制"}
                     </Button>
                 </div>
-                <p className="numeric text-xs break-all text-muted-foreground">
-                    {location.origin}/api/v1/server/UniProxy/config?node_id=
-                    {value?.id}&node_type=…&token=…
-                </p>
+                <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                    对接说明
+                    <InfoTip label="对接说明">
+                        <span className="numeric break-all">
+                            {location.origin}
+                            /api/v1/server/UniProxy/config?node_id=
+                            {value?.id}&node_type=…&token=…
+                        </span>
+                    </InfoTip>
+                </div>
                 <DialogFooter>
-                    <Button onClick={onClose}>我已保存</Button>
+                    <Button onClick={close}>我已保存</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -195,6 +208,11 @@ function NodeSheet({
             planIds: node?.plans.map((p) => p.planId) ?? [],
         },
     });
+    // Opening the sheet starts from the saved values (or a blank "new"
+    // form), never from a draft left by the previous open.
+    useEffect(() => {
+        if (open) form.reset();
+    }, [open, form]);
     const protocol = form.watch("protocol");
 
     return (
@@ -202,9 +220,7 @@ function NodeSheet({
             open={open}
             onOpenChange={(value) => !value && onClose()}
             title={node ? `编辑节点 #${node.id}` : "新建节点"}
-            description={
-                node ? node.name : "创建后会生成只显示一次的通信密钥。"
-            }
+            description={node ? node.name : undefined}
             formId="node-form"
             submitLabel={node ? "保存修改" : "创建节点"}
             pending={save.isPending}
@@ -212,7 +228,7 @@ function NodeSheet({
             <Form {...form}>
                 <form
                     id="node-form"
-                    className="space-y-5"
+                    className="space-y-group"
                     onSubmit={form.handleSubmit((v) =>
                         save.mutate(
                             {
@@ -278,12 +294,12 @@ function NodeSheet({
                             </FormItem>
                         )}
                     />
-                    <div className="grid grid-cols-[minmax(0,1fr)_6rem] gap-3">
+                    <div className="grid grid-cols-4 gap-group">
                         <FormField
                             control={form.control}
                             name="host"
                             render={({ field }) => (
-                                <FormItem>
+                                <FormItem className="col-span-3">
                                     <FormLabel>地址</FormLabel>
                                     <FormControl>
                                         <Input
@@ -299,7 +315,7 @@ function NodeSheet({
                             control={form.control}
                             name="port"
                             render={({ field }) => (
-                                <FormItem>
+                                <FormItem className="col-span-1">
                                     <FormLabel>端口</FormLabel>
                                     <FormControl>
                                         <Input inputMode="numeric" {...field} />
@@ -314,13 +330,13 @@ function NodeSheet({
                         name="serverName"
                         render={({ field }) => (
                             <FormItem>
-                                <FormLabel>TLS Server Name</FormLabel>
+                                <FormLabel>TLS 服务器名称（SNI）</FormLabel>
                                 <FormControl>
-                                    <Input
-                                        placeholder="留空则使用地址"
-                                        {...field}
-                                    />
+                                    <Input {...field} />
                                 </FormControl>
+                                <FormDescription>
+                                    默认与地址相同
+                                </FormDescription>
                                 <FormMessage />
                             </FormItem>
                         )}
@@ -332,23 +348,26 @@ function NodeSheet({
                             render={({ field }) => (
                                 <FormItem>
                                     <FormLabel>加密方式</FormLabel>
-                                    <Select
-                                        value={field.value}
-                                        onValueChange={field.onChange}
-                                    >
-                                        <FormControl>
-                                            <SelectTrigger className="w-full">
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                        </FormControl>
-                                        <SelectContent>
+                                    <FormControl>
+                                        <RadioGroup
+                                            value={field.value}
+                                            onValueChange={field.onChange}
+                                            className="gap-field"
+                                        >
                                             {CIPHERS.map((c) => (
-                                                <SelectItem key={c} value={c}>
-                                                    {c}
-                                                </SelectItem>
+                                                <label
+                                                    key={c}
+                                                    className="flex items-center gap-inline text-sm"
+                                                >
+                                                    <RadioGroupItem value={c} />
+                                                    <span className="numeric">
+                                                        {c}
+                                                    </span>
+                                                </label>
                                             ))}
-                                        </SelectContent>
-                                    </Select>
+                                        </RadioGroup>
+                                    </FormControl>
+                                    <FormMessage />
                                 </FormItem>
                             )}
                         />
@@ -359,12 +378,12 @@ function NodeSheet({
                         render={({ field }) => (
                             <FormItem>
                                 <FormLabel>可使用的套餐</FormLabel>
-                                <div className="space-y-2 rounded-lg border p-3">
+                                <div className="grid gap-field">
                                     {plans.length ? (
                                         plans.map((plan) => (
                                             <label
                                                 key={plan.id}
-                                                className="flex items-center gap-2 text-sm"
+                                                className="flex items-center gap-inline text-sm"
                                             >
                                                 <Checkbox
                                                     checked={field.value.includes(
@@ -389,15 +408,23 @@ function NodeSheet({
                                                 />
                                                 {plan.name}
                                                 {plan.published ? null : (
-                                                    <span className="text-xs text-muted-foreground">
-                                                        （未发布）
-                                                    </span>
+                                                    <Badge variant="outline">
+                                                        未发布
+                                                    </Badge>
                                                 )}
                                             </label>
                                         ))
                                     ) : (
                                         <p className="text-sm text-muted-foreground">
-                                            还没有套餐。
+                                            暂无套餐，请先
+                                            <Link
+                                                to="/admin/plans"
+                                                search={{ new: true }}
+                                                className="text-foreground underline underline-offset-4"
+                                            >
+                                                创建套餐
+                                            </Link>
+                                            。
                                         </p>
                                     )}
                                 </div>
@@ -408,20 +435,12 @@ function NodeSheet({
                         control={form.control}
                         name="enabled"
                         render={({ field }) => (
-                            <FormItem className="flex items-center justify-between rounded-lg border p-3">
-                                <div>
-                                    <FormLabel>启用节点</FormLabel>
-                                    <FormDescription>
-                                        停用后节点拉取不到用户。
-                                    </FormDescription>
-                                </div>
-                                <FormControl>
-                                    <Switch
-                                        checked={field.value}
-                                        onCheckedChange={field.onChange}
-                                    />
-                                </FormControl>
-                            </FormItem>
+                            <CheckRow
+                                label="启用节点"
+                                description="停用后，节点将无法获取用户列表。"
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                            />
                         )}
                     />
                 </form>
@@ -439,8 +458,13 @@ export function AdminNodes() {
         null,
     );
     const [confirm, setConfirm] = useState<{
-        kind: "rotate" | "delete";
+        kind: "rotate" | "delete" | "disable";
         node: NodeRow;
+    } | null>(null);
+    const [bulkPending, setBulkPending] = useState(false);
+    const [bulkDisable, setBulkDisable] = useState<{
+        rows: NodeRow[];
+        clear: () => void;
     } | null>(null);
     const planName = new Map(plans.data?.map((p) => [p.id, p.name]));
     const editing = list.data?.find((n) => n.id === editor.editId) ?? null;
@@ -452,6 +476,7 @@ export function AdminNodes() {
     ) => {
         const targets = nodes.filter((node) => node.enabled !== enabled);
         let done = 0;
+        setBulkPending(true);
         for (const node of targets) {
             try {
                 await action.mutateAsync({
@@ -464,6 +489,7 @@ export function AdminNodes() {
                 /* Each failure is already reported as a toast. */
             }
         }
+        setBulkPending(false);
         if (done)
             toast.success(`已${enabled ? "启用" : "停用"} ${done} 个节点`);
         clear();
@@ -494,8 +520,8 @@ export function AdminNodes() {
                 <DataTableColumnHeader column={column} title="状态" />
             ),
             cell: ({ getValue }) => {
-                const value = getValue<keyof typeof STATE_VARIANT>();
-                return <Badge variant={STATE_VARIANT[value]}>{value}</Badge>;
+                const value = getValue<keyof typeof NODE_STATE_TONE>();
+                return <Badge variant={NODE_STATE_TONE[value]}>{value}</Badge>;
             },
             filterFn: inFilter,
             meta: { title: "状态" },
@@ -537,9 +563,7 @@ export function AdminNodes() {
                         {getValue<string>()}
                     </span>
                 ) : (
-                    <span className="text-xs text-amber-600 dark:text-amber-400">
-                        未关联
-                    </span>
+                    <Badge variant="warning">未关联</Badge>
                 ),
             enableSorting: false,
             meta: { title: "套餐" },
@@ -574,35 +598,37 @@ export function AdminNodes() {
                             label: row.original.enabled ? "停用" : "启用",
                             icon: Power,
                             onSelect: () =>
-                                action.mutate(
-                                    {
-                                        path: `/admin/nodes/${row.original.id}`,
-                                        method: "PUT",
-                                        body: nodeBody(
-                                            row.original,
-                                            !row.original.enabled,
-                                        ),
-                                    },
-                                    {
-                                        onSuccess: () =>
-                                            toast.success(
-                                                row.original.enabled
-                                                    ? "节点已停用"
-                                                    : "节点已启用",
-                                            ),
-                                    },
-                                ),
+                                row.original.enabled
+                                    ? setConfirm({
+                                          kind: "disable",
+                                          node: row.original,
+                                      })
+                                    : action.mutate(
+                                          {
+                                              path: `/admin/nodes/${row.original.id}`,
+                                              method: "PUT",
+                                              body: nodeBody(
+                                                  row.original,
+                                                  true,
+                                              ),
+                                          },
+                                          {
+                                              onSuccess: () =>
+                                                  toast.success("节点已启用"),
+                                          },
+                                      ),
                         },
+                        "separator",
                         {
                             label: "重置密钥",
                             icon: KeyRound,
+                            destructive: true,
                             onSelect: () =>
                                 setConfirm({
                                     kind: "rotate",
                                     node: row.original,
                                 }),
                         },
-                        "separator",
                         {
                             label: "删除",
                             icon: Trash2,
@@ -623,7 +649,7 @@ export function AdminNodes() {
     return (
         <Page
             title="节点"
-            description="支持 UniProxy（V2bX）与 XrayR 旧 V2board 接口；TCP + TLS 的 VMess / VLESS / Trojan、AEAD Shadowsocks、Hysteria2、TUIC。"
+            help="兼容 UniProxy（V2bX）及 XrayR 的 V2board 旧版接口。支持协议：VMess、VLESS、Trojan（TCP + TLS）、Shadowsocks（AEAD）、Hysteria2、TUIC。"
             actions={
                 <Button onClick={() => editor.open("new")}>
                     <Plus /> 新建节点
@@ -633,6 +659,8 @@ export function AdminNodes() {
             <DataTable
                 data={list.data}
                 isLoading={list.isPending}
+                error={list.isError ? list.error : undefined}
+                onRetry={() => void list.refetch()}
                 columns={columns}
                 getRowId={(n) => String(n.id)}
                 searchPlaceholder="名称、地址…"
@@ -640,12 +668,23 @@ export function AdminNodes() {
                 entityName="节点"
                 onRowClick={(n) => editor.open(n.id)}
                 selectedRowId={editor.editId ? String(editor.editId) : null}
-                emptyText="还没有节点。新建节点后，把密钥填到节点后端即可开始上报。"
+                emptyText={
+                    <EmptyState
+                        icon={Server}
+                        title="暂无节点"
+                        description="创建节点后，将通信密钥配置到节点后端即可开始上报。"
+                        action={
+                            <Button onClick={() => editor.open("new")}>
+                                <Plus /> 新建节点
+                            </Button>
+                        }
+                    />
+                }
                 filters={[
                     {
                         columnId: "state",
                         title: "状态",
-                        options: Object.keys(STATE_VARIANT).map((v) => ({
+                        options: Object.keys(NODE_STATE_TONE).map((v) => ({
                             value: v,
                             label: v,
                         })),
@@ -661,15 +700,23 @@ export function AdminNodes() {
                         <Button
                             size="sm"
                             variant="outline"
+                            disabled={bulkPending}
                             onClick={() => void setEnabled(rows, true, clear)}
                         >
+                            {bulkPending ? (
+                                <Loader2 className="animate-spin" />
+                            ) : (
+                                <Power />
+                            )}
                             启用
                         </Button>
                         <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => void setEnabled(rows, false, clear)}
+                            disabled={bulkPending}
+                            onClick={() => setBulkDisable({ rows, clear })}
                         >
+                            <PowerOff />
                             停用
                         </Button>
                     </>
@@ -685,20 +732,44 @@ export function AdminNodes() {
             />
             <TokenDialog value={token} onClose={() => setToken(null)} />
             <ConfirmDialog
+                open={bulkDisable !== null}
+                onOpenChange={(open) => !open && setBulkDisable(null)}
+                title={`停用选中的 ${bulkDisable?.rows.length ?? 0} 个节点？`}
+                desc="停用后，节点将无法获取用户列表，用户订阅中不再包含这些节点。"
+                confirmText="停用"
+                isLoading={bulkPending}
+                handleConfirm={() => {
+                    if (!bulkDisable) return;
+                    const { rows, clear } = bulkDisable;
+                    setBulkDisable(null);
+                    void setEnabled(rows, false, clear);
+                }}
+            />
+            <ConfirmDialog
                 open={confirm !== null}
                 onOpenChange={(open) => !open && setConfirm(null)}
                 title={
                     confirm?.kind === "rotate"
                         ? `重置“${confirm.node.name}”的密钥？`
-                        : `删除节点“${confirm?.node.name ?? ""}”？`
+                        : confirm?.kind === "disable"
+                          ? `停用节点“${confirm.node.name}”？`
+                          : `删除节点“${confirm?.node.name ?? ""}”？`
                 }
                 desc={
                     confirm?.kind === "rotate"
-                        ? "旧密钥立即失效，需要把新密钥填到节点后端，否则节点会断开上报。"
-                        : "节点会停用并作废密钥，用户订阅里不再出现它；历史流量记录保留。"
+                        ? "旧密钥立即失效。请将新密钥配置到节点后端，否则节点将断开上报。"
+                        : confirm?.kind === "disable"
+                          ? "停用后，节点将无法获取用户列表，用户订阅中不再包含该节点。"
+                          : "节点将被停用并作废密钥，用户订阅中不再包含该节点；历史流量记录保留。"
                 }
-                confirmText={confirm?.kind === "rotate" ? "重置" : "删除"}
-                destructive
+                confirmText={
+                    confirm?.kind === "rotate"
+                        ? "重置"
+                        : confirm?.kind === "disable"
+                          ? "停用"
+                          : "删除"
+                }
+                destructive={confirm?.kind !== "disable"}
                 isLoading={action.isPending}
                 handleConfirm={() => {
                     if (!confirm) return;
@@ -706,10 +777,16 @@ export function AdminNodes() {
                     action.mutate(
                         kind === "rotate"
                             ? { path: `/admin/nodes/${node.id}/token` }
-                            : {
-                                  path: `/admin/nodes/${node.id}`,
-                                  method: "DELETE",
-                              },
+                            : kind === "disable"
+                              ? {
+                                    path: `/admin/nodes/${node.id}`,
+                                    method: "PUT",
+                                    body: nodeBody(node, false),
+                                }
+                              : {
+                                    path: `/admin/nodes/${node.id}`,
+                                    method: "DELETE",
+                                },
                         {
                             onSuccess: (result) => {
                                 if (kind === "rotate")
@@ -717,6 +794,8 @@ export function AdminNodes() {
                                         id: node.id,
                                         token: String(result.token),
                                     });
+                                else if (kind === "disable")
+                                    toast.success("节点已停用");
                                 else {
                                     toast.success("节点已删除");
                                     if (editor.editId === node.id)

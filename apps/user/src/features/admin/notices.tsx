@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
-import { Eye, EyeOff, Pencil, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Eye, EyeOff, Megaphone, Pencil, Plus, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -13,6 +13,8 @@ import {
     inFilter,
     RowActions,
 } from "@/components/data-table";
+import { CheckRow } from "@/components/check-row";
+import { EmptyState } from "@/components/empty-state";
 import { Page } from "@/components/layout/page";
 import { LongText } from "@/components/long-text";
 import { Badge } from "@/components/ui/badge";
@@ -20,17 +22,16 @@ import { Button } from "@/components/ui/button";
 import {
     Form,
     FormControl,
-    FormDescription,
     FormField,
     FormItem,
     FormLabel,
     FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useEditorSearch } from "./editor-search";
 import { EditorSheet } from "./editor-sheet";
+import { PUBLISH_TONE } from "./status";
 import type { NoticeRow } from "./types";
 
 const schema = z.object({
@@ -57,12 +58,16 @@ function NoticeSheet({
             published: notice?.published ?? false,
         },
     });
+    // Opening the sheet starts from the saved values (or a blank "new"
+    // form), never from a draft left by the previous open.
+    useEffect(() => {
+        if (open) form.reset();
+    }, [open, form]);
     return (
         <EditorSheet
             open={open}
             onOpenChange={(value) => !value && onClose()}
-            title={notice ? "编辑公告" : "新建公告"}
-            description="已发布的公告会显示在所有用户的总览页。"
+            title={notice ? `编辑公告 #${notice.id}` : "新建公告"}
             formId="notice-form"
             submitLabel={notice ? "保存修改" : "创建公告"}
             pending={save.isPending}
@@ -70,7 +75,7 @@ function NoticeSheet({
             <Form {...form}>
                 <form
                     id="notice-form"
-                    className="space-y-5"
+                    className="space-y-group"
                     onSubmit={form.handleSubmit((body) =>
                         save.mutate(
                             {
@@ -121,20 +126,12 @@ function NoticeSheet({
                         control={form.control}
                         name="published"
                         render={({ field }) => (
-                            <FormItem className="flex items-center justify-between rounded-lg border p-3">
-                                <div>
-                                    <FormLabel>发布</FormLabel>
-                                    <FormDescription>
-                                        关闭则保存为草稿。
-                                    </FormDescription>
-                                </div>
-                                <FormControl>
-                                    <Switch
-                                        checked={field.value}
-                                        onCheckedChange={field.onChange}
-                                    />
-                                </FormControl>
-                            </FormItem>
+                            <CheckRow
+                                label="发布"
+                                description="关闭时保存为草稿。"
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                            />
                         )}
                     />
                 </form>
@@ -154,7 +151,7 @@ export function AdminNotices() {
         {
             accessorKey: "title",
             header: ({ column }) => (
-                <DataTableColumnHeader column={column} title="公告" />
+                <DataTableColumnHeader column={column} title="标题" />
             ),
             cell: ({ row }) => (
                 <div className="max-w-xl">
@@ -174,9 +171,7 @@ export function AdminNotices() {
                 <DataTableColumnHeader column={column} title="状态" />
             ),
             cell: ({ getValue }) => (
-                <Badge
-                    variant={getValue() === "已发布" ? "default" : "secondary"}
-                >
+                <Badge variant={PUBLISH_TONE[getValue<string>()]}>
                     {getValue<string>()}
                 </Badge>
             ),
@@ -235,7 +230,7 @@ export function AdminNotices() {
     return (
         <Page
             title="公告"
-            description="已发布的公告会显示在所有用户的总览页。"
+            help="已发布的公告将展示在所有用户的总览页。"
             actions={
                 <Button onClick={() => editor.open("new")}>
                     <Plus /> 新建公告
@@ -250,7 +245,21 @@ export function AdminNotices() {
                 searchPlaceholder="标题、正文…"
                 onRowClick={(n) => editor.open(n.id)}
                 selectedRowId={editor.editId ? String(editor.editId) : null}
-                emptyText="还没有公告。"
+                error={list.isError ? list.error : undefined}
+                onRetry={() => void list.refetch()}
+                exportName="公告"
+                entityName="公告"
+                emptyText={
+                    <EmptyState
+                        icon={Megaphone}
+                        title="暂无公告"
+                        action={
+                            <Button onClick={() => editor.open("new")}>
+                                <Plus /> 新建公告
+                            </Button>
+                        }
+                    />
+                }
                 filters={[
                     {
                         columnId: "status",
@@ -272,7 +281,7 @@ export function AdminNotices() {
                 open={deleting !== null}
                 onOpenChange={(open) => !open && setDeleting(null)}
                 title={`删除公告“${deleting?.title ?? ""}”？`}
-                desc="删除后无法恢复。只想暂时隐藏可以改为撤回。"
+                desc="删除后无法恢复。如需暂时隐藏，请使用“撤回”。"
                 confirmText="删除"
                 destructive
                 isLoading={action.isPending}

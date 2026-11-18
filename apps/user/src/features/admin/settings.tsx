@@ -3,15 +3,11 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { useCommand, usePanel } from "@/api/panel";
+import { CheckRow } from "@/components/check-row";
+import { ErrorState } from "@/components/error-state";
 import { Page } from "@/components/layout/page";
 import { Button } from "@/components/ui/button";
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import {
     Form,
     FormControl,
@@ -23,7 +19,6 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type { SiteSettings } from "./types";
 
@@ -46,7 +41,6 @@ function SettingsForm({ settings }: { settings: SiteSettings }) {
     return (
         <Form {...form}>
             <form
-                className="space-y-6"
                 onSubmit={form.handleSubmit((body) =>
                     save.mutate(
                         { path: "/admin/settings", method: "PUT", body },
@@ -59,64 +53,66 @@ function SettingsForm({ settings }: { settings: SiteSettings }) {
                     ),
                 )}
             >
-                <FormField
-                    control={form.control}
-                    name="siteName"
-                    render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>站点名称</FormLabel>
-                            <FormControl>
-                                <Input {...field} />
-                            </FormControl>
-                            <FormDescription>
-                                显示在登录页和侧边栏。
-                            </FormDescription>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
-                <FormField
-                    control={form.control}
-                    name="registrationOpen"
-                    render={({ field }) => (
-                        <FormItem className="flex items-center justify-between rounded-lg border p-4">
-                            <div className="space-y-0.5">
-                                <FormLabel>开放注册</FormLabel>
-                                <FormDescription>
-                                    关闭后登录页隐藏注册入口，注册接口返回“暂未开放注册”。已有账户不受影响。
-                                </FormDescription>
-                            </div>
-                            <FormControl>
-                                <Switch
+                <Card className="max-w-2xl">
+                    <CardContent className="space-y-group">
+                        <FormField
+                            control={form.control}
+                            name="siteName"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>站点名称</FormLabel>
+                                    <FormControl>
+                                        <Input {...field} />
+                                    </FormControl>
+                                    <FormDescription>
+                                        显示于登录页和侧边栏。
+                                    </FormDescription>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={form.control}
+                            name="registrationOpen"
+                            render={({ field }) => (
+                                <CheckRow
+                                    label="开放注册"
+                                    description="关闭后将隐藏注册入口，已有账户不受影响。"
                                     checked={field.value}
                                     onCheckedChange={field.onChange}
                                 />
-                            </FormControl>
-                        </FormItem>
-                    )}
-                />
-                <FormField
-                    control={form.control}
-                    name="supportNote"
-                    render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>客服说明</FormLabel>
-                            <FormControl>
-                                <Textarea rows={4} {...field} />
-                            </FormControl>
-                            <FormDescription>
-                                显示在用户提交工单的窗口里，例如处理时间、联系方式。
-                            </FormDescription>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
-                <Button
-                    type="submit"
-                    disabled={save.isPending || !form.formState.isDirty}
-                >
-                    保存设置
-                </Button>
+                            )}
+                        />
+                        <FormField
+                            control={form.control}
+                            name="supportNote"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>客服说明</FormLabel>
+                                    <FormControl>
+                                        <Textarea
+                                            rows={4}
+                                            placeholder="例如：工作日 9:00–18:00 回复"
+                                            {...field}
+                                        />
+                                    </FormControl>
+                                    <FormDescription>
+                                        显示在用户提交工单的页面中。
+                                    </FormDescription>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                    </CardContent>
+                    <CardFooter className="justify-end border-t">
+                        <Button
+                            type="submit"
+                            disabled={save.isPending || !form.formState.isDirty}
+                        >
+                            保存设置
+                        </Button>
+                    </CardFooter>
+                </Card>
             </form>
         </Form>
     );
@@ -125,25 +121,17 @@ function SettingsForm({ settings }: { settings: SiteSettings }) {
 export function AdminSettings() {
     const settings = usePanel<SiteSettings>("/admin/settings");
     return (
-        <Page
-            title="系统设置"
-            description="站点信息和注册策略。修改会写入审计日志。"
-        >
-            <Card className="max-w-2xl">
-                <CardHeader>
-                    <CardTitle>站点</CardTitle>
-                    <CardDescription>
-                        用户在登录页和用户中心看到的信息。
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    {settings.data ? (
-                        <SettingsForm settings={settings.data} />
-                    ) : (
-                        <Skeleton className="h-64" />
-                    )}
-                </CardContent>
-            </Card>
+        <Page title="系统设置">
+            {settings.data ? (
+                <SettingsForm settings={settings.data} />
+            ) : settings.isError ? (
+                <ErrorState
+                    error={settings.error}
+                    onRetry={() => void settings.refetch()}
+                />
+            ) : (
+                <Skeleton className="h-64 max-w-2xl" />
+            )}
         </Page>
     );
 }

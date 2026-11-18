@@ -1,25 +1,20 @@
 import { type ColumnDef } from "@tanstack/react-table";
+import { queryString } from "@/api/client";
 import { usePanel } from "@/api/panel";
 import {
     DataTable,
     DataTableColumnHeader,
     inFilter,
+    useServerTable,
 } from "@/components/data-table";
+import { EmptyState } from "@/components/empty-state";
 import { Page } from "@/components/layout/page";
 import { Badge } from "@/components/ui/badge";
 import { LongText } from "@/components/long-text";
 import { formatDateTime, formatMinor, periodLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { AuditRow, LedgerRow, MailRow, OrderRow } from "./types";
-
-const ORDER_STATUS: Record<
-    OrderRow["status"],
-    { label: string; variant: "default" | "outline" | "secondary" }
-> = {
-    paid: { label: "已支付", variant: "default" },
-    pending: { label: "待支付", variant: "outline" },
-    cancelled: { label: "已取消", variant: "secondary" },
-};
+import { MAIL_STATUS_TONE, ORDER_STATUS } from "./status";
+import type { AuditRow, LedgerRow, MailRow, OrderRow, Paged } from "./types";
 
 const timeColumn = <T extends object>(
     key: keyof T & string,
@@ -40,8 +35,11 @@ const timeColumn = <T extends object>(
 });
 
 export function AdminOrders() {
-    const list = usePanel<OrderRow[]>("/admin/orders");
-    const plans = [...new Set(list.data?.map((o) => o.planName))];
+    const table = useServerTable();
+    const list = usePanel<Paged<OrderRow>>(
+        `/admin/orders${queryString({ ...table.query, status: table.filter("status") })}`,
+        { keepPrevious: true },
+    );
     const columns: ColumnDef<OrderRow>[] = [
         {
             id: "email",
@@ -70,7 +68,7 @@ export function AdminOrders() {
             cell: ({ row }) => (
                 <span>
                     {row.original.planName}
-                    <span className="ms-1.5 text-muted-foreground">
+                    <span className="ms-2 text-muted-foreground">
                         {periodLabel(row.original.period)}
                     </span>
                 </span>
@@ -84,7 +82,7 @@ export function AdminOrders() {
                 <DataTableColumnHeader column={column} title="状态" />
             ),
             cell: ({ row }) => (
-                <Badge variant={ORDER_STATUS[row.original.status].variant}>
+                <Badge variant={ORDER_STATUS[row.original.status].tone}>
                     {ORDER_STATUS[row.original.status].label}
                 </Badge>
             ),
@@ -127,14 +125,22 @@ export function AdminOrders() {
     return (
         <Page
             title="订单"
-            description="最近 200 笔订单。订单只能由用户用余额支付，管理员不能代付。"
+            description={list.data ? `共 ${list.data.total} 笔订单` : undefined}
+            help="订单仅支持用户以余额支付，管理员无法代付。"
         >
             <DataTable
-                data={list.data}
+                data={list.data?.items}
+                server={{
+                    state: table.state,
+                    onStateChange: table.setState,
+                    rowCount: list.data?.total,
+                }}
                 isLoading={list.isPending}
+                error={list.isError ? list.error : undefined}
+                onRetry={() => void list.refetch()}
                 columns={columns}
                 getRowId={(o) => o.id}
-                searchPlaceholder="邮箱、套餐、订单号…"
+                searchPlaceholder="邮箱、套餐或单号…"
                 exportName="订单"
                 initialHidden={{ id: false, paidAt: false }}
                 filters={[
@@ -145,11 +151,6 @@ export function AdminOrders() {
                             ([value, s]) => ({ value, label: s.label }),
                         ),
                     },
-                    {
-                        columnId: "planName",
-                        title: "套餐",
-                        options: plans.map((p) => ({ value: p, label: p })),
-                    },
                 ]}
             />
         </Page>
@@ -157,16 +158,29 @@ export function AdminOrders() {
 }
 
 export function AdminLedger() {
-    const list = usePanel<LedgerRow[]>("/admin/ledger");
+    const table = useServerTable();
+    const list = usePanel<Paged<LedgerRow>>(
+        `/admin/ledger${queryString({ ...table.query, kind: table.filter("kind") })}`,
+        { keepPrevious: true },
+    );
     const columns: ColumnDef<LedgerRow>[] = [
         {
-            accessorKey: "userId",
+            id: "user",
+            accessorFn: (e) => e.user.email,
             header: ({ column }) => (
                 <DataTableColumnHeader column={column} title="用户" />
             ),
             cell: ({ row }) => (
-                <span className="numeric">#{row.original.userId}</span>
+                <div>
+                    <LongText className="max-w-52">
+                        {row.original.user.email}
+                    </LongText>
+                    <p className="numeric text-xs text-muted-foreground">
+                        #{row.original.userId}
+                    </p>
+                </div>
             ),
+            enableHiding: false,
             meta: { title: "用户" },
         },
         {
@@ -176,13 +190,7 @@ export function AdminLedger() {
                 <DataTableColumnHeader column={column} title="类型" />
             ),
             cell: ({ getValue }) => (
-                <Badge
-                    variant={
-                        getValue() === "手动入账" ? "default" : "secondary"
-                    }
-                >
-                    {getValue<string>()}
-                </Badge>
+                <Badge variant="outline">{getValue<string>()}</Badge>
             ),
             filterFn: inFilter,
             meta: { title: "类型" },
@@ -214,8 +222,7 @@ export function AdminLedger() {
                 <span
                     className={cn(
                         "numeric",
-                        row.original.amountMinor > 0 &&
-                            "text-emerald-600 dark:text-emerald-400",
+                        row.original.amountMinor > 0 && "text-success",
                     )}
                 >
                     {row.original.amountMinor > 0 ? "+" : ""}
@@ -232,23 +239,33 @@ export function AdminLedger() {
     return (
         <Page
             title="余额流水"
-            description="最近 200 笔余额变动，包括手动入账和订单扣款。流水不会被删除。"
+            description={
+                list.data ? `共 ${list.data.total} 笔余额变动` : undefined
+            }
+            help="流水记录不可删除。"
         >
             <DataTable
-                data={list.data}
+                data={list.data?.items}
+                server={{
+                    state: table.state,
+                    onStateChange: table.setState,
+                    rowCount: list.data?.total,
+                }}
                 isLoading={list.isPending}
+                error={list.isError ? list.error : undefined}
+                onRetry={() => void list.refetch()}
                 columns={columns}
                 getRowId={(e) => e.id}
-                searchPlaceholder="用户编号、说明…"
+                searchPlaceholder="邮箱或说明…"
                 exportName="余额流水"
                 filters={[
                     {
                         columnId: "kind",
                         title: "类型",
-                        options: ["手动入账", "订单扣款"].map((v) => ({
-                            value: v,
-                            label: v,
-                        })),
+                        options: [
+                            { value: "credit", label: "手动入账" },
+                            { value: "order", label: "订单扣款" },
+                        ],
                     },
                 ]}
             />
@@ -261,6 +278,8 @@ export const AUDIT_LABELS: Record<string, string> = {
     "user.ban": "封禁 / 解封",
     "user.update": "编辑订阅",
     "user.password_reset": "重置密码",
+    "user.credentials_rotate": "更换节点凭据",
+    "admin.bootstrap": "初始化管理员",
     "traffic.reset": "流量清零",
     "plan.save": "保存套餐",
     "plan.delete": "删除套餐",
@@ -274,8 +293,11 @@ export const AUDIT_LABELS: Record<string, string> = {
 };
 
 export function AdminAudit() {
-    const list = usePanel<AuditRow[]>("/admin/audit");
-    const actions = [...new Set(list.data?.map((a) => a.action))];
+    const table = useServerTable();
+    const list = usePanel<Paged<AuditRow>>(
+        `/admin/audit${queryString({ ...table.query, action: table.filter("action") })}`,
+        { keepPrevious: true },
+    );
     const columns: ColumnDef<AuditRow>[] = [
         {
             accessorKey: "action",
@@ -307,7 +329,9 @@ export function AdminAudit() {
             ),
             cell: ({ row }) => (
                 <span className="numeric text-muted-foreground">
-                    #{row.original.actorId}
+                    {row.original.actorId === null
+                        ? "系统"
+                        : `#${row.original.actorId}`}
                 </span>
             ),
             meta: { title: "操作人" },
@@ -339,23 +363,31 @@ export function AdminAudit() {
     return (
         <Page
             title="审计日志"
-            description="最近 200 条管理操作：入账、封禁、流量重置、套餐与节点变更等。"
+            description={
+                list.data ? `共 ${list.data.total} 条管理操作` : undefined
+            }
         >
             <DataTable
-                data={list.data}
+                data={list.data?.items}
+                server={{
+                    state: table.state,
+                    onStateChange: table.setState,
+                    rowCount: list.data?.total,
+                }}
                 isLoading={list.isPending}
+                error={list.isError ? list.error : undefined}
+                onRetry={() => void list.refetch()}
                 columns={columns}
                 getRowId={(a) => String(a.id)}
-                searchPlaceholder="对象、详情…"
+                searchPlaceholder="操作或对象…"
                 exportName="审计日志"
                 filters={[
                     {
                         columnId: "action",
                         title: "操作",
-                        options: actions.map((a) => ({
-                            value: a,
-                            label: AUDIT_LABELS[a] ?? a,
-                        })),
+                        options: Object.entries(AUDIT_LABELS).map(
+                            ([value, label]) => ({ value, label }),
+                        ),
                     },
                 ]}
             />
@@ -397,21 +429,27 @@ export function AdminMail() {
             cell: ({ getValue }) => {
                 const value = getValue<string>();
                 return (
-                    <Badge
-                        variant={
-                            value === "已放弃"
-                                ? "destructive"
-                                : value === "已发送"
-                                  ? "default"
-                                  : "outline"
-                        }
-                    >
+                    <Badge variant={MAIL_STATUS_TONE[value] ?? "secondary"}>
                         {value}
                     </Badge>
                 );
             },
             filterFn: inFilter,
             meta: { title: "状态" },
+        },
+        {
+            accessorKey: "lastError",
+            header: "失败原因",
+            cell: ({ row }) =>
+                row.original.lastError ? (
+                    <LongText className="numeric max-w-64 text-xs text-muted-foreground">
+                        {row.original.lastError}
+                    </LongText>
+                ) : (
+                    <span className="text-muted-foreground">—</span>
+                ),
+            enableSorting: false,
+            meta: { title: "失败原因" },
         },
         {
             accessorKey: "attempts",
@@ -448,16 +486,24 @@ export function AdminMail() {
     return (
         <Page
             title="邮件队列"
-            description="最近 100 封邮件。后台每 5 秒发送一次，失败按指数退避，最多尝试 5 次；记录保留 7 天。"
+            description="显示最近 100 封邮件"
+            help="系统每 5 秒处理一次发送队列；失败后按指数退避重试，最多 5 次；记录保留 7 天。"
         >
             <DataTable
                 data={list.data}
                 isLoading={list.isPending}
+                error={list.isError ? list.error : undefined}
+                onRetry={() => void list.refetch()}
                 columns={columns}
                 getRowId={(m) => String(m.id)}
                 searchPlaceholder="收件人、主题…"
                 exportName="邮件队列"
-                emptyText="队列为空。验证邮件和找回密码邮件会出现在这里。"
+                emptyText={
+                    <EmptyState
+                        title="暂无邮件"
+                        description="验证邮件和密码找回邮件将显示在此处。"
+                    />
+                }
                 filters={[
                     {
                         columnId: "status",

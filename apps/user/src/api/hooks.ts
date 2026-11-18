@@ -4,22 +4,25 @@ import {
     useQuery,
     useQueryClient,
 } from "@tanstack/react-query";
-import {
-    api,
-    ApiError,
-    requireData,
-    type Account,
-    type Plan,
-} from "@xboard/api-client";
+import type {
+    Account,
+    AuthResult,
+    CreateOrderBody,
+    LoginBody,
+    Order,
+    Plan,
+    RegisterBody,
+} from "@xboard/contracts";
+import { request } from "./client";
 
 export const accountQuery = queryOptions({
     queryKey: ["account"],
-    queryFn: async () => requireData(await api.GET("/api/account")),
+    queryFn: () => request<Account>("/account"),
 });
 
 export const plansQuery = queryOptions({
     queryKey: ["plans"],
-    queryFn: async () => requireData(await api.GET("/api/plans")) as Plan[],
+    queryFn: () => request<Plan[]>("/plans"),
 });
 
 export function useAccount() {
@@ -34,8 +37,8 @@ export function useLogin() {
     const queryClient = useQueryClient();
     return useMutation({
         meta: { silentError: true },
-        mutationFn: async (input: { email: string; password: string }) =>
-            requireData(await api.POST("/api/auth/login", { body: input })),
+        mutationFn: (input: LoginBody) =>
+            request<AuthResult>("/auth/login", "POST", input),
         onSuccess: async () => {
             await queryClient.invalidateQueries({
                 queryKey: accountQuery.queryKey,
@@ -46,22 +49,15 @@ export function useLogin() {
 
 export function useRegister() {
     return useMutation({
-        mutationFn: async (input: { email: string; password: string }) =>
-            requireData(await api.POST("/api/auth/register", { body: input })),
+        mutationFn: (input: RegisterBody) =>
+            request<AuthResult>("/auth/register", "POST", input),
     });
 }
 
 export function useLogout() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async () => {
-            const result = await api.POST("/api/auth/logout");
-            if (!result.response.ok)
-                throw new ApiError(
-                    result.response.status,
-                    "退出失败，请重试。",
-                );
-        },
+        mutationFn: () => request<void>("/auth/logout", "POST"),
         onSuccess: () => queryClient.clear(),
     });
 }
@@ -71,18 +67,15 @@ export type { Account, Plan };
 export function useOrders() {
     return useQuery({
         queryKey: ["orders"],
-        queryFn: async () => requireData(await api.GET("/api/orders")),
+        queryFn: () => request<Order[]>("/orders"),
     });
 }
 
 export function useCreateOrder() {
     const client = useQueryClient();
     return useMutation({
-        mutationFn: async (input: {
-            planId: number;
-            period: "monthly" | "quarterly" | "yearly";
-            requestId: string;
-        }) => requireData(await api.POST("/api/orders", { body: input })),
+        mutationFn: (input: CreateOrderBody) =>
+            request<Order>("/orders", "POST", input),
         onSuccess: () => client.invalidateQueries({ queryKey: ["orders"] }),
     });
 }
@@ -96,15 +89,7 @@ export function useOrderAction() {
         }: {
             id: string;
             action: "pay" | "cancel";
-        }) =>
-            requireData(
-                await api.POST(
-                    action === "pay"
-                        ? "/api/orders/{id}/pay"
-                        : "/api/orders/{id}/cancel",
-                    { params: { path: { id } } },
-                ),
-            ),
+        }) => request<Order>(`/orders/${id}/${action}`, "POST"),
         onSuccess: async () => {
             await Promise.all([
                 client.invalidateQueries({ queryKey: ["orders"] }),

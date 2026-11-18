@@ -1,22 +1,13 @@
 import { Button } from "@/components/ui/button";
+import { ErrorResult } from "./error-result";
 
 export function MaintenanceError() {
     return (
-        <div className="h-svh">
-            <div className="m-auto flex h-full w-full flex-col items-center justify-center gap-2">
-                <h1 className="text-[7rem] leading-tight font-bold">503</h1>
-                <span className="font-medium">站点维护中</span>
-                <p className="text-center text-muted-foreground">
-                    服务暂时不可用。
-                    <br />
-                    请稍后再来。
-                </p>
-                <div className="mt-6 flex gap-4">
-                    <Button variant="outline" onClick={() => location.reload()}>
-                        刷新
-                    </Button>
-                </div>
-            </div>
-        </div>
+        <ErrorResult
+            code="503"
+            title="站点维护中"
+            description="请稍后重试。"
+            actions={<Button onClick={() => location.reload()}>刷新</Button>}
+        />
     );
 }

@@ -1,4 +1,5 @@
 import { type ColumnDef } from "@tanstack/react-table";
+import type { LedgerItem, TrafficItem } from "@xboard/contracts";
 import { usePanel } from "@/api/panel";
 import {
     DataTable,
@@ -9,20 +10,6 @@ import { Page } from "@/components/layout/page";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDateTime, formatMinor, formatTraffic } from "@/lib/format";
 import { cn } from "@/lib/utils";
-
-type LedgerItem = {
-    id: string;
-    amountMinor: number;
-    createdAt: string;
-    reason?: string | null;
-};
-type TrafficItem = {
-    id: number;
-    upload: string;
-    download: string;
-    createdAt: string;
-    node: { name: string };
-};
 
 const ledgerColumns: ColumnDef<LedgerItem>[] = [
     {
@@ -42,8 +29,7 @@ const ledgerColumns: ColumnDef<LedgerItem>[] = [
             <span
                 className={cn(
                     "numeric",
-                    row.original.amountMinor > 0 &&
-                        "text-emerald-600 dark:text-emerald-400",
+                    row.original.amountMinor > 0 && "text-success",
                 )}
             >
                 {row.original.amountMinor > 0 ? "+" : ""}
@@ -125,11 +111,8 @@ export function Records() {
     const nodes = [...new Set(traffic.data?.map((item) => item.node.name))];
 
     return (
-        <Page
-            title="使用记录"
-            description="最近 100 条余额变动和节点流量上报。"
-        >
-            <Tabs defaultValue="ledger" className="space-y-2">
+        <Page title="使用记录" description="显示最近 100 条记录">
+            <Tabs defaultValue="ledger">
                 <TabsList>
                     <TabsTrigger value="ledger">余额流水</TabsTrigger>
                     <TabsTrigger value="traffic">流量记录</TabsTrigger>
@@ -142,7 +125,9 @@ export function Records() {
                         getRowId={(item) => item.id}
                         searchPlaceholder="搜索说明…"
                         exportName="余额流水"
-                        emptyText="还没有余额变动。"
+                        emptyText="暂无余额变动"
+                        error={ledger.error}
+                        onRetry={() => void ledger.refetch()}
                         initialSorting={[{ id: "createdAt", desc: true }]}
                     />
                 </TabsContent>
@@ -152,9 +137,11 @@ export function Records() {
                         isLoading={traffic.isPending}
                         columns={trafficColumns}
                         getRowId={(item) => String(item.id)}
-                        searchPlaceholder="搜索节点…"
+                        searchPlaceholder={false}
                         exportName="流量记录"
-                        emptyText="节点上报后会显示在这里。"
+                        emptyText="暂无流量记录"
+                        error={traffic.error}
+                        onRetry={() => void traffic.refetch()}
                         filters={[
                             {
                                 columnId: "node",

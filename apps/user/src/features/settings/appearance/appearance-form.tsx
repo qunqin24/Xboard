@@ -1,23 +1,27 @@
 import { z } from "zod";
 import { useForm } from "react-hook-form";
-import { ChevronDownIcon } from "@radix-ui/react-icons";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { fonts } from "@/config/fonts";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 import { useFont } from "@/context/font-provider";
 import { useTheme } from "@/context/theme-provider";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
     Form,
     FormControl,
-    FormDescription,
     FormField,
     FormItem,
     FormLabel,
     FormMessage,
 } from "@/components/ui/form";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 
 const appearanceFormSchema = z.object({
     theme: z.enum(["light", "dark"]),
@@ -25,6 +29,37 @@ const appearanceFormSchema = z.object({
 });
 
 type AppearanceFormValues = z.infer<typeof appearanceFormSchema>;
+
+/**
+ * Miniature page drawn with theme tokens. `scope` is the theme class the
+ * preview is rendered under, so it shows that theme whatever the app uses.
+ */
+function ThemePreview({ scope }: { scope: "light" | "dark" }) {
+    return (
+        <div className={scope}>
+            <div className="flex flex-col gap-field rounded-control bg-muted p-2">
+                <div className="flex flex-col gap-field rounded-inner bg-card p-2 shadow-xs">
+                    <div className="h-2 w-20 rounded-full bg-muted-foreground/30" />
+                    <div className="h-2 w-24 rounded-full bg-muted-foreground/30" />
+                </div>
+                {[0, 1].map((row) => (
+                    <div
+                        key={row}
+                        className="flex items-center gap-field rounded-inner bg-card p-2 shadow-xs"
+                    >
+                        <div className="size-4 rounded-full bg-muted-foreground/30" />
+                        <div className="h-2 w-24 rounded-full bg-muted-foreground/30" />
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+const THEMES = [
+    { value: "light", label: "浅色" },
+    { value: "dark", label: "深色" },
+] as const;
 
 export function AppearanceForm() {
     const { font, setFont } = useFont();
@@ -50,39 +85,39 @@ export function AppearanceForm() {
 
     return (
         <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+            <form
+                onSubmit={form.handleSubmit(onSubmit)}
+                className="space-y-group"
+            >
                 <FormField
                     control={form.control}
                     name="font"
                     render={({ field }) => (
                         <FormItem>
                             <FormLabel>字体</FormLabel>
-                            <div className="relative w-max">
+                            <Select
+                                value={field.value}
+                                onValueChange={field.onChange}
+                            >
                                 <FormControl>
-                                    <select
-                                        className={cn(
-                                            buttonVariants({
-                                                variant: "outline",
-                                            }),
-                                            "w-50 appearance-none font-normal capitalize",
-                                            "dark:bg-background dark:hover:bg-background",
-                                        )}
-                                        {...field}
-                                    >
-                                        {fonts.map((font) => (
-                                            <option key={font} value={font}>
-                                                {font === "system"
-                                                    ? "系统字体"
-                                                    : font}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <SelectTrigger className="w-48 capitalize">
+                                        <SelectValue />
+                                    </SelectTrigger>
                                 </FormControl>
-                                <ChevronDownIcon className="absolute inset-e-3 top-2.5 h-4 w-4 opacity-50" />
-                            </div>
-                            <FormDescription className="font-system">
-                                界面使用的字体。
-                            </FormDescription>
+                                <SelectContent>
+                                    {fonts.map((name) => (
+                                        <SelectItem
+                                            key={name}
+                                            value={name}
+                                            className="capitalize"
+                                        >
+                                            {name === "system"
+                                                ? "系统字体"
+                                                : name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                             <FormMessage />
                         </FormItem>
                     )}
@@ -93,73 +128,32 @@ export function AppearanceForm() {
                     render={({ field }) => (
                         <FormItem>
                             <FormLabel>主题</FormLabel>
-                            <FormDescription>
-                                选择浅色或深色界面。
-                            </FormDescription>
                             <FormMessage />
                             <RadioGroup
                                 onValueChange={field.onChange}
                                 defaultValue={field.value}
-                                className="grid max-w-md grid-cols-2 gap-8 pt-2"
+                                className="grid max-w-md grid-cols-2 gap-group"
                             >
-                                <FormItem>
-                                    <FormLabel className="[&:has([data-state=checked])>div]:border-primary">
-                                        <FormControl>
-                                            <RadioGroupItem
-                                                value="light"
-                                                className="sr-only"
-                                            />
-                                        </FormControl>
-                                        <div className="items-center rounded-md border-2 border-muted p-1 hover:border-accent">
-                                            <div className="space-y-2 rounded-sm bg-[#ecedef] p-2">
-                                                <div className="space-y-2 rounded-md bg-white p-2 shadow-xs">
-                                                    <div className="h-2 w-20 rounded-lg bg-[#ecedef]" />
-                                                    <div className="h-2 w-25 rounded-lg bg-[#ecedef]" />
-                                                </div>
-                                                <div className="flex items-center space-x-2 rounded-md bg-white p-2 shadow-xs">
-                                                    <div className="h-4 w-4 rounded-full bg-[#ecedef]" />
-                                                    <div className="h-2 w-25 rounded-lg bg-[#ecedef]" />
-                                                </div>
-                                                <div className="flex items-center space-x-2 rounded-md bg-white p-2 shadow-xs">
-                                                    <div className="h-4 w-4 rounded-full bg-[#ecedef]" />
-                                                    <div className="h-2 w-25 rounded-lg bg-[#ecedef]" />
-                                                </div>
+                                {THEMES.map((item) => (
+                                    <FormItem key={item.value}>
+                                        <FormLabel className="flex-col items-stretch gap-field [&:has([data-state=checked])>div]:border-primary">
+                                            <FormControl>
+                                                <RadioGroupItem
+                                                    value={item.value}
+                                                    className="sr-only"
+                                                />
+                                            </FormControl>
+                                            <div className="rounded-surface border-2 border-muted p-1 hover:border-accent">
+                                                <ThemePreview
+                                                    scope={item.value}
+                                                />
                                             </div>
-                                        </div>
-                                        <span className="block w-full p-2 text-center font-normal">
-                                            浅色
-                                        </span>
-                                    </FormLabel>
-                                </FormItem>
-                                <FormItem>
-                                    <FormLabel className="[&:has([data-state=checked])>div]:border-primary">
-                                        <FormControl>
-                                            <RadioGroupItem
-                                                value="dark"
-                                                className="sr-only"
-                                            />
-                                        </FormControl>
-                                        <div className="items-center rounded-md border-2 border-muted bg-popover p-1 hover:bg-accent hover:text-accent-foreground">
-                                            <div className="space-y-2 rounded-sm bg-slate-950 p-2">
-                                                <div className="space-y-2 rounded-md bg-slate-800 p-2 shadow-xs">
-                                                    <div className="h-2 w-20 rounded-lg bg-slate-400" />
-                                                    <div className="h-2 w-25 rounded-lg bg-slate-400" />
-                                                </div>
-                                                <div className="flex items-center space-x-2 rounded-md bg-slate-800 p-2 shadow-xs">
-                                                    <div className="h-4 w-4 rounded-full bg-slate-400" />
-                                                    <div className="h-2 w-25 rounded-lg bg-slate-400" />
-                                                </div>
-                                                <div className="flex items-center space-x-2 rounded-md bg-slate-800 p-2 shadow-xs">
-                                                    <div className="h-4 w-4 rounded-full bg-slate-400" />
-                                                    <div className="h-2 w-25 rounded-lg bg-slate-400" />
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <span className="block w-full p-2 text-center font-normal">
-                                            深色
-                                        </span>
-                                    </FormLabel>
-                                </FormItem>
+                                            <span className="block w-full text-center font-normal">
+                                                {item.label}
+                                            </span>
+                                        </FormLabel>
+                                    </FormItem>
+                                ))}
                             </RadioGroup>
                         </FormItem>
                     )}

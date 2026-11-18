@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
-import { Eye, EyeOff, Pencil, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Eye, EyeOff, Package, Pencil, Plus, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -13,6 +13,9 @@ import {
     inFilter,
     RowActions,
 } from "@/components/data-table";
+import { CheckRow } from "@/components/check-row";
+import { EmptyState } from "@/components/empty-state";
+import { InfoTip } from "@/components/info-tip";
 import { Page } from "@/components/layout/page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,16 +29,19 @@ import {
     FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { formatMinor, formatTraffic, periodLabel } from "@/lib/format";
 import { useEditorSearch } from "./editor-search";
 import { EditorSheet } from "./editor-sheet";
+import { PUBLISH_TONE } from "./status";
 import type { PlanRow } from "./types";
 import { bytesToGiB, giBToBytes, minorToYuan, yuanToMinor } from "./units";
 
 const PERIODS = ["monthly", "quarterly", "yearly"] as const;
-const money = z.string().regex(/^(\d{1,7}(\.\d{1,2})?)?$/, "最多两位小数");
+const money = z
+    .string()
+    .regex(/^(\d{1,7}(\.\d{1,2})?)?$/, "最多两位小数")
+    .refine((v) => !v || Number(v) <= 1_000_000, "最多 ¥1,000,000");
 const optionalInt = (max: number) =>
     z
         .string()
@@ -119,6 +125,11 @@ function PlanSheet({
             published: plan?.published ?? false,
         },
     });
+    // Opening the sheet starts from the saved values (or a blank "new"
+    // form), never from a draft left by the previous open.
+    useEffect(() => {
+        if (open) form.reset();
+    }, [open, form]);
 
     const submit = (v: Values) =>
         save.mutate(
@@ -128,7 +139,12 @@ function PlanSheet({
                 body: {
                     name: v.name,
                     content: v.content,
-                    transferBytes: giBToBytes(v.transferGiB),
+                    // Unchanged GB goes back as the exact stored bytes; the
+                    // two-decimal GB shown would otherwise round the quota.
+                    transferBytes:
+                        plan && !form.formState.dirtyFields.transferGiB
+                            ? plan.transferEnable
+                            : giBToBytes(v.transferGiB),
                     speedLimit: v.speedLimit ? Number(v.speedLimit) : null,
                     deviceLimit: v.deviceLimit ? Number(v.deviceLimit) : null,
                     published: v.published,
@@ -154,16 +170,21 @@ function PlanSheet({
         label: string,
         hint?: string,
         placeholder?: string,
+        inputMode: "text" | "numeric" | "decimal" = "decimal",
+        tip?: string,
     ) => (
         <FormField
             control={form.control}
             name={name}
             render={({ field }) => (
                 <FormItem>
-                    <FormLabel>{label}</FormLabel>
+                    <div className="flex items-center gap-1">
+                        <FormLabel>{label}</FormLabel>
+                        {tip ? <InfoTip>{tip}</InfoTip> : null}
+                    </div>
                     <FormControl>
                         <Input
-                            inputMode="decimal"
+                            inputMode={inputMode}
                             placeholder={placeholder}
                             {...field}
                             value={field.value as string}
@@ -181,7 +202,9 @@ function PlanSheet({
             open={open}
             onOpenChange={(value) => !value && onClose()}
             title={plan ? `编辑套餐 #${plan.id}` : "新建套餐"}
-            description="已下的订单保存当时的快照，修改不影响已售订单。"
+            description={
+                plan ? "修改仅对新订单生效，已售订单不受影响。" : undefined
+            }
             formId="plan-form"
             submitLabel={plan ? "保存修改" : "创建套餐"}
             pending={save.isPending}
@@ -189,10 +212,10 @@ function PlanSheet({
             <Form {...form}>
                 <form
                     id="plan-form"
-                    className="space-y-5"
+                    className="space-y-group"
                     onSubmit={form.handleSubmit(submit)}
                 >
-                    {text("name", "名称")}
+                    {text("name", "名称", undefined, undefined, "text")}
                     <FormField
                         control={form.control}
                         name="content"
@@ -209,15 +232,20 @@ function PlanSheet({
                     {text(
                         "transferGiB",
                         "周期总流量（GB）",
-                        "按 1024 进制，整个周期的总额度。",
+                        undefined,
+                        undefined,
+                        "decimal",
+                        "1 GB = 1024 MB",
                     )}
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-group">
                         {text("speedLimit", "限速（Mbps）", undefined, "不限")}
                         {text("deviceLimit", "设备数", undefined, "不限")}
                     </div>
-                    <div>
-                        <p className="mb-2 text-sm font-medium">价格（元）</p>
-                        <div className="grid grid-cols-3 gap-3">
+                    <fieldset className="grid gap-field">
+                        <legend className="mb-field text-sm leading-none font-medium">
+                            价格（元）
+                        </legend>
+                        <div className="grid grid-cols-3 gap-group">
                             {PERIODS.map((period) => (
                                 <div key={period}>
                                     {text(
@@ -229,29 +257,24 @@ function PlanSheet({
                                 </div>
                             ))}
                         </div>
-                        <p className="mt-2 text-xs text-muted-foreground">
-                            留空表示不提供该付款周期。
-                        </p>
-                    </div>
-                    {text("sort", "排序", "数字小的排在前面。")}
+                    </fieldset>
+                    {text(
+                        "sort",
+                        "排序",
+                        "数值越小，排序越靠前。",
+                        undefined,
+                        "numeric",
+                    )}
                     <FormField
                         control={form.control}
                         name="published"
                         render={({ field }) => (
-                            <FormItem className="flex items-center justify-between rounded-lg border p-3">
-                                <div>
-                                    <FormLabel>发布销售</FormLabel>
-                                    <FormDescription>
-                                        发布后用户可以看到并下单。
-                                    </FormDescription>
-                                </div>
-                                <FormControl>
-                                    <Switch
-                                        checked={field.value}
-                                        onCheckedChange={field.onChange}
-                                    />
-                                </FormControl>
-                            </FormItem>
+                            <CheckRow
+                                label="发布销售"
+                                description="发布后，用户可查看并购买此套餐。"
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                            />
                         )}
                     />
                 </form>
@@ -291,9 +314,7 @@ export function AdminPlans() {
                 <DataTableColumnHeader column={column} title="状态" />
             ),
             cell: ({ getValue }) => (
-                <Badge
-                    variant={getValue() === "销售中" ? "default" : "secondary"}
-                >
+                <Badge variant={PUBLISH_TONE[getValue<string>()]}>
                     {getValue<string>()}
                 </Badge>
             ),
@@ -347,7 +368,7 @@ export function AdminPlans() {
             ),
             cell: ({ row }) =>
                 row.original.prices.length ? (
-                    <div className="numeric space-y-0.5 text-xs">
+                    <div className="numeric space-y-1 text-xs">
                         {row.original.prices.map((p) => (
                             <p key={p.period}>
                                 <span className="text-muted-foreground">
@@ -358,9 +379,7 @@ export function AdminPlans() {
                         ))}
                     </div>
                 ) : (
-                    <span className="text-xs text-amber-600 dark:text-amber-400">
-                        未定价
-                    </span>
+                    <Badge variant="warning">未定价</Badge>
                 ),
             sortUndefined: "last",
             meta: {
@@ -399,6 +418,7 @@ export function AdminPlans() {
                         },
                         {
                             label: row.original.published ? "下架" : "发布销售",
+                            disabledReason: "请先设置价格",
                             icon: row.original.published ? EyeOff : Eye,
                             disabled:
                                 !row.original.published &&
@@ -440,7 +460,6 @@ export function AdminPlans() {
     return (
         <Page
             title="套餐"
-            description="套餐决定流量、限速、设备数和价格。"
             actions={
                 <Button onClick={() => editor.open("new")}>
                     <Plus /> 新建套餐
@@ -450,13 +469,26 @@ export function AdminPlans() {
             <DataTable
                 data={list.data}
                 isLoading={list.isPending}
+                error={list.isError ? list.error : undefined}
+                onRetry={() => void list.refetch()}
                 columns={columns}
                 getRowId={(p) => String(p.id)}
                 searchPlaceholder="套餐名称…"
                 exportName="套餐"
                 onRowClick={(p) => editor.open(p.id)}
                 selectedRowId={editor.editId ? String(editor.editId) : null}
-                emptyText="还没有套餐。先创建套餐，再到节点页把节点关联到套餐。"
+                emptyText={
+                    <EmptyState
+                        icon={Package}
+                        title="暂无套餐"
+                        description="创建套餐后，请在节点页面将节点关联至该套餐。"
+                        action={
+                            <Button onClick={() => editor.open("new")}>
+                                <Plus /> 新建套餐
+                            </Button>
+                        }
+                    />
+                }
                 initialSorting={[{ id: "sort", desc: false }]}
                 filters={[
                     {
@@ -479,7 +511,7 @@ export function AdminPlans() {
                 open={deleting !== null}
                 onOpenChange={(open) => !open && setDeleting(null)}
                 title={`删除套餐“${deleting?.name ?? ""}”？`}
-                desc="删除后用户不能再购买，节点也不再关联它；已有订单记录保留。仍有有效订阅时无法删除，请先下架。"
+                desc="删除后用户将无法购买该套餐，节点关联将同步解除，历史订单保留。"
                 confirmText="删除"
                 destructive
                 isLoading={action.isPending}

@@ -1,5 +1,16 @@
 import { type ClassValue, clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { extendTailwindMerge } from "tailwind-merge";
+
+// Teach tailwind-merge the design-token utilities (rounded-control, p-card,
+// gap-section ...) so `cn("rounded-control", "rounded-none")` keeps the last.
+const twMerge = extendTailwindMerge({
+    extend: {
+        theme: {
+            radius: ["inner", "control", "surface", "card"],
+            spacing: ["page", "card", "group", "field", "inline"],
+        },
+    },
+});
 
 export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));

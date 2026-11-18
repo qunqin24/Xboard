@@ -1,5 +1,5 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { ApiError } from "@xboard/api-client";
+import { ApiError } from "@/api/client";
 import { accountQuery } from "@/api/hooks";
 import { AuthenticatedLayout } from "@/components/layout/authenticated-layout";
 

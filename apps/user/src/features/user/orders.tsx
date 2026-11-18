@@ -1,6 +1,7 @@
 import { type ColumnDef } from "@tanstack/react-table";
-import type { Order } from "@xboard/api-client";
-import { CreditCard, X } from "lucide-react";
+import type { Order } from "@xboard/contracts";
+import { Link } from "@tanstack/react-router";
+import { X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useAccount, useOrderAction, useOrders } from "@/api/hooks";
@@ -13,7 +14,9 @@ import {
 } from "@/components/data-table";
 import { Page } from "@/components/layout/page";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { EmptyState } from "@/components/empty-state";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
     formatDateTime,
     formatMinor,
@@ -27,6 +30,7 @@ export function Orders() {
     const account = useAccount();
     const action = useOrderAction();
     const [paying, setPaying] = useState<Order | null>(null);
+    const [cancelling, setCancelling] = useState<Order | null>(null);
     const balance = account.data?.balanceMinor ?? 0;
 
     const columns: ColumnDef<Order>[] = [
@@ -39,7 +43,7 @@ export function Orders() {
                 <div>
                     <p className="font-medium">
                         {row.original.planName}
-                        <span className="ms-1.5 text-muted-foreground">
+                        <span className="ms-2 text-muted-foreground">
                             {periodLabel(row.original.period)}
                         </span>
                     </p>
@@ -108,35 +112,26 @@ export function Orders() {
                     row.original.expiresAt,
                 );
                 return status.payable ? (
-                    <RowActions
-                        actions={[
-                            {
-                                label: "余额支付",
-                                icon: CreditCard,
-                                onSelect: () => setPaying(row.original),
-                            },
-                            "separator",
-                            {
-                                label: "取消订单",
-                                icon: X,
-                                destructive: true,
-                                onSelect: () =>
-                                    action.mutate(
-                                        {
-                                            id: row.original.id,
-                                            action: "cancel",
-                                        },
-                                        {
-                                            onSuccess: () =>
-                                                toast.success("订单已取消"),
-                                        },
-                                    ),
-                            },
-                        ]}
-                    />
+                    <div className="flex items-center justify-end gap-inline">
+                        <Button
+                            size="sm"
+                            onClick={() => setPaying(row.original)}
+                        >
+                            支付
+                        </Button>
+                        <RowActions
+                            actions={[
+                                {
+                                    label: "取消订单",
+                                    icon: X,
+                                    destructive: true,
+                                    onSelect: () => setCancelling(row.original),
+                                },
+                            ]}
+                        />
+                    </div>
                 ) : null;
             },
-            meta: { className: "w-12" },
         },
     ];
 
@@ -145,7 +140,8 @@ export function Orders() {
     return (
         <Page
             title="我的订单"
-            description="最近 50 笔订单。待支付订单保留 30 分钟，超时后需要重新下单。"
+            description="显示最近 50 笔订单"
+            help="待支付订单 30 分钟后自动失效。"
         >
             <DataTable
                 data={orders.data}
@@ -154,7 +150,18 @@ export function Orders() {
                 getRowId={(order) => order.id}
                 searchPlaceholder="搜索套餐…"
                 exportName="我的订单"
-                emptyText="还没有订单，可以去选购套餐。"
+                error={orders.error}
+                onRetry={() => void orders.refetch()}
+                emptyText={
+                    <EmptyState
+                        title="暂无订单"
+                        action={
+                            <Button asChild variant="outline" size="sm">
+                                <Link to="/plans">选购套餐</Link>
+                            </Button>
+                        }
+                    />
+                }
                 filters={[
                     {
                         columnId: "status",
@@ -168,20 +175,20 @@ export function Orders() {
             <ConfirmDialog
                 open={paying !== null}
                 onOpenChange={(open) => !open && setPaying(null)}
-                title="用余额支付"
+                title="余额支付"
                 desc={
                     paying ? (
-                        <div className="space-y-3">
+                        <div className="space-y-group">
                             <p>
-                                从余额扣除{" "}
+                                将从余额扣除{" "}
                                 <strong className="numeric">
                                     {formatMinor(paying.amountMinor)}
                                 </strong>
-                                ，当前余额{" "}
+                                （当前余额{" "}
                                 <span className="numeric">
                                     {formatMinor(balance)}
                                 </span>
-                                。支付后立即开通，不可退款。
+                                ）。支付后立即生效。
                             </p>
                             {short ? (
                                 <Alert variant="destructive">
@@ -206,6 +213,28 @@ export function Orders() {
                             onSuccess: () => {
                                 toast.success("支付成功，套餐已开通");
                                 setPaying(null);
+                            },
+                        },
+                    )
+                }
+            />
+            <ConfirmDialog
+                open={cancelling !== null}
+                onOpenChange={(open) => !open && setCancelling(null)}
+                title="取消订单"
+                desc="取消后需重新下单。"
+                confirmText="取消订单"
+                cancelBtnText="返回"
+                destructive
+                isLoading={action.isPending}
+                handleConfirm={() =>
+                    cancelling &&
+                    action.mutate(
+                        { id: cancelling.id, action: "cancel" },
+                        {
+                            onSuccess: () => {
+                                toast.success("订单已取消");
+                                setCancelling(null);
                             },
                         },
                     )

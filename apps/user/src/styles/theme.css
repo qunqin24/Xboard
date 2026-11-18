@@ -1,5 +1,21 @@
-:root {
-    --radius: 0.625rem;
+:root,
+.light {
+    /*
+     * Design tokens. Components read only these variables; feature code reads
+     * the Tailwind utilities generated from them (bg-success, rounded-control,
+     * p-card, gap-section ...). See docs/design-system.md.
+     */
+
+    /* Radius: one base value; the rest are concentric steps of 4px. */
+    --radius: 0.5rem; /* 8px, controls */
+
+    /* Spacing: multiples of 4px, named by nesting level. */
+    --space-page: 1rem; /* page gutter and gap between page sections */
+    --space-card: 1rem; /* inside a card or dialog, all four sides */
+    --space-group: 1rem; /* between groups inside a card: fields, rows */
+    --space-field: 0.5rem; /* label to control, item to item in a list */
+    --space-inline: 0.5rem; /* icon to text, buttons in a row */
+
     --background: oklch(1 0 0);
     --foreground: oklch(0.129 0.042 264.695);
     --card: oklch(1 0 0);
@@ -15,6 +31,11 @@
     --accent: oklch(0.968 0.007 247.896);
     --accent-foreground: oklch(0.208 0.042 265.755);
     --destructive: oklch(0.577 0.245 27.325);
+    --destructive-foreground: oklch(1 0 0);
+    /* Status colours: readable as text on --background (contrast >= 4.5). */
+    --success: oklch(0.527 0.137 150.069);
+    --warning: oklch(0.555 0.146 58.318);
+    --info: oklch(0.546 0.215 262.881);
     --border: oklch(0.929 0.013 255.508);
     --input: oklch(0.929 0.013 255.508);
     --ring: oklch(0.704 0.04 256.788);
@@ -50,6 +71,10 @@
     --accent: oklch(0.279 0.041 260.031);
     --accent-foreground: oklch(0.984 0.003 247.858);
     --destructive: oklch(0.704 0.191 22.216);
+    --destructive-foreground: oklch(1 0 0);
+    --success: oklch(0.765 0.177 163.223);
+    --warning: oklch(0.828 0.189 84.429);
+    --info: oklch(0.707 0.165 254.624);
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.551 0.027 264.364);
@@ -58,6 +83,15 @@
     --chart-3: oklch(0.769 0.188 70.08);
     --chart-4: oklch(0.627 0.265 303.9);
     --chart-5: oklch(0.645 0.246 16.439);
+}
+
+/* Wider screens get roomier page gutters and cards. */
+@media (min-width: 640px) {
+    :root,
+    .light {
+        --space-page: 1.5rem;
+        --space-card: 1.5rem;
+    }
 }
 
 @theme inline {
@@ -74,10 +108,32 @@
     --font-sans: var(--font-geist);
     --font-mono: "Geist Mono", ui-monospace, monospace;
 
-    --radius-sm: calc(var(--radius) - 4px);
-    --radius-md: calc(var(--radius) - 2px);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) + 4px);
+    /*
+     * Concentric radii: an element inset by 4px inside a container uses the
+     * container radius minus 4px, so the curves stay parallel.
+     *   card 16 > surface 12 > control 8 > inner 4
+     * card: Card, Dialog. surface: Popover, menus, Select list, Tabs list,
+     * Alert, Tooltip. control: Button, Input, menu items, Tabs trigger.
+     * inner: Checkbox, Kbd, a button inside an input.
+     */
+    --radius-inner: calc(var(--radius) - 4px);
+    --radius-control: var(--radius);
+    --radius-surface: calc(var(--radius) + 4px);
+    --radius-card: calc(var(--radius) + 8px);
+    /* Tailwind's own names map onto the same scale for upstream code. */
+    --radius-xs: var(--radius-inner);
+    --radius-sm: var(--radius-inner);
+    --radius-md: var(--radius-control);
+    --radius-lg: var(--radius-surface);
+    --radius-xl: var(--radius-card);
+    --radius-2xl: var(--radius-card);
+
+    --spacing-page: var(--space-page);
+    --spacing-card: var(--space-card);
+    --spacing-group: var(--space-group);
+    --spacing-field: var(--space-field);
+    --spacing-inline: var(--space-inline);
+
     --color-background: var(--background);
     --color-foreground: var(--foreground);
     --color-card: var(--card);
@@ -93,6 +149,10 @@
     --color-accent: var(--accent);
     --color-accent-foreground: var(--accent-foreground);
     --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+    --color-success: var(--success);
+    --color-warning: var(--warning);
+    --color-info: var(--info);
     --color-border: var(--border);
     --color-input: var(--input);
     --color-ring: var(--ring);

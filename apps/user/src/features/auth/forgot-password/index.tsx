@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link } from "@tanstack/react-router";
-import { Loader2, Send } from "lucide-react";
+import { CircleCheck, Loader2, Send } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useCommand } from "@/api/panel";
@@ -38,20 +38,19 @@ export function ForgotPassword() {
 
     return (
         <AuthLayout>
-            <Card className="max-w-sm gap-4">
+            <Card className="w-full gap-group">
                 <CardHeader>
-                    <CardTitle className="text-lg tracking-tight">
-                        找回密码
-                    </CardTitle>
+                    <CardTitle>找回密码</CardTitle>
                     <CardDescription>
-                        输入注册邮箱，我们会发送一次性重置链接，30 分钟内有效。
+                        系统将向注册邮箱发送重置链接，30 分钟内有效。
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
                     {send.isSuccess ? (
-                        <Alert>
+                        <Alert variant="success">
+                            <CircleCheck />
                             <AlertDescription>
-                                如果该邮箱已注册，重置邮件已经发出，请查收。
+                                若该邮箱已注册，重置邮件已发送，请查收。
                             </AlertDescription>
                         </Alert>
                     ) : (
@@ -63,7 +62,7 @@ export function ForgotPassword() {
                                         body: data,
                                     }),
                                 )}
-                                className="grid gap-3"
+                                className="space-y-group"
                             >
                                 <FormField
                                     control={form.control}
@@ -83,7 +82,7 @@ export function ForgotPassword() {
                                     )}
                                 />
                                 <Button
-                                    className="mt-2"
+                                    className="w-full"
                                     disabled={send.isPending}
                                 >
                                     {send.isPending ? (
@@ -97,16 +96,10 @@ export function ForgotPassword() {
                         </Form>
                     )}
                 </CardContent>
-                <CardFooter>
-                    <p className="mx-auto text-sm text-muted-foreground">
-                        想起来了？{" "}
-                        <Link
-                            to="/sign-in"
-                            className="underline underline-offset-4 hover:text-primary"
-                        >
-                            返回登录
-                        </Link>
-                    </p>
+                <CardFooter className="justify-center">
+                    <Button asChild variant="link" className="h-auto p-0">
+                        <Link to="/sign-in">返回登录</Link>
+                    </Button>
                 </CardFooter>
             </Card>
         </AuthLayout>

@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { ApiError } from "@xboard/api-client";
+import { ApiError } from "@/api/client";
 import { Loader2, LogIn } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import {
     Card,
     CardContent,
-    CardDescription,
+    CardFooter,
     CardHeader,
     CardTitle,
 } from "@/components/ui/card";
@@ -64,31 +64,15 @@ export function SignIn() {
 
     return (
         <AuthLayout>
-            <Card className="max-w-sm gap-4">
+            <Card className="w-full gap-group">
                 <CardHeader>
-                    <CardTitle className="text-lg tracking-tight">
-                        登录
-                    </CardTitle>
-                    <CardDescription>
-                        输入邮箱和密码登录账户。
-                        {site.data?.registrationOpen !== false ? (
-                            <>
-                                还没有账户？{" "}
-                                <Link
-                                    to="/sign-up"
-                                    className="text-nowrap underline underline-offset-4 hover:text-primary"
-                                >
-                                    注册
-                                </Link>
-                            </>
-                        ) : null}
-                    </CardDescription>
+                    <CardTitle>登录</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <Form {...form}>
                         <form
                             onSubmit={form.handleSubmit(onSubmit)}
-                            className="grid gap-3"
+                            className="space-y-group"
                         >
                             <FormField
                                 control={form.control}
@@ -112,26 +96,30 @@ export function SignIn() {
                                 control={form.control}
                                 name="password"
                                 render={({ field }) => (
-                                    <FormItem className="relative">
-                                        <FormLabel>密码</FormLabel>
+                                    <FormItem>
+                                        <div className="flex items-center justify-between gap-inline">
+                                            <FormLabel>密码</FormLabel>
+                                            <Link
+                                                to="/forgot-password"
+                                                className="text-sm text-muted-foreground hover:text-foreground"
+                                            >
+                                                忘记密码？
+                                            </Link>
+                                        </div>
                                         <FormControl>
                                             <PasswordInput
-                                                placeholder="********"
                                                 autoComplete="current-password"
                                                 {...field}
                                             />
                                         </FormControl>
                                         <FormMessage />
-                                        <Link
-                                            to="/forgot-password"
-                                            className="absolute inset-e-0 -top-0.5 text-sm font-medium text-muted-foreground hover:opacity-75"
-                                        >
-                                            忘记密码？
-                                        </Link>
                                     </FormItem>
                                 )}
                             />
-                            <Button className="mt-2" disabled={login.isPending}>
+                            <Button
+                                className="w-full"
+                                disabled={login.isPending}
+                            >
                                 {login.isPending ? (
                                     <Loader2 className="animate-spin" />
                                 ) : (
@@ -142,6 +130,14 @@ export function SignIn() {
                         </form>
                     </Form>
                 </CardContent>
+                {site.data?.registrationOpen !== false ? (
+                    <CardFooter className="justify-center gap-1 text-sm text-muted-foreground">
+                        没有账户？
+                        <Button asChild variant="link" className="h-auto p-0">
+                            <Link to="/sign-up">注册</Link>
+                        </Button>
+                    </CardFooter>
+                ) : null}
             </Card>
         </AuthLayout>
     );

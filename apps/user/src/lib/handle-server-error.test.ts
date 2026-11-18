@@ -1,4 +1,4 @@
-import { ApiError } from "@xboard/api-client";
+import { ApiError } from "@/api/client";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));

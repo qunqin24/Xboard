@@ -1,4 +1,4 @@
-import { ApiError } from "@xboard/api-client";
+import { ApiError } from "@/api/client";
 import { toast } from "sonner";
 
 /** Message to show for a failed request; API errors already carry Chinese text. */

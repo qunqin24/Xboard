@@ -42,18 +42,18 @@ export function EditorSheet({
                         <SheetDescription>{description}</SheetDescription>
                     ) : null}
                 </SheetHeader>
-                <div className="flex-1 space-y-6 overflow-y-auto px-4 pb-4">
+                <div className="flex-1 space-y-group overflow-y-auto px-card pb-card">
                     {children}
                     {extra}
                 </div>
-                <SheetFooter className="gap-2 border-t">
+                <SheetFooter className="flex-col-reverse gap-inline border-t sm:flex-row sm:justify-end">
+                    <SheetClose asChild>
+                        <Button variant="outline">取消</Button>
+                    </SheetClose>
                     <Button form={formId} type="submit" disabled={pending}>
                         {pending ? <Loader2 className="animate-spin" /> : null}
                         {submitLabel}
                     </Button>
-                    <SheetClose asChild>
-                        <Button variant="outline">取消</Button>
-                    </SheetClose>
                 </SheetFooter>
             </SheetContent>
         </Sheet>

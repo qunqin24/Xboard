@@ -1,40 +1,26 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError } from "@xboard/api-client";
+import {
+    keepPreviousData,
+    useMutation,
+    useQuery,
+    useQueryClient,
+} from "@tanstack/react-query";
+import { request } from "./client";
 
-export async function request<T>(
+export { request };
+export function usePanel<T>(
     path: string,
-    method = "GET",
-    body?: unknown,
-): Promise<T> {
-    const response = await fetch(`/api${path}`, {
-        method,
-        credentials: "same-origin",
-        headers:
-            body === undefined
-                ? undefined
-                : { "content-type": "application/json" },
-        body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    const result = await response.json().catch(() => null);
-    if (!response.ok) {
-        const message = result?.error?.message;
-        throw new ApiError(
-            response.status,
-            typeof message === "string"
-                ? message
-                : Array.isArray(message)
-                  ? message.join("；")
-                  : "请求失败，请稍后重试。",
-        );
-    }
-    return result as T;
-}
-export function usePanel<T>(path: string, options: { enabled?: boolean } = {}) {
+    options: {
+        enabled?: boolean;
+        /** Keep showing the previous result while the next page or search loads. */
+        keepPrevious?: boolean;
+    } = {},
+) {
     return useQuery({
         queryKey: ["panel", path],
         queryFn: () => request<T>(path),
         retry: false,
         enabled: options.enabled,
+        placeholderData: options.keepPrevious ? keepPreviousData : undefined,
     });
 }
 export function useCommand() {

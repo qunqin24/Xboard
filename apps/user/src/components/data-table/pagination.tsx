@@ -25,7 +25,8 @@ export function DataTablePagination<TData>({
     className,
 }: DataTablePaginationProps<TData>) {
     const currentPage = table.getState().pagination.pageIndex + 1;
-    const totalPages = table.getPageCount();
+    // An empty table still reads "第 1 / 1 页", not "第 1 / 0 页".
+    const totalPages = Math.max(1, table.getPageCount());
     const pageNumbers = getPageNumbers(currentPage, totalPages);
 
     return (

@@ -8,10 +8,13 @@ import { DataTableViewOptions } from "./view-options";
 
 type DataTableToolbarProps<TData> = {
     table: Table<TData>;
-    searchPlaceholder?: string;
+    /** false hides the search box (e.g. when a facet filter covers the only text column). */
+    searchPlaceholder?: string | false;
     searchKey?: string;
     /** File name prefix; enables the export button. */
     exportName?: string;
+    /** Show how many loaded rows match each filter option. */
+    facetCounts?: boolean;
     filters?: {
         columnId: string;
         title: string;
@@ -29,6 +32,7 @@ export function DataTableToolbar<TData>({
     searchKey,
     exportName,
     filters = [],
+    facetCounts = true,
 }: DataTableToolbarProps<TData>) {
     // Exports the selected rows if any, otherwise every filtered row, in the
     // current sort order and with the currently visible columns.
@@ -69,8 +73,8 @@ export function DataTableToolbar<TData>({
 
     return (
         <div className="flex items-center justify-between">
-            <div className="flex flex-1 flex-col-reverse items-start gap-y-2 sm:flex-row sm:items-center sm:space-x-2">
-                {searchKey ? (
+            <div className="flex flex-1 flex-col-reverse items-start gap-inline sm:flex-row sm:items-center">
+                {searchPlaceholder === false ? null : searchKey ? (
                     <Input
                         placeholder={searchPlaceholder}
                         value={
@@ -83,7 +87,7 @@ export function DataTableToolbar<TData>({
                                 .getColumn(searchKey)
                                 ?.setFilterValue(event.target.value)
                         }
-                        className="h-8 w-37.5 lg:w-62.5"
+                        className="h-8 w-40 lg:w-64"
                     />
                 ) : (
                     <Input
@@ -92,10 +96,10 @@ export function DataTableToolbar<TData>({
                         onChange={(event) =>
                             table.setGlobalFilter(event.target.value)
                         }
-                        className="h-8 w-37.5 lg:w-62.5"
+                        className="h-8 w-40 lg:w-64"
                     />
                 )}
-                <div className="flex gap-x-2">
+                <div className="flex gap-inline">
                     {filters.map((filter) => {
                         const column = table.getColumn(filter.columnId);
                         if (!column) return null;
@@ -105,6 +109,7 @@ export function DataTableToolbar<TData>({
                                 column={column}
                                 title={filter.title}
                                 options={filter.options}
+                                showCounts={facetCounts}
                             />
                         );
                     })}

@@ -5,7 +5,7 @@ export function SettingsAppearance() {
     return (
         <ContentSection
             title="外观"
-            desc="调整主题和字体。也可以在右上角的界面设置里调整侧边栏和布局。"
+            help="侧边栏与布局可在顶栏「界面设置」中调整。"
         >
             <AppearanceForm />
         </ContentSection>

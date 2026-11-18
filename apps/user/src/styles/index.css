@@ -99,3 +99,29 @@
         font-variant-numeric: tabular-nums;
     }
 }
+
+/*
+ * Continuous (squircle) corners where the browser draws them natively
+ * (Chromium 139+). corner-shape only changes painting, so there is no layout
+ * or script cost; other browsers keep ordinary round corners. Pills and
+ * circles (rounded-full) stay round.
+ */
+@supports (corner-shape: squircle) {
+    @layer base {
+        * {
+            corner-shape: squircle;
+        }
+        .rounded-full,
+        [data-slot="avatar"],
+        [data-slot="avatar-image"],
+        [data-slot="avatar-fallback"],
+        [data-slot="switch"],
+        [data-slot="switch-thumb"],
+        [data-slot="radio-group-item"],
+        [data-slot="badge"],
+        [data-slot="progress"],
+        [data-slot="scroll-area-thumb"] {
+            corner-shape: round;
+        }
+    }
+}
