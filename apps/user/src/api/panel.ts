@@ -4,6 +4,7 @@ import {
     useQuery,
     useQueryClient,
 } from "@tanstack/react-query";
+import type { Site } from "@xboard/contracts";
 import { request } from "./client";
 
 export { request };
@@ -23,7 +24,7 @@ export function usePanel<T>(
         placeholderData: options.keepPrevious ? keepPreviousData : undefined,
     });
 }
-export function useCommand() {
+export function useCommand<T = Record<string, unknown>>() {
     const client = useQueryClient();
     return useMutation({
         mutationFn: ({
@@ -34,7 +35,7 @@ export function useCommand() {
             path: string;
             method?: string;
             body?: unknown;
-        }) => request<Record<string, unknown>>(path, method ?? "POST", body),
+        }) => request<T>(path, method ?? "POST", body),
         onSuccess: async () => {
             await Promise.all([
                 client.invalidateQueries({ queryKey: ["panel"] }),
@@ -47,16 +48,16 @@ export function useCommand() {
     });
 }
 
-export type Site = {
-    siteName: string;
-    registrationOpen: boolean;
-    supportNote: string;
-};
+export type { Site };
 
 const SITE_DEFAULTS: Site = {
     siteName: "Xboard",
     registrationOpen: true,
     supportNote: "",
+    inviteOnly: false,
+    emailCodeRequired: false,
+    termsUrl: "",
+    privacyUrl: "",
 };
 
 /** Public site settings; falls back to defaults so sign-in never blocks on it. */

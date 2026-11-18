@@ -38,6 +38,10 @@ export function formatMinor(minor: number): string {
     return `¥${(minor / 100).toFixed(2)}`;
 }
 
+export function formatSettlement(minor: number): string {
+    return minor < 0 ? `退回 ${formatMinor(-minor)}` : formatMinor(minor);
+}
+
 const PERIOD_LABELS: Record<string, string> = {
     monthly: "月付",
     quarterly: "季付",
@@ -49,8 +53,8 @@ const PERIOD_LABELS: Record<string, string> = {
     reset_traffic: "重置流量",
 };
 
-export function periodLabel(period: string): string {
-    return PERIOD_LABELS[period] ?? period;
+export function periodLabel(period: string | null): string {
+    return period === null ? "流量重置包" : (PERIOD_LABELS[period] ?? period);
 }
 
 export function formatDate(unixSeconds: number | null): string {

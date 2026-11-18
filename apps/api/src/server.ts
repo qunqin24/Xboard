@@ -2,19 +2,20 @@ import { createApp } from "./app";
 import { getConfig } from "./config";
 import { closeDb } from "./db";
 import { startJobs } from "./jobs";
+import { errorFields, log } from "./logging";
 
 async function main() {
     const config = getConfig();
     const app = createApp();
     await app.listen(config.port, config.host);
-    console.log(`API listening on ${app.getUrl()}`);
+    log("info", "api.listening", { address: app.getUrl() });
     const stopJobs = startJobs();
 
     let stopping = false;
     const shutdown = async (signal: string) => {
         if (stopping) return;
         stopping = true;
-        console.log(`${signal} received, shutting down.`);
+        log("info", "api.shutting_down", { signal });
         stopJobs();
         await app.close();
         await closeDb();
@@ -24,6 +25,6 @@ async function main() {
 }
 
 main().catch((error: unknown) => {
-    console.error(error);
+    log("error", "api.start_failed", { error: errorFields(error) });
     process.exitCode = 1;
 });

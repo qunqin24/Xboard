@@ -22,9 +22,7 @@ export const idParam = z
 export const uuidParam = z.uuid("编号格式不正确");
 
 /** Byte counts travel as decimal strings so BigInt precision survives JSON. */
-export const bytesSchema = z
-    .string()
-    .regex(/^\d{1,15}$/, "流量需为不超过 15 位的整数字节数");
+export const bytesSchema = z.string().regex(/^\d+$/, "流量需为非负整数字节数");
 
 export const periodSchema = z.enum(["monthly", "quarterly", "yearly"]);
 export type Period = z.infer<typeof periodSchema>;
@@ -85,5 +83,9 @@ export type Paged<T> = {
 
 /** Every error body the API sends. */
 export const errorSchema = z.object({
-    error: z.object({ status: z.number().int(), message: z.string() }),
+    error: z.object({
+        status: z.number().int(),
+        message: z.string(),
+        code: z.string().optional(),
+    }),
 });

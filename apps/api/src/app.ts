@@ -10,7 +10,9 @@ import { db } from "./db";
 import { errorHandler, notFoundHandler } from "./http/errors";
 import { originCheck } from "./http/origin";
 import { rateLimit } from "./http/rate-limit";
+import { requestLogging } from "./logging";
 import { accountRoutes } from "./modules/account/routes";
+import { securityRoutes } from "./modules/account/security";
 import { adminRoutes } from "./modules/admin/routes";
 import { authRoutes } from "./modules/auth/routes";
 import { nodeRoutes } from "./modules/nodes/routes";
@@ -19,6 +21,8 @@ import { orderRoutes } from "./modules/orders/routes";
 import { planRoutes } from "./modules/plans/routes";
 import { siteRoutes } from "./modules/site/routes";
 import { supportRoutes } from "./modules/support/routes";
+import { helpRoutes } from "./modules/help/routes";
+import { redemptionRoutes } from "./modules/promotions/routes";
 
 /**
  * Build the HTTP app. Tests call this directly; server.ts adds listening,
@@ -35,6 +39,7 @@ export function createApp(options: { logging?: boolean } = {}) {
     );
     app.disable("x-powered-by");
 
+    if (options.logging !== false) app.use(requestLogging);
     app.use(helmet());
     app.use((_req, res, next) => {
         res.setHeader("Cache-Control", "no-store");
@@ -69,10 +74,13 @@ export function createApp(options: { logging?: boolean } = {}) {
     api.use(
         authRoutes,
         accountRoutes,
+        securityRoutes,
         planRoutes,
         orderRoutes,
         supportRoutes,
         siteRoutes,
+        helpRoutes,
+        redemptionRoutes,
     );
     api.use(subscriptionRoutes, nodeRoutes);
     api.use("/admin", adminRoutes);
@@ -80,7 +88,7 @@ export function createApp(options: { logging?: boolean } = {}) {
 
     app.use("/api", api);
     app.use(notFoundHandler);
-    app.use(errorHandler(options.logging !== false));
+    app.use(errorHandler);
     return handle(app);
 }
 

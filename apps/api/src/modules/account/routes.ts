@@ -3,6 +3,7 @@ import {
     forgotBody,
     passwordBody,
     resetBody,
+    trafficDailyQuery,
     verifyBody,
 } from "@xboard/contracts";
 import { db } from "../../db";
@@ -12,6 +13,7 @@ import { parse } from "../../http/validate";
 import {
     changePassword,
     consumeEmailLink,
+    dailyTraffic,
     listLedger,
     listTraffic,
     requireMail,
@@ -19,6 +21,7 @@ import {
     sendEmailLink,
     toAccount,
 } from "./service";
+import { getInvite, resetInvite } from "./invite";
 
 export const accountRoutes = Router();
 
@@ -86,3 +89,21 @@ accountRoutes.get("/account/ledger", requireUser, async (req, res) => {
 accountRoutes.get("/account/traffic", requireUser, async (req, res) => {
     res.json(await listTraffic(currentUser(req).id));
 });
+
+accountRoutes.get("/account/traffic/daily", requireUser, async (req, res) => {
+    const { days } = parse(trafficDailyQuery, req.query);
+    res.json(await dailyTraffic(currentUser(req).id, days));
+});
+
+accountRoutes.get("/account/invite", requireUser, async (req, res) => {
+    res.json(await getInvite(currentUser(req).id));
+});
+
+accountRoutes.post(
+    "/account/invite/reset",
+    rateLimit({ limit: 5, windowMs: 60_000, scope: "invite-reset" }),
+    requireUser,
+    async (req, res) => {
+        res.status(201).json(await resetInvite(currentUser(req).id));
+    },
+);

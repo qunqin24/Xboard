@@ -20,6 +20,8 @@ import {
 } from "@/components/ui/form";
 import { PasswordInput } from "@/components/password-input";
 import { ContentSection } from "../components/content-section";
+import { LoginDevices } from "./devices";
+import { TwoFactorSettings } from "./two-factor";
 
 const schema = z
     .object({
@@ -45,103 +47,115 @@ export function SettingsSecurity() {
     });
 
     return (
-        <ContentSection title="安全" desc="修改密码后，所有设备将退出登录。">
-            <>
-                <Form {...form}>
-                    <form
-                        className="space-y-group"
-                        onSubmit={form.handleSubmit((values) =>
-                            setPending(values),
-                        )}
-                    >
-                        <FormField
-                            control={form.control}
-                            name="oldPassword"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>当前密码</FormLabel>
-                                    <FormControl>
-                                        <PasswordInput
-                                            autoComplete="current-password"
-                                            {...field}
-                                        />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
+        <ContentSection title="安全">
+            <div className="flex flex-col gap-page">
+                <TwoFactorSettings />
+                <LoginDevices />
+                <section
+                    className="flex flex-col gap-group"
+                    aria-labelledby="change-password-heading"
+                >
+                    <h4 id="change-password-heading" className="font-semibold">
+                        修改密码
+                    </h4>
+                    <Form {...form}>
+                        <form
+                            className="space-y-group"
+                            onSubmit={form.handleSubmit((values) =>
+                                setPending(values),
                             )}
-                        />
-                        <FormField
-                            control={form.control}
-                            name="password"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>新密码</FormLabel>
-                                    <FormControl>
-                                        <PasswordInput
-                                            autoComplete="new-password"
-                                            {...field}
-                                        />
-                                    </FormControl>
-                                    <FormDescription>
-                                        长度为 12–128 个字符
-                                    </FormDescription>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                        <FormField
-                            control={form.control}
-                            name="confirmPassword"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>确认新密码</FormLabel>
-                                    <FormControl>
-                                        <PasswordInput
-                                            autoComplete="new-password"
-                                            {...field}
-                                        />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                        <Button type="submit" disabled={change.isPending}>
-                            {change.isPending ? (
-                                <Loader2 className="animate-spin" />
-                            ) : null}
-                            修改密码
-                        </Button>
-                    </form>
-                </Form>
-                <ConfirmDialog
-                    open={pending !== null}
-                    onOpenChange={(open) => !open && setPending(null)}
-                    title="修改密码"
-                    desc="修改后，所有设备将退出登录，需使用新密码重新登录。"
-                    confirmText="确认修改"
-                    destructive
-                    isLoading={change.isPending}
-                    handleConfirm={() => {
-                        if (!pending) return;
-                        const { oldPassword, password } = pending;
-                        change.mutate(
-                            {
-                                path: "/account/password",
-                                body: { oldPassword, password },
-                            },
-                            {
-                                onSuccess: () => {
-                                    setPending(null);
-                                    queryClient.clear();
-                                    toast.success("密码已修改，请重新登录。");
-                                    void navigate({ to: "/sign-in" });
+                        >
+                            <FormField
+                                control={form.control}
+                                name="oldPassword"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>当前密码</FormLabel>
+                                        <FormControl>
+                                            <PasswordInput
+                                                autoComplete="current-password"
+                                                {...field}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="password"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>新密码</FormLabel>
+                                        <FormControl>
+                                            <PasswordInput
+                                                autoComplete="new-password"
+                                                {...field}
+                                            />
+                                        </FormControl>
+                                        <FormDescription>
+                                            长度为 12–128 个字符
+                                        </FormDescription>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="confirmPassword"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>确认新密码</FormLabel>
+                                        <FormControl>
+                                            <PasswordInput
+                                                autoComplete="new-password"
+                                                {...field}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <Button type="submit" disabled={change.isPending}>
+                                {change.isPending ? (
+                                    <Loader2 className="animate-spin" />
+                                ) : null}
+                                修改密码
+                            </Button>
+                        </form>
+                    </Form>
+                    <ConfirmDialog
+                        open={pending !== null}
+                        onOpenChange={(open) => !open && setPending(null)}
+                        title="修改密码"
+                        desc="修改后，所有设备将退出登录，需使用新密码重新登录。"
+                        confirmText="确认修改"
+                        destructive
+                        isLoading={change.isPending}
+                        handleConfirm={() => {
+                            if (!pending) return;
+                            const { oldPassword, password } = pending;
+                            change.mutate(
+                                {
+                                    path: "/account/password",
+                                    body: { oldPassword, password },
                                 },
-                                onError: () => setPending(null),
-                            },
-                        );
-                    }}
-                />
-            </>
+                                {
+                                    onSuccess: () => {
+                                        setPending(null);
+                                        queryClient.clear();
+                                        toast.success(
+                                            "密码已修改，请重新登录。",
+                                        );
+                                        void navigate({ to: "/sign-in" });
+                                    },
+                                    onError: () => setPending(null),
+                                },
+                            );
+                        }}
+                    />
+                </section>
+            </div>
         </ContentSection>
     );
 }

@@ -1,24 +1,27 @@
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Link } from "@tanstack/react-router";
 import { type ColumnDef } from "@tanstack/react-table";
 import {
     Check,
+    CircleDashed,
+    Clock,
     Copy,
+    Globe,
     KeyRound,
     Loader2,
+    Network,
+    Package,
     Pencil,
     Plus,
     Power,
     PowerOff,
     Server,
     Trash2,
+    Wifi,
+    WifiOff,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useState } from "react";
 import { toast } from "sonner";
-import { z } from "zod";
+import { NODE_PROTOCOLS } from "@xboard/contracts";
 import { useCommand, usePanel } from "@/api/panel";
-import { CheckRow } from "@/components/check-row";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
     DataTable,
@@ -28,11 +31,12 @@ import {
     selectColumn,
 } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
+import { IconBlock } from "@/components/ui/icon-block";
+import { IconText } from "@/components/icon-text";
 import { InfoTip } from "@/components/info-tip";
 import { Page } from "@/components/layout/page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
     Dialog,
     DialogContent,
@@ -41,76 +45,21 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import {
-    Form,
-    FormControl,
-    FormDescription,
-    FormField,
-    FormItem,
-    FormLabel,
-    FormMessage,
-} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
 import { formatDateTime } from "@/lib/format";
 import { useEditorSearch } from "./editor-search";
-import { EditorSheet } from "./editor-sheet";
+import { NodeSheet } from "./node-form";
+import { nodeSummary, PROTOCOL_LABEL } from "./node-options";
 import { NODE_STATE_TONE } from "./status";
 import type { NodeRow, PlanRow } from "./types";
 import { nodeState } from "./units";
 
-const PROTOCOLS = [
-    "vless",
-    "vmess",
-    "trojan",
-    "shadowsocks",
-    "hysteria2",
-    "tuic",
-] as const;
-const CIPHERS = [
-    "aes-128-gcm",
-    "aes-256-gcm",
-    "chacha20-ietf-poly1305",
-] as const;
-
-const schema = z.object({
-    name: z.string().trim().min(1, "请输入名称").max(80, "名称最多 80 个字"),
-    protocol: z.enum(PROTOCOLS),
-    host: z
-        .string()
-        .trim()
-        .regex(/^[a-zA-Z0-9.:[\]-]{1,253}$/, "请输入域名或 IP"),
-    port: z
-        .string()
-        .regex(/^\d+$/, "请输入端口")
-        .refine((v) => Number(v) >= 1 && Number(v) <= 65535, "1 到 65535"),
-    serverName: z
-        .string()
-        .trim()
-        .regex(/^[a-zA-Z0-9.-]{0,253}$/, "只能包含字母、数字、点和连字符"),
-    cipher: z.enum(CIPHERS),
-    enabled: z.boolean(),
-    planIds: z.array(z.number()),
-});
-
-/** PUT body for a listed node, optionally flipping its enabled flag. */
-const nodeBody = (node: NodeRow, enabled = node.enabled) => ({
-    name: node.name,
-    protocol: node.protocol,
-    host: node.host,
-    port: node.port,
-    serverName: node.serverName,
-    cipher: node.cipher,
-    enabled,
-    planIds: node.plans.map((p) => p.planId),
-});
+const STATE_ICON = {
+    在线: Wifi,
+    离线: WifiOff,
+    未连接: CircleDashed,
+    已停用: PowerOff,
+} satisfies Record<keyof typeof NODE_STATE_TONE, unknown>;
 
 function TokenDialog({
     value,
@@ -181,274 +130,6 @@ function TokenDialog({
     );
 }
 
-function NodeSheet({
-    node,
-    plans,
-    open,
-    onClose,
-    onToken,
-}: {
-    node: NodeRow | null;
-    plans: PlanRow[];
-    open: boolean;
-    onClose: () => void;
-    onToken: (value: { id: number; token: string }) => void;
-}) {
-    const save = useCommand();
-    const form = useForm<z.infer<typeof schema>>({
-        resolver: zodResolver(schema),
-        values: {
-            name: node?.name ?? "",
-            protocol: (node?.protocol as (typeof PROTOCOLS)[number]) ?? "vless",
-            host: node?.host ?? "",
-            port: String(node?.port ?? 443),
-            serverName: node?.serverName ?? "",
-            cipher: (node?.cipher as (typeof CIPHERS)[number]) ?? CIPHERS[0],
-            enabled: node?.enabled ?? true,
-            planIds: node?.plans.map((p) => p.planId) ?? [],
-        },
-    });
-    // Opening the sheet starts from the saved values (or a blank "new"
-    // form), never from a draft left by the previous open.
-    useEffect(() => {
-        if (open) form.reset();
-    }, [open, form]);
-    const protocol = form.watch("protocol");
-
-    return (
-        <EditorSheet
-            open={open}
-            onOpenChange={(value) => !value && onClose()}
-            title={node ? `编辑节点 #${node.id}` : "新建节点"}
-            description={node ? node.name : undefined}
-            formId="node-form"
-            submitLabel={node ? "保存修改" : "创建节点"}
-            pending={save.isPending}
-        >
-            <Form {...form}>
-                <form
-                    id="node-form"
-                    className="space-y-group"
-                    onSubmit={form.handleSubmit((v) =>
-                        save.mutate(
-                            {
-                                path: node
-                                    ? `/admin/nodes/${node.id}`
-                                    : "/admin/nodes",
-                                method: node ? "PUT" : "POST",
-                                body: { ...v, port: Number(v.port) },
-                            },
-                            {
-                                onSuccess: (result) => {
-                                    if (typeof result.token === "string")
-                                        onToken({
-                                            id: Number(result.id),
-                                            token: result.token,
-                                        });
-                                    toast.success(
-                                        node ? "节点已保存" : "节点已创建",
-                                    );
-                                    onClose();
-                                },
-                            },
-                        ),
-                    )}
-                >
-                    <FormField
-                        control={form.control}
-                        name="name"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>名称</FormLabel>
-                                <FormControl>
-                                    <Input {...field} />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="protocol"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>协议</FormLabel>
-                                <Select
-                                    value={field.value}
-                                    onValueChange={field.onChange}
-                                >
-                                    <FormControl>
-                                        <SelectTrigger className="w-full">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                        {PROTOCOLS.map((p) => (
-                                            <SelectItem key={p} value={p}>
-                                                {p}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
-                    <div className="grid grid-cols-4 gap-group">
-                        <FormField
-                            control={form.control}
-                            name="host"
-                            render={({ field }) => (
-                                <FormItem className="col-span-3">
-                                    <FormLabel>地址</FormLabel>
-                                    <FormControl>
-                                        <Input
-                                            placeholder="node.example.com"
-                                            {...field}
-                                        />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                        <FormField
-                            control={form.control}
-                            name="port"
-                            render={({ field }) => (
-                                <FormItem className="col-span-1">
-                                    <FormLabel>端口</FormLabel>
-                                    <FormControl>
-                                        <Input inputMode="numeric" {...field} />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                    </div>
-                    <FormField
-                        control={form.control}
-                        name="serverName"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>TLS 服务器名称（SNI）</FormLabel>
-                                <FormControl>
-                                    <Input {...field} />
-                                </FormControl>
-                                <FormDescription>
-                                    默认与地址相同
-                                </FormDescription>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
-                    {protocol === "shadowsocks" ? (
-                        <FormField
-                            control={form.control}
-                            name="cipher"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>加密方式</FormLabel>
-                                    <FormControl>
-                                        <RadioGroup
-                                            value={field.value}
-                                            onValueChange={field.onChange}
-                                            className="gap-field"
-                                        >
-                                            {CIPHERS.map((c) => (
-                                                <label
-                                                    key={c}
-                                                    className="flex items-center gap-inline text-sm"
-                                                >
-                                                    <RadioGroupItem value={c} />
-                                                    <span className="numeric">
-                                                        {c}
-                                                    </span>
-                                                </label>
-                                            ))}
-                                        </RadioGroup>
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                    ) : null}
-                    <FormField
-                        control={form.control}
-                        name="planIds"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>可使用的套餐</FormLabel>
-                                <div className="grid gap-field">
-                                    {plans.length ? (
-                                        plans.map((plan) => (
-                                            <label
-                                                key={plan.id}
-                                                className="flex items-center gap-inline text-sm"
-                                            >
-                                                <Checkbox
-                                                    checked={field.value.includes(
-                                                        plan.id,
-                                                    )}
-                                                    onCheckedChange={(
-                                                        checked,
-                                                    ) =>
-                                                        field.onChange(
-                                                            checked
-                                                                ? [
-                                                                      ...field.value,
-                                                                      plan.id,
-                                                                  ]
-                                                                : field.value.filter(
-                                                                      (id) =>
-                                                                          id !==
-                                                                          plan.id,
-                                                                  ),
-                                                        )
-                                                    }
-                                                />
-                                                {plan.name}
-                                                {plan.published ? null : (
-                                                    <Badge variant="outline">
-                                                        未发布
-                                                    </Badge>
-                                                )}
-                                            </label>
-                                        ))
-                                    ) : (
-                                        <p className="text-sm text-muted-foreground">
-                                            暂无套餐，请先
-                                            <Link
-                                                to="/admin/plans"
-                                                search={{ new: true }}
-                                                className="text-foreground underline underline-offset-4"
-                                            >
-                                                创建套餐
-                                            </Link>
-                                            。
-                                        </p>
-                                    )}
-                                </div>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="enabled"
-                        render={({ field }) => (
-                            <CheckRow
-                                label="启用节点"
-                                description="停用后，节点将无法获取用户列表。"
-                                checked={field.value}
-                                onCheckedChange={field.onChange}
-                            />
-                        )}
-                    />
-                </form>
-            </Form>
-        </EditorSheet>
-    );
-}
-
 export function AdminNodes() {
     const list = usePanel<NodeRow[]>("/admin/nodes");
     const plans = usePanel<PlanRow[]>("/admin/plans");
@@ -467,6 +148,7 @@ export function AdminNodes() {
         clear: () => void;
     } | null>(null);
     const planName = new Map(plans.data?.map((p) => [p.id, p.name]));
+    const byId = new Map(list.data?.map((n) => [n.id, n]));
     const editing = list.data?.find((n) => n.id === editor.editId) ?? null;
 
     const setEnabled = async (
@@ -480,9 +162,9 @@ export function AdminNodes() {
         for (const node of targets) {
             try {
                 await action.mutateAsync({
-                    path: `/admin/nodes/${node.id}`,
+                    path: `/admin/nodes/${node.id}/enabled`,
                     method: "PUT",
-                    body: nodeBody(node, enabled),
+                    body: { enabled },
                 });
                 done += 1;
             } catch {
@@ -503,11 +185,34 @@ export function AdminNodes() {
                 <DataTableColumnHeader column={column} title="节点" />
             ),
             cell: ({ row }) => (
-                <div>
-                    <p className="font-medium">{row.original.name}</p>
-                    <p className="numeric text-xs text-muted-foreground">
-                        #{row.original.id}
-                    </p>
+                <div className="flex items-center gap-3">
+                    <IconBlock
+                        size="sm"
+                        tone={row.original.enabled ? "brand" : "neutral"}
+                    >
+                        <Server />
+                    </IconBlock>
+                    <div className="space-y-1">
+                        <p className="font-medium">{row.original.name}</p>
+                        <div className="flex flex-wrap items-center gap-1">
+                            <span className="numeric text-xs text-muted-foreground">
+                                #{row.original.id}
+                            </span>
+                            {row.original.parentId !== null ? (
+                                <Badge variant="outline">
+                                    中转 #{row.original.parentId}
+                                </Badge>
+                            ) : null}
+                            {row.original.visible ? null : (
+                                <Badge variant="secondary">不在订阅中</Badge>
+                            )}
+                            {row.original.tags.map((tag) => (
+                                <Badge key={tag} variant="outline">
+                                    {tag}
+                                </Badge>
+                            ))}
+                        </div>
+                    </div>
                 </div>
             ),
             enableHiding: false,
@@ -515,13 +220,29 @@ export function AdminNodes() {
         },
         {
             id: "state",
-            accessorFn: (n) => nodeState(n),
+            // A relay has no backend of its own: it is as online as its parent.
+            accessorFn: (n) =>
+                nodeState(
+                    n.parentId === null
+                        ? n
+                        : {
+                              ...n,
+                              lastSeenAt:
+                                  byId.get(n.parentId)?.lastSeenAt ?? null,
+                          },
+                ),
             header: ({ column }) => (
                 <DataTableColumnHeader column={column} title="状态" />
             ),
             cell: ({ getValue }) => {
                 const value = getValue<keyof typeof NODE_STATE_TONE>();
-                return <Badge variant={NODE_STATE_TONE[value]}>{value}</Badge>;
+                const Icon = STATE_ICON[value];
+                return (
+                    <Badge variant={NODE_STATE_TONE[value]}>
+                        <Icon />
+                        {value}
+                    </Badge>
+                );
             },
             filterFn: inFilter,
             meta: { title: "状态" },
@@ -531,9 +252,25 @@ export function AdminNodes() {
             header: ({ column }) => (
                 <DataTableColumnHeader column={column} title="协议" />
             ),
-            cell: ({ row }) => (
-                <span className="numeric">{row.original.protocol}</span>
-            ),
+            cell: ({ row }) => {
+                const source =
+                    row.original.parentId === null
+                        ? row.original
+                        : byId.get(row.original.parentId);
+                const summary = source ? nodeSummary(source) : "";
+                return (
+                    <div>
+                        <IconText icon={Network}>
+                            {PROTOCOL_LABEL[row.original.protocol]}
+                        </IconText>
+                        {summary ? (
+                            <p className="text-xs text-muted-foreground">
+                                {summary}
+                            </p>
+                        ) : null}
+                    </div>
+                );
+            },
             filterFn: inFilter,
             meta: { title: "协议" },
         },
@@ -544,11 +281,34 @@ export function AdminNodes() {
                 <DataTableColumnHeader column={column} title="地址" />
             ),
             cell: ({ getValue }) => (
-                <span className="numeric text-muted-foreground">
-                    {getValue<string>()}
-                </span>
+                <IconText icon={Globe}>{getValue<string>()}</IconText>
             ),
             meta: { title: "地址" },
+        },
+        {
+            id: "rate",
+            accessorFn: (n) =>
+                n.parentId === null
+                    ? n.rate
+                    : (byId.get(n.parentId)?.rate ?? 1),
+            header: ({ column }) => (
+                <DataTableColumnHeader column={column} title="倍率" />
+            ),
+            cell: ({ row, getValue }) => {
+                const source =
+                    row.original.parentId === null
+                        ? row.original
+                        : byId.get(row.original.parentId);
+                return (
+                    <span className="numeric">
+                        ×{getValue<number>()}
+                        {source?.rateRanges.length ? (
+                            <span className="text-muted-foreground"> 分时</span>
+                        ) : null}
+                    </span>
+                );
+            },
+            meta: { title: "倍率" },
         },
         {
             id: "plans",
@@ -559,9 +319,9 @@ export function AdminNodes() {
             header: "套餐",
             cell: ({ getValue }) =>
                 getValue<string>() ? (
-                    <span className="text-muted-foreground">
+                    <IconText icon={Package} className="font-sans">
                         {getValue<string>()}
-                    </span>
+                    </IconText>
                 ) : (
                     <Badge variant="warning">未关联</Badge>
                 ),
@@ -575,11 +335,14 @@ export function AdminNodes() {
             header: ({ column }) => (
                 <DataTableColumnHeader column={column} title="最近上报" />
             ),
-            cell: ({ row }) => (
-                <span className="numeric text-muted-foreground">
-                    {formatDateTime(row.original.lastSeenAt)}
-                </span>
-            ),
+            cell: ({ row }) =>
+                row.original.lastSeenAt ? (
+                    <IconText icon={Clock} className="text-muted-foreground">
+                        {formatDateTime(row.original.lastSeenAt)}
+                    </IconText>
+                ) : (
+                    <span className="text-muted-foreground">—</span>
+                ),
             sortUndefined: "last",
             meta: { title: "最近上报", exportValue: (n) => n.lastSeenAt ?? "" },
         },
@@ -605,12 +368,9 @@ export function AdminNodes() {
                                       })
                                     : action.mutate(
                                           {
-                                              path: `/admin/nodes/${row.original.id}`,
+                                              path: `/admin/nodes/${row.original.id}/enabled`,
                                               method: "PUT",
-                                              body: nodeBody(
-                                                  row.original,
-                                                  true,
-                                              ),
+                                              body: { enabled: true },
                                           },
                                           {
                                               onSuccess: () =>
@@ -619,16 +379,20 @@ export function AdminNodes() {
                                       ),
                         },
                         "separator",
-                        {
-                            label: "重置密钥",
-                            icon: KeyRound,
-                            destructive: true,
-                            onSelect: () =>
-                                setConfirm({
-                                    kind: "rotate",
-                                    node: row.original,
-                                }),
-                        },
+                        ...(row.original.parentId === null
+                            ? [
+                                  {
+                                      label: "重置密钥",
+                                      icon: KeyRound,
+                                      destructive: true,
+                                      onSelect: () =>
+                                          setConfirm({
+                                              kind: "rotate",
+                                              node: row.original,
+                                          }),
+                                  },
+                              ]
+                            : []),
                         {
                             label: "删除",
                             icon: Trash2,
@@ -649,7 +413,7 @@ export function AdminNodes() {
     return (
         <Page
             title="节点"
-            help="兼容 UniProxy（V2bX）及 XrayR 的 V2board 旧版接口。支持协议：VMess、VLESS、Trojan（TCP + TLS）、Shadowsocks（AEAD）、Hysteria2、TUIC。"
+            help="兼容 UniProxy（V2bX）及 XrayR 的 V2board 旧版接口。支持 VLESS、VMess、Trojan（TLS / Reality，TCP、WebSocket、gRPC、HTTPUpgrade、XHTTP）、Shadowsocks、Hysteria2、Hysteria、TUIC、AnyTLS、SOCKS5、HTTP、Naive、Mieru。中转节点由父节点的后端提供服务。"
             actions={
                 <Button onClick={() => editor.open("new")}>
                     <Plus /> 新建节点
@@ -692,7 +456,10 @@ export function AdminNodes() {
                     {
                         columnId: "protocol",
                         title: "协议",
-                        options: PROTOCOLS.map((p) => ({ value: p, label: p })),
+                        options: NODE_PROTOCOLS.map((p) => ({
+                            value: p,
+                            label: PROTOCOL_LABEL[p],
+                        })),
                     },
                 ]}
                 bulkActions={(rows, clear) => (
@@ -725,6 +492,7 @@ export function AdminNodes() {
             <NodeSheet
                 key={editing?.id ?? "new"}
                 node={editing}
+                nodes={list.data ?? []}
                 plans={plans.data ?? []}
                 open={editor.isNew || editing !== null}
                 onClose={() => editor.open(null)}
@@ -779,9 +547,9 @@ export function AdminNodes() {
                             ? { path: `/admin/nodes/${node.id}/token` }
                             : kind === "disable"
                               ? {
-                                    path: `/admin/nodes/${node.id}`,
+                                    path: `/admin/nodes/${node.id}/enabled`,
                                     method: "PUT",
-                                    body: nodeBody(node, false),
+                                    body: { enabled: false },
                                 }
                               : {
                                     path: `/admin/nodes/${node.id}`,

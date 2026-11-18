@@ -4,6 +4,8 @@ import { ApiError } from "@/api/client";
 import { Loader2, LogIn } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { useState } from "react";
+import { twoFactorCodeSchema } from "@xboard/contracts";
 import { useLogin } from "@/api/hooks";
 import { useSite } from "@/api/panel";
 import { Button } from "@/components/ui/button";
@@ -36,25 +38,48 @@ const formSchema = z.object({
         .max(64, "邮箱最多 64 个字符")
         .email("邮箱格式不正确"),
     password: z.string().min(1, "请输入密码").max(256, "密码最多 256 个字符"),
+    twoFactorCode: z.string().optional(),
 });
 
 export function SignIn() {
     const { redirect } = useSearch({ from: "/(auth)/sign-in" });
     const navigate = useNavigate();
     const login = useLogin();
+    const [needsFactor, setNeedsFactor] = useState(false);
     const site = useSite();
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
-        defaultValues: { email: "", password: "" },
+        defaultValues: { email: "", password: "", twoFactorCode: "" },
     });
 
     const onSubmit = async (data: z.infer<typeof formSchema>) => {
+        const { twoFactorCode, ...credentials } = data;
+        const proof = needsFactor
+            ? twoFactorCodeSchema.safeParse(twoFactorCode)
+            : null;
+        if (proof && !proof.success) {
+            form.setError("twoFactorCode", {
+                message: "请输入 6 位动态验证码或恢复码。",
+            });
+            return;
+        }
         try {
-            await login.mutateAsync(data);
+            await login.mutateAsync({
+                ...credentials,
+                ...(proof?.success && { twoFactorCode: proof.data }),
+            });
             await navigate({ to: safeRedirect(redirect), replace: true });
         } catch (error) {
             // A wrong password is a form error, not a toast.
-            if (error instanceof ApiError && error.status === 401)
+            if (
+                error instanceof ApiError &&
+                (error.code === "two_factor_required" ||
+                    error.code === "two_factor_invalid")
+            ) {
+                setNeedsFactor(true);
+                if (error.code === "two_factor_invalid")
+                    form.setError("twoFactorCode", { message: error.message });
+            } else if (error instanceof ApiError && error.status === 401)
                 form.setError("password", {
                     message: "邮箱或密码不正确，或账户不可用。",
                 });
@@ -86,6 +111,13 @@ export function SignIn() {
                                                 autoComplete="username"
                                                 inputMode="email"
                                                 {...field}
+                                                onChange={(event) => {
+                                                    field.onChange(event);
+                                                    setNeedsFactor(false);
+                                                    form.resetField(
+                                                        "twoFactorCode",
+                                                    );
+                                                }}
                                             />
                                         </FormControl>
                                         <FormMessage />
@@ -116,6 +148,27 @@ export function SignIn() {
                                     </FormItem>
                                 )}
                             />
+                            {needsFactor && (
+                                <FormField
+                                    control={form.control}
+                                    name="twoFactorCode"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>
+                                                动态验证码或恢复码
+                                            </FormLabel>
+                                            <FormControl>
+                                                <Input
+                                                    {...field}
+                                                    autoComplete="one-time-code"
+                                                    autoFocus
+                                                />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            )}
                             <Button
                                 className="w-full"
                                 disabled={login.isPending}

@@ -34,6 +34,8 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       MAIL_FROM: ${MAIL_FROM:-Xboard <noreply@example.com>}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

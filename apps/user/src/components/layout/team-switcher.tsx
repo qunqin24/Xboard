@@ -42,7 +42,10 @@ export function TeamSwitcher() {
 
     const header = (
         <>
-            <Logo className="size-8" />
+            {/* Wrapped: the menu button shrinks any direct <svg> child to 16px. */}
+            <span className="flex size-8 shrink-0">
+                <Logo className="size-full" />
+            </span>
             <div className="grid flex-1 text-start text-sm leading-tight">
                 <span className="truncate font-semibold">
                     {site.data?.siteName ?? "Xboard"}

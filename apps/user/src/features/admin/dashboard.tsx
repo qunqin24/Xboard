@@ -4,10 +4,11 @@ import {
     ArrowUpRight,
     CreditCard,
     Gauge,
+    Network,
     Receipt,
     Users,
 } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
     Area,
     AreaChart,
@@ -20,8 +21,10 @@ import {
     YAxis,
 } from "recharts";
 import { usePanel } from "@/api/panel";
+import { chartAxis, chartMargin, chartTooltip } from "@/components/chart-style";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
+import { IconBlock } from "@/components/ui/icon-block";
 import { Page } from "@/components/layout/page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,6 +38,7 @@ import {
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tile } from "@/components/ui/tile";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { formatDateTime, formatMinor, formatTraffic } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -46,8 +50,10 @@ import type {
     Stats,
     StatsDay,
 } from "./types";
+import { PROTOCOL_LABEL } from "./node-options";
 import { NODE_STATE_TONE, ORDER_STATUS } from "./status";
 import { GIB, nodeState } from "./units";
+import { TrafficRankings } from "./traffic-rankings";
 
 const RANGES = [7, 30, 90] as const;
 const sum = (days: StatsDay[], pick: (day: StatsDay) => number) =>
@@ -59,10 +65,38 @@ export function percentChange(
     previous: number,
 ): number | null {
     if (previous === 0) return current === 0 ? 0 : null;
-    return ((current - previous) / previous) * 100;
+    return ((current - previous) / Math.abs(previous)) * 100;
 }
 
-function Kpi({
+function Change({
+    change,
+    decreaseIsBad = true,
+}: {
+    change: number | null;
+    decreaseIsBad?: boolean;
+}) {
+    if (change === null)
+        return <p className="text-xs text-muted-foreground">上期无数据</p>;
+    return (
+        <p className="flex flex-wrap items-center gap-inline text-xs text-muted-foreground">
+            <span
+                className={cn(
+                    "numeric inline-flex items-center",
+                    change > 0 && "text-success",
+                    change < 0 && decreaseIsBad && "text-destructive",
+                )}
+            >
+                {change > 0 && <ArrowUpRight className="size-3" />}
+                {change < 0 && <ArrowDownRight className="size-3" />}
+                {change > 0 ? "+" : ""}
+                {change.toFixed(change === 0 ? 0 : 1)}%
+            </span>
+            较上期
+        </p>
+    );
+}
+
+function Metric({
     title,
     icon: Icon,
     value,
@@ -78,71 +112,28 @@ function Kpi({
     /** Traffic falling is not a problem; revenue, orders and sign-ups falling is. */
     decreaseIsBad?: boolean;
 }) {
-    const change = percentChange(current, previous);
     return (
-        <Card className="gap-2">
-            <CardHeader>
-                <CardTitle className="text-sm font-medium">{title}</CardTitle>
-                <CardAction>
-                    <Icon className="size-4 text-muted-foreground" />
-                </CardAction>
-            </CardHeader>
-            <CardContent>
-                <div className="numeric text-2xl font-bold">{value}</div>
-                <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                    {change === null ? (
-                        "上期无数据"
-                    ) : (
-                        <>
-                            <span
-                                className={cn(
-                                    "numeric inline-flex items-center",
-                                    change > 0 && "text-success",
-                                    change < 0 &&
-                                        (decreaseIsBad
-                                            ? "text-destructive"
-                                            : "text-muted-foreground"),
-                                )}
-                            >
-                                {change > 0 ? (
-                                    <ArrowUpRight className="size-3" />
-                                ) : null}
-                                {change < 0 ? (
-                                    <ArrowDownRight className="size-3" />
-                                ) : null}
-                                {change > 0 ? "+" : ""}
-                                {change.toFixed(change === 0 ? 0 : 1)}%
-                            </span>
-                            较上期
-                        </>
-                    )}
+        <Tile className="flex items-start gap-group">
+            <IconBlock>
+                <Icon />
+            </IconBlock>
+            <div className="min-w-0">
+                <p className="text-sm text-muted-foreground">{title}</p>
+                <p className="numeric text-xl font-semibold break-words">
+                    {value}
                 </p>
-            </CardContent>
-        </Card>
+                <Change
+                    change={percentChange(current, previous)}
+                    decreaseIsBad={decreaseIsBad}
+                />
+            </div>
+        </Tile>
     );
 }
 
-const axis = {
-    stroke: "var(--muted-foreground)",
-    fontSize: 12,
-    tickLine: false,
-    axisLine: false,
-} as const;
-const tooltipStyle = {
-    contentStyle: {
-        background: "var(--popover)",
-        border: "1px solid var(--border)",
-        borderRadius: "var(--radius-control)",
-        color: "var(--popover-foreground)",
-        fontSize: 12,
-    },
-    labelStyle: { color: "var(--muted-foreground)" },
-    cursor: { stroke: "var(--border)", fill: "var(--muted)" },
-};
-const chartMargin = { top: 4, right: 8, bottom: 0, left: 0 };
-
 export function AdminDashboard() {
     const [range, setRange] = useState<(typeof RANGES)[number]>(30);
+    const revenueGradient = useId();
     // Twice the range: the older half is the comparison period. Top plans
     // cover only the selected range.
     const stats = usePanel<Stats>(
@@ -214,7 +205,8 @@ export function AdminDashboard() {
                 ) : (
                     <>
                         <span>用户 {overview.data.users}</span>
-                        <span>
+                        <span className="inline-flex items-center gap-inline">
+                            <Network className="size-4" aria-hidden="true" />
                             节点在线 {online ?? "—"} / {overview.data.nodes}
                         </span>
                         {overview.data.openTickets ? (
@@ -244,51 +236,33 @@ export function AdminDashboard() {
                 </Card>
             ) : (
                 <>
-                    {stats.isPending ? (
-                        <div className="grid gap-page sm:grid-cols-2 lg:grid-cols-4">
-                            {[0, 1, 2, 3].map((i) => (
-                                <Skeleton key={i} className="h-28" />
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="grid gap-page sm:grid-cols-2 lg:grid-cols-4">
-                            <Kpi
-                                title="收入"
-                                icon={CreditCard}
-                                value={formatMinor(revenue[0])}
-                                current={revenue[0]}
-                                previous={revenue[1]}
-                            />
-                            <Kpi
-                                title="已支付订单"
-                                icon={Receipt}
-                                value={String(paid[0])}
-                                current={paid[0]}
-                                previous={paid[1]}
-                            />
-                            <Kpi
-                                title="新用户"
-                                icon={Users}
-                                value={String(users[0])}
-                                current={users[0]}
-                                previous={users[1]}
-                            />
-                            <Kpi
-                                title="流量"
-                                icon={Gauge}
-                                value={formatTraffic(String(traffic[0]))}
-                                current={traffic[0]}
-                                previous={traffic[1]}
-                                decreaseIsBad={false}
-                            />
-                        </div>
-                    )}
-
                     <div className="grid grid-cols-1 gap-page lg:grid-cols-7">
-                        <Card className="lg:col-span-4">
+                        <Card className="min-w-0 bg-primary/5 lg:col-span-5">
                             <CardHeader>
-                                <CardTitle>每日收入</CardTitle>
-                                <CardDescription>单位：元</CardDescription>
+                                <div className="flex items-start gap-group">
+                                    <IconBlock>
+                                        <CreditCard />
+                                    </IconBlock>
+                                    <div className="min-w-0">
+                                        <CardTitle className="text-sm">
+                                            净收入
+                                        </CardTitle>
+                                        {stats.isPending ? (
+                                            <Skeleton className="mt-field h-8 w-28" />
+                                        ) : (
+                                            <>
+                                                <p className="numeric text-3xl font-semibold tracking-tight break-words sm:text-4xl">
+                                                    {formatMinor(revenue[0])}
+                                                </p>
+                                                <Change
+                                                    change={percentChange(
+                                                        ...revenue,
+                                                    )}
+                                                />
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
                             </CardHeader>
                             <CardContent>
                                 {chart(
@@ -301,6 +275,26 @@ export function AdminDashboard() {
                                             data={series}
                                             margin={chartMargin}
                                         >
+                                            <defs>
+                                                <linearGradient
+                                                    id={revenueGradient}
+                                                    x1="0"
+                                                    y1="0"
+                                                    x2="0"
+                                                    y2="1"
+                                                >
+                                                    <stop
+                                                        offset="0%"
+                                                        stopColor="var(--primary)"
+                                                        stopOpacity={0.35}
+                                                    />
+                                                    <stop
+                                                        offset="100%"
+                                                        stopColor="var(--primary)"
+                                                        stopOpacity={0.02}
+                                                    />
+                                                </linearGradient>
+                                            </defs>
                                             <CartesianGrid
                                                 vertical={false}
                                                 stroke="var(--border)"
@@ -308,28 +302,27 @@ export function AdminDashboard() {
                                             />
                                             <XAxis
                                                 dataKey="date"
-                                                {...axis}
+                                                {...chartAxis}
                                                 minTickGap={24}
                                             />
                                             <YAxis
-                                                {...axis}
+                                                {...chartAxis}
                                                 width={48}
                                                 tickFormatter={(v) => `¥${v}`}
                                                 allowDecimals={false}
                                             />
                                             <Tooltip
-                                                {...tooltipStyle}
+                                                {...chartTooltip}
                                                 formatter={(v) => [
                                                     `¥${Number(v).toFixed(2)}`,
-                                                    "收入",
+                                                    "净收入",
                                                 ]}
                                             />
                                             <Area
                                                 type="monotone"
                                                 dataKey="revenue"
                                                 stroke="var(--primary)"
-                                                fill="var(--primary)"
-                                                fillOpacity={0.1}
+                                                fill={`url(#${revenueGradient})`}
                                                 strokeWidth={2}
                                             />
                                         </AreaChart>
@@ -337,7 +330,51 @@ export function AdminDashboard() {
                                 )}
                             </CardContent>
                         </Card>
-                        <Card className="lg:col-span-3">
+                        <Card className="min-w-0 lg:col-span-2">
+                            <CardHeader>
+                                <CardTitle>运营概况</CardTitle>
+                            </CardHeader>
+                            <CardContent className="grid gap-field sm:grid-cols-3 lg:grid-cols-1">
+                                {stats.isPending ? (
+                                    ["orders", "users", "traffic"].map(
+                                        (item) => (
+                                            <Skeleton
+                                                key={item}
+                                                className="h-20"
+                                            />
+                                        ),
+                                    )
+                                ) : (
+                                    <>
+                                        <Metric
+                                            title="已结算订单"
+                                            icon={Receipt}
+                                            value={String(paid[0])}
+                                            current={paid[0]}
+                                            previous={paid[1]}
+                                        />
+                                        <Metric
+                                            title="新用户"
+                                            icon={Users}
+                                            value={String(users[0])}
+                                            current={users[0]}
+                                            previous={users[1]}
+                                        />
+                                        <Metric
+                                            title="已用流量"
+                                            icon={Gauge}
+                                            value={formatTraffic(
+                                                String(traffic[0]),
+                                            )}
+                                            current={traffic[0]}
+                                            previous={traffic[1]}
+                                            decreaseIsBad={false}
+                                        />
+                                    </>
+                                )}
+                            </CardContent>
+                        </Card>
+                        <Card className="min-w-0 lg:col-span-3">
                             <CardHeader>
                                 <CardTitle>热门套餐</CardTitle>
                                 <CardDescription>
@@ -352,9 +389,9 @@ export function AdminDashboard() {
                                         {stats.data.topPlans.map(
                                             (plan, index) => (
                                                 <li key={plan.planName}>
-                                                    <div className="mb-2 flex items-baseline justify-between gap-group text-sm">
+                                                    <div className="mb-field flex items-baseline justify-between gap-group text-sm">
                                                         <span className="truncate">
-                                                            <span className="numeric me-2 text-xs text-muted-foreground">
+                                                            <span className="numeric me-inline text-xs text-muted-foreground">
                                                                 {index + 1}
                                                             </span>
                                                             {plan.planName}
@@ -363,15 +400,18 @@ export function AdminDashboard() {
                                                             {formatMinor(
                                                                 plan.revenueMinor,
                                                             )}
-                                                            <span className="ms-2 text-xs text-muted-foreground">
+                                                            <span className="ms-inline text-xs text-muted-foreground">
                                                                 {plan.orders} 笔
                                                             </span>
                                                         </span>
                                                     </div>
                                                     <Progress
-                                                        className="h-1.5"
+                                                        className="h-2"
                                                         value={
-                                                            (plan.revenueMinor /
+                                                            (Math.max(
+                                                                0,
+                                                                plan.revenueMinor,
+                                                            ) /
                                                                 topMax) *
                                                             100
                                                         }
@@ -388,7 +428,7 @@ export function AdminDashboard() {
                                 )}
                             </CardContent>
                         </Card>
-                        <Card className="lg:col-span-3">
+                        <Card className="min-w-0 lg:col-span-4">
                             <CardHeader>
                                 <CardTitle>新用户</CardTitle>
                                 <CardDescription>单位：人</CardDescription>
@@ -411,16 +451,16 @@ export function AdminDashboard() {
                                             />
                                             <XAxis
                                                 dataKey="date"
-                                                {...axis}
+                                                {...chartAxis}
                                                 minTickGap={24}
                                             />
                                             <YAxis
-                                                {...axis}
+                                                {...chartAxis}
                                                 width={32}
                                                 allowDecimals={false}
                                             />
                                             <Tooltip
-                                                {...tooltipStyle}
+                                                {...chartTooltip}
                                                 formatter={(v) => [
                                                     `${v} 人`,
                                                     "新用户",
@@ -436,7 +476,7 @@ export function AdminDashboard() {
                                 )}
                             </CardContent>
                         </Card>
-                        <Card className="lg:col-span-4">
+                        <Card className="min-w-0 lg:col-span-7">
                             <CardHeader>
                                 <CardTitle>流量用量</CardTitle>
                                 <CardDescription>单位：GB</CardDescription>
@@ -459,18 +499,18 @@ export function AdminDashboard() {
                                             />
                                             <XAxis
                                                 dataKey="date"
-                                                {...axis}
+                                                {...chartAxis}
                                                 minTickGap={24}
                                             />
                                             <YAxis
-                                                {...axis}
+                                                {...chartAxis}
                                                 width={64}
                                                 tickFormatter={(v) =>
                                                     `${Number(v).toFixed(1)} GB`
                                                 }
                                             />
                                             <Tooltip
-                                                {...tooltipStyle}
+                                                {...chartTooltip}
                                                 formatter={(v) => [
                                                     `${Number(v).toFixed(2)} GB`,
                                                     "流量",
@@ -493,8 +533,9 @@ export function AdminDashboard() {
                 </>
             )}
 
-            <div className="grid gap-page lg:grid-cols-2">
-                <Card>
+            <TrafficRankings days={range} />
+            <div className="grid grid-cols-1 gap-page lg:grid-cols-2">
+                <Card className="min-w-0">
                     <CardHeader>
                         <CardTitle>最近订单</CardTitle>
                         <CardAction>
@@ -523,12 +564,12 @@ export function AdminDashboard() {
                                         <p className="truncate text-sm font-medium">
                                             {order.user.email}
                                         </p>
-                                        <p className="numeric text-xs text-muted-foreground">
+                                        <p className="numeric truncate text-xs text-muted-foreground">
                                             {order.planName} ·{" "}
                                             {formatDateTime(order.createdAt)}
                                         </p>
                                     </div>
-                                    <div className="flex shrink-0 items-center gap-group">
+                                    <div className="flex shrink-0 items-center gap-inline">
                                         <Badge
                                             variant={
                                                 ORDER_STATUS[order.status].tone
@@ -536,8 +577,8 @@ export function AdminDashboard() {
                                         >
                                             {ORDER_STATUS[order.status].label}
                                         </Badge>
-                                        <span className="numeric w-16 text-end text-sm">
-                                            {formatMinor(order.amountMinor)}
+                                        <span className="numeric min-w-16 text-end text-sm">
+                                            {formatMinor(order.payableMinor)}
                                         </span>
                                     </div>
                                 </div>
@@ -545,7 +586,7 @@ export function AdminDashboard() {
                         )}
                     </CardContent>
                 </Card>
-                <Card>
+                <Card className="min-w-0">
                     <CardHeader>
                         <CardTitle>节点状态</CardTitle>
                         <CardAction>
@@ -576,9 +617,9 @@ export function AdminDashboard() {
                                             <p className="truncate text-sm font-medium">
                                                 {node.name}
                                             </p>
-                                            <p className="numeric text-xs text-muted-foreground">
-                                                {node.protocol} · {node.host}:
-                                                {node.port}
+                                            <p className="numeric truncate text-xs text-muted-foreground">
+                                                {PROTOCOL_LABEL[node.protocol]}{" "}
+                                                · {node.host}:{node.port}
                                             </p>
                                         </div>
                                         <Badge variant={NODE_STATE_TONE[state]}>

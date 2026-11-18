@@ -24,7 +24,12 @@ function ScrollArea({
                 data-slot="scroll-area-viewport"
                 className={cn(
                     "size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1",
-                    orientation === "horizontal" && "overflow-x-auto!",
+                    // Radix wraps children in a display:table div that grows
+                    // to the widest line, which defeats `truncate`. Vertical
+                    // areas follow the container width instead.
+                    orientation === "horizontal"
+                        ? "overflow-x-auto!"
+                        : "[&>div]:block!",
                 )}
             >
                 {children}

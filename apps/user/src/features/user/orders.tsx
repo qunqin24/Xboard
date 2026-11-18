@@ -1,7 +1,16 @@
 import { type ColumnDef } from "@tanstack/react-table";
 import type { Order } from "@xboard/contracts";
 import { Link } from "@tanstack/react-router";
-import { X } from "lucide-react";
+import {
+    Banknote,
+    CircleCheck,
+    CircleX,
+    Clock,
+    Package,
+    TimerOff,
+    X,
+    type LucideIcon,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useAccount, useOrderAction, useOrders } from "@/api/hooks";
@@ -15,15 +24,26 @@ import {
 import { Page } from "@/components/layout/page";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { EmptyState } from "@/components/empty-state";
+import { IconBlock } from "@/components/ui/icon-block";
+import { IconText } from "@/components/icon-text";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
     formatDateTime,
     formatMinor,
+    formatSettlement,
     formatTraffic,
     periodLabel,
 } from "@/lib/format";
 import { orderStatus } from "./status";
+
+/** Keyed by the labels orderStatus() returns. */
+const STATUS_ICON: Record<string, LucideIcon> = {
+    已开通: CircleCheck,
+    待支付: Clock,
+    已取消: CircleX,
+    已超时: TimerOff,
+};
 
 export function Orders() {
     const orders = useOrders();
@@ -40,17 +60,23 @@ export function Orders() {
                 <DataTableColumnHeader column={column} title="套餐" />
             ),
             cell: ({ row }) => (
-                <div>
-                    <p className="font-medium">
-                        {row.original.planName}
-                        <span className="ms-2 text-muted-foreground">
-                            {periodLabel(row.original.period)}
-                        </span>
-                    </p>
-                    <p className="numeric text-xs text-muted-foreground">
-                        {formatTraffic(row.original.transferBytes)} ·{" "}
-                        {row.original.durationDays} 天
-                    </p>
+                <div className="flex items-center gap-3">
+                    <IconBlock size="sm">
+                        <Package />
+                    </IconBlock>
+                    <div>
+                        <p className="font-medium">
+                            {row.original.planName}
+                            <span className="ms-2 text-muted-foreground">
+                                {periodLabel(row.original.period)}
+                            </span>
+                        </p>
+                        <p className="numeric text-xs text-muted-foreground">
+                            {row.original.kind === "traffic_reset"
+                                ? "清零当前用量"
+                                : `${formatTraffic(row.original.transferBytes)} · ${row.original.durationDays} 天`}
+                        </p>
+                    </div>
                 </div>
             ),
             meta: { title: "套餐" },
@@ -63,32 +89,39 @@ export function Orders() {
             header: ({ column }) => (
                 <DataTableColumnHeader column={column} title="状态" />
             ),
-            cell: ({ getValue, row }) => (
-                <Badge
-                    variant={
-                        orderStatus(row.original.status, row.original.expiresAt)
-                            .tone
-                    }
-                >
-                    {getValue<string>()}
-                </Badge>
-            ),
+            cell: ({ getValue, row }) => {
+                const label = getValue<string>();
+                const Icon = STATUS_ICON[label] ?? Clock;
+                return (
+                    <Badge
+                        variant={
+                            orderStatus(
+                                row.original.status,
+                                row.original.expiresAt,
+                            ).tone
+                        }
+                    >
+                        <Icon />
+                        {label}
+                    </Badge>
+                );
+            },
             meta: { title: "状态" },
             filterFn: inFilter,
         },
         {
-            accessorKey: "amountMinor",
+            accessorKey: "payableMinor",
             header: ({ column }) => (
                 <DataTableColumnHeader column={column} title="金额" />
             ),
             cell: ({ row }) => (
-                <span className="numeric">
-                    {formatMinor(row.original.amountMinor)}
-                </span>
+                <IconText icon={Banknote}>
+                    {formatSettlement(row.original.payableMinor)}
+                </IconText>
             ),
             meta: {
                 title: "金额",
-                exportValue: (o) => (o.amountMinor / 100).toFixed(2),
+                exportValue: (o) => (o.payableMinor / 100).toFixed(2),
             },
         },
         {
@@ -97,9 +130,9 @@ export function Orders() {
                 <DataTableColumnHeader column={column} title="创建时间" />
             ),
             cell: ({ row }) => (
-                <span className="numeric text-muted-foreground">
+                <IconText icon={Clock} className="text-muted-foreground">
                     {formatDateTime(row.original.createdAt)}
-                </span>
+                </IconText>
             ),
             meta: { title: "创建时间" },
         },
@@ -117,7 +150,7 @@ export function Orders() {
                             size="sm"
                             onClick={() => setPaying(row.original)}
                         >
-                            支付
+                            结算
                         </Button>
                         <RowActions
                             actions={[
@@ -135,7 +168,7 @@ export function Orders() {
         },
     ];
 
-    const short = paying ? balance < paying.amountMinor : false;
+    const short = paying ? balance < paying.payableMinor : false;
 
     return (
         <Page
@@ -175,20 +208,40 @@ export function Orders() {
             <ConfirmDialog
                 open={paying !== null}
                 onOpenChange={(open) => !open && setPaying(null)}
-                title="余额支付"
+                title={
+                    paying?.kind === "traffic_reset"
+                        ? "确认重置流量"
+                        : paying?.replacesPlan
+                          ? "确认更换套餐"
+                          : "余额支付"
+                }
                 desc={
                     paying ? (
                         <div className="space-y-group">
                             <p>
-                                将从余额扣除{" "}
-                                <strong className="numeric">
-                                    {formatMinor(paying.amountMinor)}
-                                </strong>
-                                （当前余额{" "}
-                                <span className="numeric">
-                                    {formatMinor(balance)}
-                                </span>
-                                ）。支付后立即生效。
+                                {paying.planName} · {periodLabel(paying.period)}
+                            </p>
+                            {paying.replacesPlan && (
+                                <p>
+                                    {paying.creditMinor > 0
+                                        ? `原套餐剩余价值 ${formatMinor(paying.creditMinor)} 将用于结算。`
+                                        : "原套餐没有可折算的剩余时间（例如长期套餐或赠送套餐），不抵扣。"}
+                                    确认后，新套餐立即生效。
+                                </p>
+                            )}
+                            {paying.discountMinor > 0 && (
+                                <p>
+                                    原价 {formatMinor(paying.amountMinor)}
+                                    ，优惠抵扣{" "}
+                                    {formatMinor(paying.discountMinor)}。
+                                </p>
+                            )}
+                            <p>
+                                {paying.payableMinor < 0
+                                    ? `将退回余额 ${formatMinor(-paying.payableMinor)}。`
+                                    : paying.payableMinor === 0
+                                      ? "本订单无需扣款。"
+                                      : `将从余额扣除 ${formatMinor(paying.payableMinor)}（当前余额 ${formatMinor(balance)}）。`}
                             </p>
                             {short ? (
                                 <Alert variant="destructive">
@@ -202,8 +255,8 @@ export function Orders() {
                         ""
                     )
                 }
-                confirmText="确认支付"
-                disabled={short}
+                confirmText="确认结算"
+                disabled={short || !account.isSuccess}
                 isLoading={action.isPending}
                 handleConfirm={() =>
                     paying &&
@@ -211,7 +264,11 @@ export function Orders() {
                         { id: paying.id, action: "pay" },
                         {
                             onSuccess: () => {
-                                toast.success("支付成功，套餐已开通");
+                                toast.success(
+                                    paying.kind === "traffic_reset"
+                                        ? "流量已重置"
+                                        : "订单已结算，套餐已生效",
+                                );
                                 setPaying(null);
                             },
                         },

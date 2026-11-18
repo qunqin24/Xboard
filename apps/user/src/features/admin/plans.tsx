@@ -1,10 +1,26 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
-import { Eye, EyeOff, Package, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+    ArrowDownUp,
+    CircleCheck,
+    CircleDashed,
+    Eye,
+    EyeOff,
+    Gauge,
+    MonitorSmartphone,
+    Package,
+    Pencil,
+    Plus,
+    Trash2,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
+import {
+    trafficResetModeSchema,
+    type TrafficResetMode,
+} from "@xboard/contracts";
 import { useCommand, usePanel } from "@/api/panel";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
@@ -15,6 +31,8 @@ import {
 } from "@/components/data-table";
 import { CheckRow } from "@/components/check-row";
 import { EmptyState } from "@/components/empty-state";
+import { IconBlock } from "@/components/ui/icon-block";
+import { IconText } from "@/components/icon-text";
 import { InfoTip } from "@/components/info-tip";
 import { Page } from "@/components/layout/page";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +47,7 @@ import {
     FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { formatMinor, formatTraffic, periodLabel } from "@/lib/format";
 import { useEditorSearch } from "./editor-search";
@@ -38,9 +57,15 @@ import type { PlanRow } from "./types";
 import { bytesToGiB, giBToBytes, minorToYuan, yuanToMinor } from "./units";
 
 const PERIODS = ["monthly", "quarterly", "yearly"] as const;
+const RESET_MODES: Record<TrafficResetMode, string> = {
+    none: "不重置",
+    activation_day: "每月开通日",
+    month_start: "每月 1 日",
+};
 const money = z
     .string()
     .regex(/^(\d{1,7}(\.\d{1,2})?)?$/, "最多两位小数")
+    .refine((v) => !v || Number(v) > 0, "价格需大于 0 元")
     .refine((v) => !v || Number(v) <= 1_000_000, "最多 ¥1,000,000");
 const optionalInt = (max: number) =>
     z
@@ -66,6 +91,8 @@ const schema = z
                 (v) => Number(v) > 0 && Number(v) <= 900000,
                 "0 到 900000 GB",
             ),
+        trafficResetMode: trafficResetModeSchema,
+        trafficResetPrice: money,
         speedLimit: optionalInt(100000),
         deviceLimit: optionalInt(1000),
         monthly: money,
@@ -86,6 +113,8 @@ export const planBody = (plan: PlanRow, published = plan.published) => ({
     name: plan.name,
     content: plan.content ?? "",
     transferBytes: plan.transferEnable,
+    trafficResetMode: plan.trafficResetMode,
+    trafficResetPriceMinor: plan.trafficResetPriceMinor,
     speedLimit: plan.speedLimit,
     deviceLimit: plan.deviceLimit,
     published,
@@ -116,6 +145,10 @@ function PlanSheet({
             name: plan?.name ?? "",
             content: plan?.content ?? "",
             transferGiB: plan ? bytesToGiB(plan.transferEnable) : "100",
+            trafficResetMode: plan?.trafficResetMode ?? "none",
+            trafficResetPrice: plan?.trafficResetPriceMinor
+                ? minorToYuan(plan.trafficResetPriceMinor)
+                : "",
             speedLimit: plan?.speedLimit ? String(plan.speedLimit) : "",
             deviceLimit: plan?.deviceLimit ? String(plan.deviceLimit) : "",
             monthly: price("monthly"),
@@ -146,6 +179,10 @@ function PlanSheet({
                             ? plan.transferEnable
                             : giBToBytes(v.transferGiB),
                     speedLimit: v.speedLimit ? Number(v.speedLimit) : null,
+                    trafficResetMode: v.trafficResetMode,
+                    trafficResetPriceMinor: v.trafficResetPrice
+                        ? yuanToMinor(v.trafficResetPrice)
+                        : null,
                     deviceLimit: v.deviceLimit ? Number(v.deviceLimit) : null,
                     published: v.published,
                     sort: Number(v.sort),
@@ -231,11 +268,50 @@ function PlanSheet({
                     />
                     {text(
                         "transferGiB",
-                        "周期总流量（GB）",
+                        "流量额度（GB）",
                         undefined,
                         undefined,
                         "decimal",
                         "1 GB = 1024 MB",
+                    )}
+                    <FormField
+                        control={form.control}
+                        name="trafficResetMode"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>流量重置方式</FormLabel>
+                                <FormControl>
+                                    <RadioGroup
+                                        aria-label="流量重置方式"
+                                        value={field.value}
+                                        onValueChange={field.onChange}
+                                    >
+                                        {trafficResetModeSchema.options.map(
+                                            (mode) => (
+                                                <label
+                                                    key={mode}
+                                                    className="flex items-center gap-inline text-sm"
+                                                >
+                                                    <RadioGroupItem
+                                                        value={mode}
+                                                    />
+                                                    {RESET_MODES[mode]}
+                                                </label>
+                                            ),
+                                        )}
+                                    </RadioGroup>
+                                </FormControl>
+                                <FormDescription>
+                                    按北京时间零点清零已用流量。每月重置时，额度按月使用。
+                                </FormDescription>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    {text(
+                        "trafficResetPrice",
+                        "流量重置包价格（元）",
+                        "留空时停售重置包。",
                     )}
                     <div className="grid grid-cols-2 gap-group">
                         {text("speedLimit", "限速（Mbps）", undefined, "不限")}
@@ -297,11 +373,16 @@ export function AdminPlans() {
                 <DataTableColumnHeader column={column} title="套餐" />
             ),
             cell: ({ row }) => (
-                <div>
-                    <p className="font-medium">{row.original.name}</p>
-                    <p className="numeric text-xs text-muted-foreground">
-                        #{row.original.id}
-                    </p>
+                <div className="flex items-center gap-3">
+                    <IconBlock size="sm">
+                        <Package />
+                    </IconBlock>
+                    <div>
+                        <p className="font-medium">{row.original.name}</p>
+                        <p className="numeric text-xs text-muted-foreground">
+                            #{row.original.id}
+                        </p>
+                    </div>
                 </div>
             ),
             enableHiding: false,
@@ -315,6 +396,11 @@ export function AdminPlans() {
             ),
             cell: ({ getValue }) => (
                 <Badge variant={PUBLISH_TONE[getValue<string>()]}>
+                    {getValue<string>() === "销售中" ? (
+                        <CircleCheck />
+                    ) : (
+                        <CircleDashed />
+                    )}
                     {getValue<string>()}
                 </Badge>
             ),
@@ -328,9 +414,14 @@ export function AdminPlans() {
                 <DataTableColumnHeader column={column} title="流量" />
             ),
             cell: ({ row }) => (
-                <span className="numeric">
-                    {formatTraffic(row.original.transferEnable)}
-                </span>
+                <IconText icon={ArrowDownUp}>
+                    <span>
+                        {formatTraffic(row.original.transferEnable)}
+                        <span className="block text-xs text-muted-foreground">
+                            {RESET_MODES[row.original.trafficResetMode]}
+                        </span>
+                    </span>
+                </IconText>
             ),
             meta: {
                 title: "流量",
@@ -341,15 +432,18 @@ export function AdminPlans() {
             id: "limits",
             header: "限速 / 设备",
             cell: ({ row }) => (
-                <span className="numeric text-muted-foreground">
-                    {row.original.speedLimit
-                        ? `${row.original.speedLimit} Mbps`
-                        : "不限速"}{" "}
-                    ·{" "}
-                    {row.original.deviceLimit
-                        ? `${row.original.deviceLimit} 台`
-                        : "不限设备"}
-                </span>
+                <div className="flex flex-wrap gap-x-group gap-y-1">
+                    <IconText icon={Gauge}>
+                        {row.original.speedLimit
+                            ? `${row.original.speedLimit} Mbps`
+                            : "不限速"}
+                    </IconText>
+                    <IconText icon={MonitorSmartphone}>
+                        {row.original.deviceLimit
+                            ? `${row.original.deviceLimit} 台`
+                            : "不限设备"}
+                    </IconText>
+                </div>
             ),
             meta: {
                 title: "限速 / 设备",

@@ -12,6 +12,7 @@ import type {
     Order,
     Plan,
     RegisterBody,
+    RegisterCodeResult,
 } from "@xboard/contracts";
 import { request } from "./client";
 
@@ -51,6 +52,15 @@ export function useRegister() {
     return useMutation({
         mutationFn: (input: RegisterBody) =>
             request<AuthResult>("/auth/register", "POST", input),
+    });
+}
+
+export function useRegisterCode() {
+    return useMutation({
+        mutationFn: (email: string) =>
+            request<RegisterCodeResult>("/auth/register/code", "POST", {
+                email,
+            }),
     });
 }
 

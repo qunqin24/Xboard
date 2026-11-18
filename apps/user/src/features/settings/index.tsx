@@ -1,5 +1,5 @@
 import { Outlet } from "@tanstack/react-router";
-import { Palette, ShieldCheck, UserCog } from "lucide-react";
+import { Palette, ShieldCheck, UserCog, UserPlus } from "lucide-react";
 import { Page } from "@/components/layout/page";
 import { SidebarNav } from "./components/sidebar-nav";
 
@@ -9,6 +9,11 @@ const sidebarNavItems = [
         title: "安全",
         href: "/settings/security",
         icon: <ShieldCheck className="size-4" />,
+    },
+    {
+        title: "邀请",
+        href: "/settings/invite",
+        icon: <UserPlus className="size-4" />,
     },
     {
         title: "外观",

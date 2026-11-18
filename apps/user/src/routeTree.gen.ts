@@ -22,6 +22,7 @@ import { Route as errors500RouteImport } from './routes/(errors)/500'
 import { Route as errors503RouteImport } from './routes/(errors)/503'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedAdminRouteRouteImport } from './routes/_authenticated/admin/route'
+import { Route as AuthenticatedHelpRouteImport } from './routes/_authenticated/help'
 import { Route as AuthenticatedOrdersRouteImport } from './routes/_authenticated/orders'
 import { Route as AuthenticatedPlansRouteImport } from './routes/_authenticated/plans'
 import { Route as AuthenticatedRecordsRouteImport } from './routes/_authenticated/records'
@@ -30,17 +31,20 @@ import { Route as AuthenticatedSubscriptionRouteImport } from './routes/_authent
 import { Route as AuthenticatedTicketsRouteImport } from './routes/_authenticated/tickets'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
 import { Route as AuthenticatedAdminAuditRouteImport } from './routes/_authenticated/admin/audit'
+import { Route as AuthenticatedAdminHelpRouteImport } from './routes/_authenticated/admin/help'
 import { Route as AuthenticatedAdminLedgerRouteImport } from './routes/_authenticated/admin/ledger'
 import { Route as AuthenticatedAdminMailRouteImport } from './routes/_authenticated/admin/mail'
 import { Route as AuthenticatedAdminNodesRouteImport } from './routes/_authenticated/admin/nodes'
 import { Route as AuthenticatedAdminNoticesRouteImport } from './routes/_authenticated/admin/notices'
 import { Route as AuthenticatedAdminOrdersRouteImport } from './routes/_authenticated/admin/orders'
 import { Route as AuthenticatedAdminPlansRouteImport } from './routes/_authenticated/admin/plans'
+import { Route as AuthenticatedAdminPromotionsRouteImport } from './routes/_authenticated/admin/promotions'
 import { Route as AuthenticatedAdminSettingsRouteImport } from './routes/_authenticated/admin/settings'
 import { Route as AuthenticatedAdminTicketsRouteImport } from './routes/_authenticated/admin/tickets'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
 import { Route as AuthenticatedSettingsAppearanceRouteImport } from './routes/_authenticated/settings/appearance'
+import { Route as AuthenticatedSettingsInviteRouteImport } from './routes/_authenticated/settings/invite'
 import { Route as AuthenticatedSettingsSecurityRouteImport } from './routes/_authenticated/settings/security'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
@@ -107,6 +111,11 @@ const AuthenticatedAdminRouteRoute = AuthenticatedAdminRouteRouteImport.update({
   path: '/admin',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedHelpRoute = AuthenticatedHelpRouteImport.update({
+  id: '/help',
+  path: '/help',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedOrdersRoute = AuthenticatedOrdersRouteImport.update({
   id: '/orders',
   path: '/orders',
@@ -149,6 +158,11 @@ const AuthenticatedAdminAuditRoute = AuthenticatedAdminAuditRouteImport.update({
   path: '/audit',
   getParentRoute: () => AuthenticatedAdminRouteRoute,
 } as any)
+const AuthenticatedAdminHelpRoute = AuthenticatedAdminHelpRouteImport.update({
+  id: '/help',
+  path: '/help',
+  getParentRoute: () => AuthenticatedAdminRouteRoute,
+} as any)
 const AuthenticatedAdminLedgerRoute =
   AuthenticatedAdminLedgerRouteImport.update({
     id: '/ledger',
@@ -182,6 +196,12 @@ const AuthenticatedAdminPlansRoute = AuthenticatedAdminPlansRouteImport.update({
   path: '/plans',
   getParentRoute: () => AuthenticatedAdminRouteRoute,
 } as any)
+const AuthenticatedAdminPromotionsRoute =
+  AuthenticatedAdminPromotionsRouteImport.update({
+    id: '/promotions',
+    path: '/promotions',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
 const AuthenticatedAdminSettingsRoute =
   AuthenticatedAdminSettingsRouteImport.update({
     id: '/settings',
@@ -211,6 +231,12 @@ const AuthenticatedSettingsAppearanceRoute =
     path: '/appearance',
     getParentRoute: () => AuthenticatedSettingsRouteRoute,
   } as any)
+const AuthenticatedSettingsInviteRoute =
+  AuthenticatedSettingsInviteRouteImport.update({
+    id: '/invite',
+    path: '/invite',
+    getParentRoute: () => AuthenticatedSettingsRouteRoute,
+  } as any)
 const AuthenticatedSettingsSecurityRoute =
   AuthenticatedSettingsSecurityRouteImport.update({
     id: '/security',
@@ -232,22 +258,26 @@ export interface FileRoutesByFullPath {
   '/404': typeof errors404Route
   '/500': typeof errors500Route
   '/503': typeof errors503Route
+  '/help': typeof AuthenticatedHelpRoute
   '/orders': typeof AuthenticatedOrdersRoute
   '/plans': typeof AuthenticatedPlansRoute
   '/records': typeof AuthenticatedRecordsRoute
   '/subscription': typeof AuthenticatedSubscriptionRoute
   '/tickets': typeof AuthenticatedTicketsRoute
   '/admin/audit': typeof AuthenticatedAdminAuditRoute
+  '/admin/help': typeof AuthenticatedAdminHelpRoute
   '/admin/ledger': typeof AuthenticatedAdminLedgerRoute
   '/admin/mail': typeof AuthenticatedAdminMailRoute
   '/admin/nodes': typeof AuthenticatedAdminNodesRoute
   '/admin/notices': typeof AuthenticatedAdminNoticesRoute
   '/admin/orders': typeof AuthenticatedAdminOrdersRoute
   '/admin/plans': typeof AuthenticatedAdminPlansRoute
+  '/admin/promotions': typeof AuthenticatedAdminPromotionsRoute
   '/admin/settings': typeof AuthenticatedAdminSettingsRoute
   '/admin/tickets': typeof AuthenticatedAdminTicketsRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
+  '/settings/invite': typeof AuthenticatedSettingsInviteRoute
   '/settings/security': typeof AuthenticatedSettingsSecurityRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
@@ -263,6 +293,7 @@ export interface FileRoutesByTo {
   '/404': typeof errors404Route
   '/500': typeof errors500Route
   '/503': typeof errors503Route
+  '/help': typeof AuthenticatedHelpRoute
   '/orders': typeof AuthenticatedOrdersRoute
   '/plans': typeof AuthenticatedPlansRoute
   '/records': typeof AuthenticatedRecordsRoute
@@ -270,16 +301,19 @@ export interface FileRoutesByTo {
   '/tickets': typeof AuthenticatedTicketsRoute
   '/': typeof AuthenticatedIndexRoute
   '/admin/audit': typeof AuthenticatedAdminAuditRoute
+  '/admin/help': typeof AuthenticatedAdminHelpRoute
   '/admin/ledger': typeof AuthenticatedAdminLedgerRoute
   '/admin/mail': typeof AuthenticatedAdminMailRoute
   '/admin/nodes': typeof AuthenticatedAdminNodesRoute
   '/admin/notices': typeof AuthenticatedAdminNoticesRoute
   '/admin/orders': typeof AuthenticatedAdminOrdersRoute
   '/admin/plans': typeof AuthenticatedAdminPlansRoute
+  '/admin/promotions': typeof AuthenticatedAdminPromotionsRoute
   '/admin/settings': typeof AuthenticatedAdminSettingsRoute
   '/admin/tickets': typeof AuthenticatedAdminTicketsRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
+  '/settings/invite': typeof AuthenticatedSettingsInviteRoute
   '/settings/security': typeof AuthenticatedSettingsSecurityRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
@@ -299,6 +333,7 @@ export interface FileRoutesById {
   '/(errors)/404': typeof errors404Route
   '/(errors)/500': typeof errors500Route
   '/(errors)/503': typeof errors503Route
+  '/_authenticated/help': typeof AuthenticatedHelpRoute
   '/_authenticated/orders': typeof AuthenticatedOrdersRoute
   '/_authenticated/plans': typeof AuthenticatedPlansRoute
   '/_authenticated/records': typeof AuthenticatedRecordsRoute
@@ -306,16 +341,19 @@ export interface FileRoutesById {
   '/_authenticated/tickets': typeof AuthenticatedTicketsRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/admin/audit': typeof AuthenticatedAdminAuditRoute
+  '/_authenticated/admin/help': typeof AuthenticatedAdminHelpRoute
   '/_authenticated/admin/ledger': typeof AuthenticatedAdminLedgerRoute
   '/_authenticated/admin/mail': typeof AuthenticatedAdminMailRoute
   '/_authenticated/admin/nodes': typeof AuthenticatedAdminNodesRoute
   '/_authenticated/admin/notices': typeof AuthenticatedAdminNoticesRoute
   '/_authenticated/admin/orders': typeof AuthenticatedAdminOrdersRoute
   '/_authenticated/admin/plans': typeof AuthenticatedAdminPlansRoute
+  '/_authenticated/admin/promotions': typeof AuthenticatedAdminPromotionsRoute
   '/_authenticated/admin/settings': typeof AuthenticatedAdminSettingsRoute
   '/_authenticated/admin/tickets': typeof AuthenticatedAdminTicketsRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/_authenticated/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
+  '/_authenticated/settings/invite': typeof AuthenticatedSettingsInviteRoute
   '/_authenticated/settings/security': typeof AuthenticatedSettingsSecurityRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
@@ -336,22 +374,26 @@ export interface FileRouteTypes {
     | '/404'
     | '/500'
     | '/503'
+    | '/help'
     | '/orders'
     | '/plans'
     | '/records'
     | '/subscription'
     | '/tickets'
     | '/admin/audit'
+    | '/admin/help'
     | '/admin/ledger'
     | '/admin/mail'
     | '/admin/nodes'
     | '/admin/notices'
     | '/admin/orders'
     | '/admin/plans'
+    | '/admin/promotions'
     | '/admin/settings'
     | '/admin/tickets'
     | '/admin/users'
     | '/settings/appearance'
+    | '/settings/invite'
     | '/settings/security'
     | '/admin/'
     | '/settings/'
@@ -367,6 +409,7 @@ export interface FileRouteTypes {
     | '/404'
     | '/500'
     | '/503'
+    | '/help'
     | '/orders'
     | '/plans'
     | '/records'
@@ -374,16 +417,19 @@ export interface FileRouteTypes {
     | '/tickets'
     | '/'
     | '/admin/audit'
+    | '/admin/help'
     | '/admin/ledger'
     | '/admin/mail'
     | '/admin/nodes'
     | '/admin/notices'
     | '/admin/orders'
     | '/admin/plans'
+    | '/admin/promotions'
     | '/admin/settings'
     | '/admin/tickets'
     | '/admin/users'
     | '/settings/appearance'
+    | '/settings/invite'
     | '/settings/security'
     | '/admin'
     | '/settings'
@@ -402,6 +448,7 @@ export interface FileRouteTypes {
     | '/(errors)/404'
     | '/(errors)/500'
     | '/(errors)/503'
+    | '/_authenticated/help'
     | '/_authenticated/orders'
     | '/_authenticated/plans'
     | '/_authenticated/records'
@@ -409,16 +456,19 @@ export interface FileRouteTypes {
     | '/_authenticated/tickets'
     | '/_authenticated/'
     | '/_authenticated/admin/audit'
+    | '/_authenticated/admin/help'
     | '/_authenticated/admin/ledger'
     | '/_authenticated/admin/mail'
     | '/_authenticated/admin/nodes'
     | '/_authenticated/admin/notices'
     | '/_authenticated/admin/orders'
     | '/_authenticated/admin/plans'
+    | '/_authenticated/admin/promotions'
     | '/_authenticated/admin/settings'
     | '/_authenticated/admin/tickets'
     | '/_authenticated/admin/users'
     | '/_authenticated/settings/appearance'
+    | '/_authenticated/settings/invite'
     | '/_authenticated/settings/security'
     | '/_authenticated/admin/'
     | '/_authenticated/settings/'
@@ -531,6 +581,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminRouteRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/help': {
+      id: '/_authenticated/help'
+      path: '/help'
+      fullPath: '/help'
+      preLoaderRoute: typeof AuthenticatedHelpRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/orders': {
       id: '/_authenticated/orders'
       path: '/orders'
@@ -587,6 +644,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminAuditRouteImport
       parentRoute: typeof AuthenticatedAdminRouteRoute
     }
+    '/_authenticated/admin/help': {
+      id: '/_authenticated/admin/help'
+      path: '/help'
+      fullPath: '/admin/help'
+      preLoaderRoute: typeof AuthenticatedAdminHelpRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
     '/_authenticated/admin/ledger': {
       id: '/_authenticated/admin/ledger'
       path: '/ledger'
@@ -629,6 +693,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminPlansRouteImport
       parentRoute: typeof AuthenticatedAdminRouteRoute
     }
+    '/_authenticated/admin/promotions': {
+      id: '/_authenticated/admin/promotions'
+      path: '/promotions'
+      fullPath: '/admin/promotions'
+      preLoaderRoute: typeof AuthenticatedAdminPromotionsRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
     '/_authenticated/admin/settings': {
       id: '/_authenticated/admin/settings'
       path: '/settings'
@@ -664,6 +735,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsAppearanceRouteImport
       parentRoute: typeof AuthenticatedSettingsRouteRoute
     }
+    '/_authenticated/settings/invite': {
+      id: '/_authenticated/settings/invite'
+      path: '/invite'
+      fullPath: '/settings/invite'
+      preLoaderRoute: typeof AuthenticatedSettingsInviteRouteImport
+      parentRoute: typeof AuthenticatedSettingsRouteRoute
+    }
     '/_authenticated/settings/security': {
       id: '/_authenticated/settings/security'
       path: '/security'
@@ -676,12 +754,14 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedAdminRouteRouteChildren {
   AuthenticatedAdminAuditRoute: typeof AuthenticatedAdminAuditRoute
+  AuthenticatedAdminHelpRoute: typeof AuthenticatedAdminHelpRoute
   AuthenticatedAdminLedgerRoute: typeof AuthenticatedAdminLedgerRoute
   AuthenticatedAdminMailRoute: typeof AuthenticatedAdminMailRoute
   AuthenticatedAdminNodesRoute: typeof AuthenticatedAdminNodesRoute
   AuthenticatedAdminNoticesRoute: typeof AuthenticatedAdminNoticesRoute
   AuthenticatedAdminOrdersRoute: typeof AuthenticatedAdminOrdersRoute
   AuthenticatedAdminPlansRoute: typeof AuthenticatedAdminPlansRoute
+  AuthenticatedAdminPromotionsRoute: typeof AuthenticatedAdminPromotionsRoute
   AuthenticatedAdminSettingsRoute: typeof AuthenticatedAdminSettingsRoute
   AuthenticatedAdminTicketsRoute: typeof AuthenticatedAdminTicketsRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
@@ -691,12 +771,14 @@ interface AuthenticatedAdminRouteRouteChildren {
 const AuthenticatedAdminRouteRouteChildren: AuthenticatedAdminRouteRouteChildren =
   {
     AuthenticatedAdminAuditRoute: AuthenticatedAdminAuditRoute,
+    AuthenticatedAdminHelpRoute: AuthenticatedAdminHelpRoute,
     AuthenticatedAdminLedgerRoute: AuthenticatedAdminLedgerRoute,
     AuthenticatedAdminMailRoute: AuthenticatedAdminMailRoute,
     AuthenticatedAdminNodesRoute: AuthenticatedAdminNodesRoute,
     AuthenticatedAdminNoticesRoute: AuthenticatedAdminNoticesRoute,
     AuthenticatedAdminOrdersRoute: AuthenticatedAdminOrdersRoute,
     AuthenticatedAdminPlansRoute: AuthenticatedAdminPlansRoute,
+    AuthenticatedAdminPromotionsRoute: AuthenticatedAdminPromotionsRoute,
     AuthenticatedAdminSettingsRoute: AuthenticatedAdminSettingsRoute,
     AuthenticatedAdminTicketsRoute: AuthenticatedAdminTicketsRoute,
     AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
@@ -710,6 +792,7 @@ const AuthenticatedAdminRouteRouteWithChildren =
 
 interface AuthenticatedSettingsRouteRouteChildren {
   AuthenticatedSettingsAppearanceRoute: typeof AuthenticatedSettingsAppearanceRoute
+  AuthenticatedSettingsInviteRoute: typeof AuthenticatedSettingsInviteRoute
   AuthenticatedSettingsSecurityRoute: typeof AuthenticatedSettingsSecurityRoute
   AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
 }
@@ -717,6 +800,7 @@ interface AuthenticatedSettingsRouteRouteChildren {
 const AuthenticatedSettingsRouteRouteChildren: AuthenticatedSettingsRouteRouteChildren =
   {
     AuthenticatedSettingsAppearanceRoute: AuthenticatedSettingsAppearanceRoute,
+    AuthenticatedSettingsInviteRoute: AuthenticatedSettingsInviteRoute,
     AuthenticatedSettingsSecurityRoute: AuthenticatedSettingsSecurityRoute,
     AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
   }
@@ -729,6 +813,7 @@ const AuthenticatedSettingsRouteRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminRouteRoute: typeof AuthenticatedAdminRouteRouteWithChildren
   AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRouteWithChildren
+  AuthenticatedHelpRoute: typeof AuthenticatedHelpRoute
   AuthenticatedOrdersRoute: typeof AuthenticatedOrdersRoute
   AuthenticatedPlansRoute: typeof AuthenticatedPlansRoute
   AuthenticatedRecordsRoute: typeof AuthenticatedRecordsRoute
@@ -740,6 +825,7 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminRouteRoute: AuthenticatedAdminRouteRouteWithChildren,
   AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRouteWithChildren,
+  AuthenticatedHelpRoute: AuthenticatedHelpRoute,
   AuthenticatedOrdersRoute: AuthenticatedOrdersRoute,
   AuthenticatedPlansRoute: AuthenticatedPlansRoute,
   AuthenticatedRecordsRoute: AuthenticatedRecordsRoute,

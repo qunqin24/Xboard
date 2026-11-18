@@ -229,7 +229,7 @@ export function TicketDesk({ staff = false }: { staff?: boolean }) {
                 </div>
                 <ScrollArea className="h-64 lg:h-auto lg:flex-1">
                     {list.isPending ? (
-                        <div className="flex flex-col gap-1 p-2">
+                        <div className="flex flex-col gap-1 px-4 pb-4">
                             <Skeleton className="h-14" />
                             <Skeleton className="h-14" />
                         </div>
@@ -239,7 +239,7 @@ export function TicketDesk({ staff = false }: { staff?: boolean }) {
                             onRetry={() => void list.refetch()}
                         />
                     ) : tickets.length ? (
-                        <ul className="flex flex-col gap-1 p-2">
+                        <ul className="flex flex-col gap-1 px-4 pb-4">
                             {tickets.map((ticket) => (
                                 <li key={ticket.id}>
                                     <button

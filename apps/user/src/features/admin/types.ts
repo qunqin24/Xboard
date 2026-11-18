@@ -11,7 +11,7 @@ export type {
     Mail as MailRow,
     Overview,
     Paged,
-    Site as SiteSettings,
+    Settings as SiteSettings,
     Stats,
     StatsDay,
 } from "@xboard/contracts";

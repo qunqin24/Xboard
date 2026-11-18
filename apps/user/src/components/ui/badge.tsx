@@ -20,6 +20,8 @@ const badgeVariants = cva(
                 success: "border-transparent bg-success/12 text-success",
                 warning: "border-transparent bg-warning/12 text-warning",
                 info: "border-transparent bg-info/12 text-info",
+                // Not a status: marks the suggested item ("推荐").
+                brand: "border-transparent bg-primary/12 text-primary",
                 danger: "border-transparent bg-destructive/12 text-destructive",
             },
         },

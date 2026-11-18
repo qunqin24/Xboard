@@ -6,21 +6,7 @@
         <meta name="robots" content="noindex,nofollow" />
         <meta name="description" content="Xboard 用户中心与管理后台。" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-        <script>
-            // Apply the saved theme before first paint to avoid a flash;
-            // mirrors src/context/theme-provider.tsx (cookie "vite-ui-theme").
-            (function () {
-                var match = document.cookie.match(
-                    /(?:^|; )vite-ui-theme=([^;]*)/,
-                );
-                var theme = match ? match[1] : "system";
-                var dark =
-                    theme === "dark" ||
-                    (theme !== "light" &&
-                        matchMedia("(prefers-color-scheme: dark)").matches);
-                document.documentElement.classList.add(dark ? "dark" : "light");
-            })();
-        </script>
+        <script src="/theme-init.js"></script>
         <title>Xboard</title>
     </head>
     <body>

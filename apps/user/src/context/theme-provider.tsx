@@ -38,9 +38,12 @@ export function ThemeProvider({
     storageKey = THEME_COOKIE_NAME,
     ...props
 }: ThemeProviderProps) {
-    const [theme, _setTheme] = useState<Theme>(
-        () => (getCookie(storageKey) as Theme) || defaultTheme,
-    );
+    const [theme, _setTheme] = useState<Theme>(() => {
+        const stored = getCookie(storageKey);
+        return stored === "light" || stored === "dark" || stored === "system"
+            ? stored
+            : defaultTheme;
+    });
 
     // Optimized: Memoize the resolved theme calculation to prevent unnecessary re-computations
     const resolvedTheme = useMemo((): ResolvedTheme => {

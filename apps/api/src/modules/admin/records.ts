@@ -4,9 +4,11 @@ import {
     auditListQuery,
     idParam,
     ledgerListQuery,
+    offlineOrderPaymentBody,
     orderListQuery,
     ticketMessageBody,
     ticketStatusBody,
+    uuidParam,
     type AdminLedger,
     type AdminOrder,
     type Audit,
@@ -15,6 +17,7 @@ import {
 import { db } from "../../db";
 import { currentUser } from "../../http/session";
 import { parse } from "../../http/validate";
+import { confirmOfflinePayment, payableAmount } from "../orders/service";
 import {
     listTickets,
     replyToTicket,
@@ -23,7 +26,7 @@ import {
 } from "../support/service";
 import { iso, isoOrNull, numericTerm, pageArgs, paged } from "./shared";
 
-/** Read-only history (orders, ledger, audit, mail) plus support tickets. */
+/** Order operations, history and support tickets. */
 export const recordRoutes = Router();
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -64,14 +67,25 @@ recordRoutes.get("/orders", async (req, res) => {
         id: order.id,
         userId: order.userId,
         planName: order.planName,
+        kind: order.kind,
         period: order.period,
         status: order.status,
         amountMinor: order.amountMinor,
+        creditMinor: order.creditMinor,
+        discountMinor: order.discountMinor,
+        payableMinor: payableAmount(order),
         createdAt: iso(order.createdAt),
+        expiresAt: iso(order.expiresAt),
         paidAt: isoOrNull(order.paidAt),
         user: { email: order.user.email },
     }));
     res.json(paged(query, total, items));
+});
+
+recordRoutes.post("/orders/:id/confirm-payment", async (req, res) => {
+    const id = parse(uuidParam, req.params.id);
+    const receipt = parse(offlineOrderPaymentBody, req.body);
+    res.json(await confirmOfflinePayment(currentUser(req).id, id, receipt));
 });
 
 /** Balance movements by email fragment, user id, reason fragment or order id. */

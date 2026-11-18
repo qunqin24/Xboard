@@ -16,14 +16,18 @@ import {
     mailSchema,
     overviewSchema,
     pagedSchema,
-    siteSchema,
+    settingsSchema,
     statsSchema,
+    subscriptionLinksSchema,
     ticketSchema,
+    trafficDaySchema,
 } from "@xboard/contracts";
 import { db } from "../src/db";
 import { flushMail } from "../src/jobs/mail-queue";
 import { runMaintenance } from "../src/jobs/maintenance";
 import { clientKey } from "../src/http/rate-limit";
+import { sessionDigest } from "../src/modules/auth/service";
+import { formatForUserAgent } from "../src/modules/nodes/subscription-routes";
 import { startTestApp } from "./helpers";
 
 type Harness = Awaited<ReturnType<typeof startTestApp>>;
@@ -43,6 +47,28 @@ describe("rate-limit subjects", () => {
         assert.equal(clientKey("::ffff:203.0.113.9"), "203.0.113.9");
         assert.equal(clientKey("fe80::1%en0"), "fe80:0:0:0::/64");
         assert.equal(clientKey("198.51.100.7"), "198.51.100.7");
+    });
+});
+
+describe("subscription format detection", () => {
+    it("serves sing-box JSON to sing-box based apps and Mihomo to the rest", () => {
+        for (const ua of [
+            "sing-box 1.11.0",
+            "SFA/1.10.3 (Android)",
+            "SFI/1.11 (iOS)",
+            "HiddifyNext/2.5.7 (android) like ClashMeta v2ray sing-box",
+            "Karing/1.1.2 (windows)",
+        ])
+            assert.equal(formatForUserAgent(ua), "singbox", ua);
+        for (const ua of [
+            "clash-verge/v2.0.3",
+            "FlClash/v0.8.80 clash-verge Platform/android",
+            "Stash/2.7.6 Clash/1.11.0",
+            "ClashMetaForAndroid/2.11.1.Meta",
+            "Mozilla/5.0 (Macintosh) Safari/605.1.15",
+            undefined,
+        ])
+            assert.equal(formatForUserAgent(ua), "mihomo", String(ua));
     });
 });
 
@@ -357,6 +383,54 @@ describe("Express rewrite regressions", () => {
         }
     });
 
+    it("keeps one viewable subscription link until the user resets it", async () => {
+        const user = await t.createUser(
+            "sub@example.test",
+            "sub-password-123",
+            {
+                planId,
+                transferEnable: 1n << 30n,
+            },
+        );
+        const cookie = await t.cookieFor(
+            "sub@example.test",
+            "sub-password-123",
+        );
+        const read = async () =>
+            subscriptionLinksSchema.parse(
+                await (
+                    await t.call("/account/subscription", { cookie })
+                ).json(),
+            );
+        const first = await read();
+        assert.equal((await read()).url, first.url);
+        // A valid token reaches the node lookup (400: no nodes); an unknown one is 401.
+        const fetchStatus = async (url: string) =>
+            (await fetch(url.replace(/^https?:\/\/[^/]+/, t.baseUrl))).status;
+        assert.equal(await fetchStatus(first.url), 400);
+
+        // A link issued before tokens were stored still works until a reset.
+        const legacy = "L".repeat(43);
+        await db.user.update({
+            where: { id: user.id },
+            data: { subscribeHash: sessionDigest(legacy) },
+        });
+        const legacyUrl = first.url.replace(/[^/]+$/, legacy);
+        assert.equal(await fetchStatus(legacyUrl), 400);
+
+        const reset = await t.call("/account/subscription", {
+            method: "POST",
+            cookie,
+        });
+        assert.equal(reset.status, 201);
+        const next = subscriptionLinksSchema.parse(await reset.json());
+        assert.notEqual(next.url, first.url);
+        assert.equal((await read()).url, next.url);
+        assert.equal(await fetchStatus(first.url), 401);
+        assert.equal(await fetchStatus(legacyUrl), 401);
+        assert.equal(await fetchStatus(next.url), 400);
+    });
+
     it("rotates proxy credentials so nodes drop the old UUID", async () => {
         const user = await t.createUser(
             "rotate@example.test",
@@ -496,7 +570,7 @@ describe("Express rewrite regressions", () => {
                 protocol: "vless",
                 host: "n.example.test",
                 port: 443,
-                serverName: "",
+                serverPort: 443,
                 tokenHash: "00",
             },
         });
@@ -549,6 +623,85 @@ describe("Express rewrite regressions", () => {
             );
             assert.equal(response.status, 401, adapter);
         }
+    });
+
+    it("sums a user's own traffic per Shanghai day for the usage chart", async () => {
+        const shanghai = new Date(Date.now() + 8 * 3_600_000);
+        const midnight =
+            Date.UTC(
+                shanghai.getUTCFullYear(),
+                shanghai.getUTCMonth(),
+                shanghai.getUTCDate(),
+            ) -
+            8 * 3_600_000;
+        const owner = await t.createUser(
+            "daily@example.test",
+            "daily-password-1",
+        );
+        const other = await t.createUser(
+            "daily-other@example.test",
+            "daily-password-2",
+        );
+        const node = await db.node.create({
+            data: {
+                name: "Daily",
+                protocol: "vless",
+                host: "daily.example.test",
+                port: 443,
+                serverPort: 443,
+                tokenHash: "00",
+            },
+        });
+        for (const [userId, at, upload, download] of [
+            [owner.id, midnight - 1, 1n, 10n], // yesterday, 23:59:59.999
+            [owner.id, midnight, 2n, 20n], // today, 00:00
+            [owner.id, midnight + 60_000, 3n, 30n],
+            [owner.id, midnight - 40 * 86_400_000, 9n, 9n], // outside the range
+            [other.id, midnight + 60_000, 100n, 100n], // someone else
+        ] as const)
+            await db.trafficRecord.create({
+                data: {
+                    nodeId: node.id,
+                    userId,
+                    upload,
+                    download,
+                    createdAt: new Date(at),
+                },
+            });
+        const cookie = await t.cookieFor(
+            "daily@example.test",
+            "daily-password-1",
+        );
+        const response = await t.call("/account/traffic/daily?days=2", {
+            cookie,
+        });
+        assert.equal(response.status, 200);
+        const days = z.array(trafficDaySchema).parse(await response.json());
+        assert.deepEqual(
+            days.map(({ upload, download }) => [upload, download]),
+            [
+                ["1", "10"],
+                ["5", "50"],
+            ],
+        );
+        // Every day is present, zero when nothing was reported.
+        const week = z
+            .array(trafficDaySchema)
+            .parse(
+                await (
+                    await t.call("/account/traffic/daily", { cookie })
+                ).json(),
+            );
+        assert.equal(week.length, 7);
+        assert.deepEqual(
+            week.slice(0, 5).map((day) => day.upload),
+            ["0", "0", "0", "0", "0"],
+        );
+        assert.equal(
+            (await t.call("/account/traffic/daily?days=31", { cookie })).status,
+            400,
+        );
+        assert.equal((await t.call("/account/traffic/daily")).status, 401);
     });
 
     it("splits statistics at Shanghai midnight", async () => {
@@ -612,7 +765,7 @@ describe("Express rewrite regressions", () => {
             ["/admin/ledger", pagedSchema(adminLedgerSchema)],
             ["/admin/audit", pagedSchema(auditSchema)],
             ["/admin/mail", z.array(mailSchema)],
-            ["/admin/settings", siteSchema],
+            ["/admin/settings", settingsSchema],
             ["/admin/stats", statsSchema],
             ["/admin/tickets", z.array(ticketSchema)],
         ] as const;
@@ -627,21 +780,22 @@ describe("Express rewrite regressions", () => {
     });
 
     it("adds udp to Mihomo vmess and trojan proxies", async () => {
-        const { mihomo } = await import("../src/modules/nodes/subscription");
+        const { entryFor, mihomo } =
+            await import("../src/modules/nodes/subscription");
         const base = {
-            id: 1,
             host: "h.example.test",
             port: 443,
-            serverName: "",
-            cipher: "aes-128-gcm",
+            serverPort: 443,
+            settings: {},
+            serverSecret: "0".repeat(32),
         };
         const config = mihomo(
             [
-                { ...base, name: "vm", protocol: "vmess" },
+                { ...base, id: 1, name: "vm", protocol: "vmess" },
                 { ...base, id: 2, name: "tr", protocol: "trojan" },
-            ] as never,
+            ].map((node) => entryFor(node as never)),
             randomUUID(),
-        ) as { proxies: { type: string; udp?: boolean }[] };
+        ) as unknown as { proxies: { type: string; udp?: boolean }[] };
         assert.deepEqual(
             config.proxies.map((p) => [p.type, p.udp]),
             [

@@ -5,16 +5,17 @@
 
 ## 1. 色彩
 
-| 变量                 | 工具类                              | 用途                           |
-| -------------------- | ----------------------------------- | ------------------------------ |
-| `--primary`          | `bg-primary` `text-primary`         | 每个区域唯一的主操作           |
-| `--muted-foreground` | `text-muted-foreground`             | 次要文字、说明、单位           |
-| `--destructive`      | `text-destructive` `bg-destructive` | 失败、阻断、不可撤销的操作     |
-| `--success`          | `text-success` `bg-success/12`      | 正常、已完成、收入             |
-| `--warning`          | `text-warning` `bg-warning/12`      | 需要尽快处理：待支付、流量将尽 |
-| `--info`             | `text-info` `bg-info/12`            | 进行中：排队、处理中           |
+| 变量                 | 工具类                                      | 用途                                                                      |
+| -------------------- | ------------------------------------------- | ------------------------------------------------------------------------- |
+| `--primary`          | `bg-primary` `text-primary` `bg-primary/10` | 品牌色（Logo 蓝紫之间的靛蓝）：每个区域唯一的主操作、图表主系列、图标底块 |
+| `--muted-foreground` | `text-muted-foreground`                     | 次要文字、说明、单位                                                      |
+| `--destructive`      | `text-destructive` `bg-destructive`         | 失败、阻断、不可撤销的操作                                                |
+| `--success`          | `text-success` `bg-success/12`              | 正常、已完成、收入                                                        |
+| `--warning`          | `text-warning` `bg-warning/12`              | 需要尽快处理：待支付、流量将尽                                            |
+| `--info`             | `text-info` `bg-info/12`                    | 进行中：排队、处理中                                                      |
 
-浅色和深色主题各有一套取值，状态色在两种背景上的对比度都不低于 4.5:1。
+浅色和深色主题各有一套取值，主色和状态色在两种背景上的对比度都不低于 4.5:1。
+图表系列色 `--chart-1`…`--chart-5` 依次取自 Logo：品牌靛蓝、蓝、珊瑚红、天蓝、桃橙。
 
 状态和色调的对应关系：
 
@@ -77,29 +78,32 @@ Badge、Switch、头像等圆形元素保持正圆。
 
 先确定要表达的意思，再选组件。
 
-| 场景                                     | 用                                                           | 不用                             |
-| ---------------------------------------- | ------------------------------------------------------------ | -------------------------------- |
-| 页面主操作（每区一个）                   | `Button`（default）                                          | 两个并排的主色按钮               |
-| 次要操作                                 | `Button variant="outline"` 或 `ghost`                        | 主色按钮                         |
-| 删除、封禁、作废链接                     | `Button variant="destructive"` + `ConfirmDialog destructive` | 直接执行、outline 按钮           |
-| 涉及金额的操作（入账、支付）             | 先 `ConfirmDialog` 写明金额和对象                            | 点击即执行                       |
-| 跳转页面                                 | `Link`（需要按钮外观时 `<Button asChild><Link/></Button>`）  | `onClick` 里 `navigate` 的按钮   |
-| 状态                                     | `Badge` 状态色                                               | 纯文本、加粗文字、彩色文字       |
-| 配额、占比                               | `Progress`（`tone` 表示状态）                                | 手写 `div` 进度条                |
-| 切换当前视图的筛选（时间范围、付款周期） | `ToggleGroup`                                                | 没有内容面板的 `Tabs`            |
-| 切换内容面板                             | `Tabs` + `TabsContent`                                       | —                                |
-| 页面间导航                               | 链接列表                                                     | `Select`                         |
-| 随表单一起保存的开关                     | `CheckRow`（Checkbox）                                       | `Switch`                         |
-| 立即生效的开关                           | `Switch`                                                     | —                                |
-| 2–4 个互斥选项、需要都看到               | `RadioGroup`                                                 | 只有 3 项的 `Select`             |
-| 只显示一次的密钥、临时密码               | 不能点遮罩或 Esc 关闭的对话框，只留“我已保存”                | 普通 `Dialog`                    |
-| 编辑一条记录的表单                       | `Sheet`（`EditorSheet`）                                     | 整页跳转                         |
-| 确认                                     | `ConfirmDialog`（基于 AlertDialog）                          | `window.confirm`                 |
-| 暂无数据                                 | `EmptyState`（短名词 + 可选操作）                            | 一句口语化的话                   |
-| 加载失败                                 | `ErrorState` 或 `DataTable` 的 `error`                       | 显示成“暂无记录”、0 元、一直转圈 |
-| 加载中                                   | `Skeleton`，形状接近最终内容                                 | “正在加载…”文字                  |
-| 很少需要的规则说明                       | `InfoTip`（问号按钮，点开显示）                              | 常驻的灰色段落                   |
-| 必须知道的风险或阻断                     | `Alert`（`warning` / `destructive`）                         | 灰色说明文字                     |
+| 场景                                       | 用                                                           | 不用                             |
+| ------------------------------------------ | ------------------------------------------------------------ | -------------------------------- |
+| 页面主操作（每区一个）                     | `Button`（default）                                          | 两个并排的主色按钮               |
+| 次要操作                                   | `Button variant="outline"` 或 `ghost`                        | 主色按钮                         |
+| 一组选项里推荐的那个（如本机推荐的客户端） | `Button variant="soft"`（品牌色浅底）                        | 第二个主色按钮                   |
+| 删除、封禁、作废链接                       | `Button variant="destructive"` + `ConfirmDialog destructive` | 直接执行、outline 按钮           |
+| 涉及金额的操作（入账、支付）               | 先 `ConfirmDialog` 写明金额和对象                            | 点击即执行                       |
+| 跳转页面                                   | `Link`（需要按钮外观时 `<Button asChild><Link/></Button>`）  | `onClick` 里 `navigate` 的按钮   |
+| 状态                                       | `Badge` 状态色                                               | 纯文本、加粗文字、彩色文字       |
+| 卡片里一组可选的条目（客户端、方案）       | `Tile`（推荐项用 `tone="highlight"`）                        | 嵌套的 `Card`                    |
+| 键值对、列表行前的图标或字母               | `IconBlock`（品牌、中性、危险三种底色）                      | 页面里手写带圆角的底块           |
+| 配额、占比                                 | `Progress`（`tone` 表示状态）                                | 手写 `div` 进度条                |
+| 切换当前视图的筛选（时间范围、付款周期）   | `ToggleGroup`                                                | 没有内容面板的 `Tabs`            |
+| 切换内容面板                               | `Tabs` + `TabsContent`                                       | —                                |
+| 页面间导航                                 | 链接列表                                                     | `Select`                         |
+| 随表单一起保存的开关                       | `CheckRow`（Checkbox）                                       | `Switch`                         |
+| 立即生效的开关                             | `Switch`                                                     | —                                |
+| 2–4 个互斥选项、需要都看到                 | `RadioGroup`                                                 | 只有 3 项的 `Select`             |
+| 只显示一次的密钥、临时密码                 | 不能点遮罩或 Esc 关闭的对话框，只留“我已保存”                | 普通 `Dialog`                    |
+| 编辑一条记录的表单                         | `Sheet`（`EditorSheet`）                                     | 整页跳转                         |
+| 确认                                       | `ConfirmDialog`（基于 AlertDialog）                          | `window.confirm`                 |
+| 暂无数据                                   | `EmptyState`（短名词 + 可选操作）                            | 一句口语化的话                   |
+| 加载失败                                   | `ErrorState` 或 `DataTable` 的 `error`                       | 显示成“暂无记录”、0 元、一直转圈 |
+| 加载中                                     | `Skeleton`，形状接近最终内容                                 | “正在加载…”文字                  |
+| 很少需要的规则说明                         | `InfoTip`（问号按钮，点开显示）                              | 常驻的灰色段落                   |
+| 必须知道的风险或阻断                       | `Alert`（`warning` / `destructive`）                         | 灰色说明文字                     |
 
 ## 5. 文案
 

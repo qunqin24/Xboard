@@ -48,6 +48,20 @@ export async function hitRateLimit(
     });
 }
 
+/**
+ * Give back one hit counted by `hitRateLimit`, for an attempt that turned out
+ * to be legitimate. Does nothing while the key is blocked or already empty.
+ */
+export async function refundRateLimit(key: string) {
+    await db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))::text`;
+        await tx.rateLimit.updateMany({
+            where: { key, hits: { gt: 0 }, blockedUntil: null },
+            data: { hits: { decrement: 1 } },
+        });
+    });
+}
+
 /** Seconds left on a block for `key`, without counting a hit; 0 when free. */
 export async function blockedFor(key: string): Promise<number> {
     const row = await db.rateLimit.findUnique({ where: { key } });

@@ -1,4 +1,13 @@
 import { type ColumnDef } from "@tanstack/react-table";
+import { useState } from "react";
+import {
+    Banknote,
+    CircleCheck,
+    CircleX,
+    Clock,
+    Package,
+    type LucideIcon,
+} from "lucide-react";
 import { queryString } from "@/api/client";
 import { usePanel } from "@/api/panel";
 import {
@@ -8,13 +17,18 @@ import {
     useServerTable,
 } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
+import { IconBlock } from "@/components/ui/icon-block";
+import { IconText } from "@/components/icon-text";
 import { Page } from "@/components/layout/page";
+import { MailTools } from "./mail-tools";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { LongText } from "@/components/long-text";
 import { formatDateTime, formatMinor, periodLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { MAIL_STATUS_TONE, ORDER_STATUS } from "./status";
 import type { AuditRow, LedgerRow, MailRow, OrderRow, Paged } from "./types";
+import { OfflinePaymentDialog } from "./offline-payment-dialog";
 
 const timeColumn = <T extends object>(
     key: keyof T & string,
@@ -25,17 +39,27 @@ const timeColumn = <T extends object>(
     header: ({ column }) => (
         <DataTableColumnHeader column={column} title={title} />
     ),
-    cell: ({ row }) => (
-        <span className="numeric text-muted-foreground">
-            {formatDateTime(row.original[key] as string | null)}
-        </span>
-    ),
+    cell: ({ row }) =>
+        row.original[key] ? (
+            <IconText icon={Clock} className="text-muted-foreground">
+                {formatDateTime(row.original[key] as string)}
+            </IconText>
+        ) : (
+            <span className="text-muted-foreground">—</span>
+        ),
     sortUndefined: "last",
     meta: { title, exportValue: (row) => (row[key] as string | null) ?? "" },
 });
 
+const ORDER_ICON: Record<OrderRow["status"], LucideIcon> = {
+    paid: CircleCheck,
+    pending: Clock,
+    cancelled: CircleX,
+};
+
 export function AdminOrders() {
     const table = useServerTable();
+    const [confirming, setConfirming] = useState<OrderRow | null>(null);
     const list = usePanel<Paged<OrderRow>>(
         `/admin/orders${queryString({ ...table.query, status: table.filter("status") })}`,
         { keepPrevious: true },
@@ -48,13 +72,18 @@ export function AdminOrders() {
                 <DataTableColumnHeader column={column} title="用户" />
             ),
             cell: ({ row }) => (
-                <div>
-                    <LongText className="max-w-52">
-                        {row.original.user.email}
-                    </LongText>
-                    <p className="numeric text-xs text-muted-foreground">
-                        {row.original.id.slice(0, 8)}
-                    </p>
+                <div className="flex items-center gap-3">
+                    <IconBlock size="sm" tone="neutral">
+                        {row.original.user.email.slice(0, 1).toUpperCase()}
+                    </IconBlock>
+                    <div className="min-w-0">
+                        <LongText className="max-w-52">
+                            {row.original.user.email}
+                        </LongText>
+                        <p className="numeric text-xs text-muted-foreground">
+                            {row.original.id.slice(0, 8)}
+                        </p>
+                    </div>
                 </div>
             ),
             enableHiding: false,
@@ -66,12 +95,12 @@ export function AdminOrders() {
                 <DataTableColumnHeader column={column} title="套餐" />
             ),
             cell: ({ row }) => (
-                <span>
+                <IconText icon={Package} className="font-sans">
                     {row.original.planName}
-                    <span className="ms-2 text-muted-foreground">
+                    <span className="ms-1 text-muted-foreground">
                         {periodLabel(row.original.period)}
                     </span>
-                </span>
+                </IconText>
             ),
             filterFn: inFilter,
             meta: { title: "套餐" },
@@ -81,11 +110,15 @@ export function AdminOrders() {
             header: ({ column }) => (
                 <DataTableColumnHeader column={column} title="状态" />
             ),
-            cell: ({ row }) => (
-                <Badge variant={ORDER_STATUS[row.original.status].tone}>
-                    {ORDER_STATUS[row.original.status].label}
-                </Badge>
-            ),
+            cell: ({ row }) => {
+                const Icon = ORDER_ICON[row.original.status];
+                return (
+                    <Badge variant={ORDER_STATUS[row.original.status].tone}>
+                        <Icon />
+                        {ORDER_STATUS[row.original.status].label}
+                    </Badge>
+                );
+            },
             filterFn: inFilter,
             meta: {
                 title: "状态",
@@ -93,18 +126,18 @@ export function AdminOrders() {
             },
         },
         {
-            accessorKey: "amountMinor",
+            accessorKey: "payableMinor",
             header: ({ column }) => (
                 <DataTableColumnHeader column={column} title="金额" />
             ),
             cell: ({ row }) => (
-                <span className="numeric">
-                    {formatMinor(row.original.amountMinor)}
-                </span>
+                <IconText icon={Banknote}>
+                    {formatMinor(row.original.payableMinor)}
+                </IconText>
             ),
             meta: {
                 title: "金额",
-                exportValue: (o) => (o.amountMinor / 100).toFixed(2),
+                exportValue: (o) => (o.payableMinor / 100).toFixed(2),
             },
         },
         timeColumn<OrderRow>("createdAt", "创建时间"),
@@ -120,13 +153,34 @@ export function AdminOrders() {
             enableSorting: false,
             meta: { title: "订单号" },
         },
+        {
+            id: "actions",
+            header: "操作",
+            enableHiding: false,
+            cell: ({ row }) => {
+                const order = row.original;
+                const eligible =
+                    order.status === "pending" &&
+                    order.payableMinor > 0 &&
+                    Date.parse(order.expiresAt) > Date.now();
+                return eligible ? (
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setConfirming(order)}
+                    >
+                        确认线下收款
+                    </Button>
+                ) : null;
+            },
+        },
     ];
 
     return (
         <Page
             title="订单"
             description={list.data ? `共 ${list.data.total} 笔订单` : undefined}
-            help="订单仅支持用户以余额支付，管理员无法代付。"
+            help="应付金额大于 0 的待支付订单，可在核实线下收款后确认结算。"
         >
             <DataTable
                 data={list.data?.items}
@@ -153,6 +207,12 @@ export function AdminOrders() {
                     },
                 ]}
             />
+            {confirming && (
+                <OfflinePaymentDialog
+                    order={confirming}
+                    onClose={() => setConfirming(null)}
+                />
+            )}
         </Page>
     );
 }
@@ -281,10 +341,31 @@ export const AUDIT_LABELS: Record<string, string> = {
     "user.credentials_rotate": "更换节点凭据",
     "admin.bootstrap": "初始化管理员",
     "traffic.reset": "流量清零",
+    "traffic.monthly_reset": "月度流量重置",
+    "traffic.paid_reset": "购买流量重置",
+    "order.create": "管理员开单",
+    "order.offline_payment": "确认线下收款",
+    "coupon.create": "创建优惠券",
+    "coupon.enabled": "变更优惠券状态",
+    "gift.create": "创建兑换码",
+    "gift.enabled": "变更兑换码状态",
+    "gift.redeem": "领取兑换码",
+    "help.create": "创建帮助文档",
+    "help.update": "修改帮助文档",
+    "help.delete": "删除帮助文档",
+    "mail.broadcast": "群发邮件",
+    "mail.template_save": "保存邮件模板",
+    "session.revoke": "下线登录设备",
+    "session.revoke_others": "下线其他设备",
+    "totp.enable": "启用两步验证",
+    "totp.disable": "关闭两步验证",
+    "totp.recovery_rotate": "更新恢复码",
     "plan.save": "保存套餐",
     "plan.delete": "删除套餐",
     "node.save": "保存节点",
     "node.rotate": "重置节点密钥",
+    "node.enable": "启用节点",
+    "node.disable": "停用节点",
     "node.delete": "删除节点",
     "notice.create": "发布公告",
     "notice.update": "编辑公告",
@@ -486,6 +567,7 @@ export function AdminMail() {
     return (
         <Page
             title="邮件队列"
+            actions={<MailTools />}
             description="显示最近 100 封邮件"
             help="系统每 5 秒处理一次发送队列；失败后按指数退避重试，最多 5 次；记录保留 7 天。"
         >

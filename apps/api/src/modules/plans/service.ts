@@ -14,6 +14,8 @@ export function toPlan(plan: PlanWithPrices): Plan {
         transferBytes: plan.transferEnable.toString(),
         speedLimitMbps: plan.speedLimit,
         deviceLimit: plan.deviceLimit,
+        trafficResetMode: plan.trafficResetMode,
+        trafficResetPriceMinor: plan.trafficResetPriceMinor,
         prices: plan.prices.map(({ period, amountMinor }) => ({
             period,
             amountMinor,

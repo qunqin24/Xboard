@@ -6,7 +6,9 @@ import {
     pageQuerySchema,
     periodSchema,
 } from "./common";
-import { orderStatusSchema } from "./orders";
+import { orderKindSchema, orderStatusSchema } from "./orders";
+import { trafficResetModeSchema } from "./plans";
+import { selectedUserIds } from "./operations";
 
 const MAX_AMOUNT_MINOR = 100_000_000; // ¥1,000,000.00
 const text = (max: number) => z.string().max(max);
@@ -39,39 +41,13 @@ export const adminPlanSchema = z.object({
     deviceLimit: z.number().int().nullable(),
     published: z.boolean(),
     sort: z.number().int(),
+    trafficResetMode: trafficResetModeSchema,
+    trafficResetPriceMinor: z.number().int().positive().nullable(),
     prices: z.array(
         z.object({ period: periodSchema, amountMinor: z.number().int() }),
     ),
 });
 export type AdminPlan = z.infer<typeof adminPlanSchema>;
-
-export const nodeProtocolSchema = z.enum([
-    "vmess",
-    "vless",
-    "trojan",
-    "shadowsocks",
-    "hysteria2",
-    "tuic",
-]);
-export const cipherSchema = z.enum([
-    "aes-128-gcm",
-    "aes-256-gcm",
-    "chacha20-ietf-poly1305",
-]);
-
-export const adminNodeSchema = z.object({
-    id: z.number().int(),
-    name: z.string(),
-    protocol: nodeProtocolSchema,
-    host: z.string(),
-    port: z.number().int(),
-    serverName: z.string(),
-    cipher: z.string(),
-    enabled: z.boolean(),
-    lastSeenAt: z.string().nullable(),
-    plans: z.array(z.object({ planId: z.number().int() })),
-});
-export type AdminNode = z.infer<typeof adminNodeSchema>;
 
 export const adminUserSchema = z.object({
     id: z.number().int(),
@@ -79,6 +55,7 @@ export const adminUserSchema = z.object({
     role: z.enum(["user", "admin"]),
     balance: z.number().int(),
     banned: z.boolean(),
+    twoFactorEnabled: z.boolean(),
     transferEnable: bytesSchema,
     upload: bytesSchema,
     download: bytesSchema,
@@ -91,6 +68,8 @@ export const adminUserSchema = z.object({
     createdAt: z.string(),
     /** Unix seconds of the last sign-in. */
     lastLoginAt: z.number().int().nullable(),
+    /** Email of the account whose invite code was used at sign-up. */
+    invitedBy: z.string().nullable(),
 });
 export type AdminUser = z.infer<typeof adminUserSchema>;
 
@@ -107,10 +86,15 @@ export const adminOrderSchema = z.object({
     id: z.string(),
     userId: z.number().int(),
     planName: z.string(),
-    period: periodSchema,
+    kind: orderKindSchema,
+    period: periodSchema.nullable(),
     status: orderStatusSchema,
     amountMinor: z.number().int(),
+    creditMinor: z.number().int().nonnegative(),
+    discountMinor: z.number().int().nonnegative(),
+    payableMinor: z.number().int(),
     createdAt: z.string(),
+    expiresAt: z.string(),
     paidAt: z.string().nullable(),
     user: z.object({ email: z.string() }),
 });
@@ -243,11 +227,19 @@ export const planBody = z.strictObject({
     deviceLimit: nullableInt(1, 1000).optional(),
     published: z.boolean(),
     sort: z.number().int().min(0).max(INT4_MAX),
+    trafficResetMode: trafficResetModeSchema.optional(),
+    trafficResetPriceMinor: z
+        .number()
+        .int()
+        .min(1)
+        .max(MAX_AMOUNT_MINOR)
+        .nullable()
+        .optional(),
     prices: z
         .array(
             z.strictObject({
                 period: periodSchema,
-                amountMinor: z.number().int().min(0).max(MAX_AMOUNT_MINOR),
+                amountMinor: z.number().int().min(1).max(MAX_AMOUNT_MINOR),
             }),
         )
         .max(3),
@@ -263,6 +255,12 @@ export const creditBody = z.strictObject({
         .min(3, "原因至少 3 个字")
         .max(200, "原因最多 200 个字"),
 });
+export const offlineOrderPaymentBody = creditBody
+    .pick({ amountMinor: true })
+    .extend({
+        reason: z.string().trim().max(200, "备注最多 200 个字").optional(),
+    });
+export type OfflineOrderPaymentBody = z.infer<typeof offlineOrderPaymentBody>;
 export const banBody = z.strictObject({ banned: z.boolean() });
 export const resetTrafficBody = z.strictObject({
     reason: z
@@ -271,23 +269,14 @@ export const resetTrafficBody = z.strictObject({
         .min(3, "原因至少 3 个字")
         .max(200, "原因最多 200 个字"),
 });
-export const nodeBody = z.strictObject({
-    name: required("名称", 80),
-    protocol: nodeProtocolSchema,
-    host: z
-        .string()
-        .regex(/^[a-zA-Z0-9.:[\]-]{1,253}$/, "节点地址不是有效的 IP 或域名。"),
-    port: z.number().int().min(1).max(65535),
-    serverName: z.string().regex(/^[a-zA-Z0-9.-]{0,253}$/, "SNI 格式不正确"),
-    cipher: cipherSchema,
-    enabled: z.boolean(),
-    planIds: z
-        .array(idSchema)
-        .max(100)
-        .refine((ids) => new Set(ids).size === ids.length, "套餐重复"),
+export const bulkResetTrafficBody = resetTrafficBody.extend({
+    ids: selectedUserIds,
 });
-export type NodeBody = z.infer<typeof nodeBody>;
-
+export const bulkResetTrafficResult = z.object({
+    updated: z.number().int(),
+    skipped: z.number().int(),
+});
+export type BulkResetTrafficResult = z.infer<typeof bulkResetTrafficResult>;
 export const noticeBody = z.strictObject({
     title: required("标题", 120),
     content: required("内容", 10_000),
@@ -297,17 +286,15 @@ export const noticeBody = z.strictObject({
 export const updateUserBody = z.strictObject({
     planId: idSchema.nullable(),
     expiredAt: z.number().int().min(0).max(4_102_444_800).nullable(),
-    transferBytes: bytesSchema,
+    transferBytes: z
+        .string()
+        .regex(/^\d{1,15}$/, "流量需为不超过 15 位的整数字节数"),
     speedLimit: nullableInt(1, 100_000),
     deviceLimit: nullableInt(1, 1000),
 });
 export type UpdateUserBody = z.infer<typeof updateUserBody>;
 
 export const bulkBanBody = z.strictObject({
-    ids: z
-        .array(idSchema)
-        .min(1)
-        .max(200)
-        .refine((ids) => new Set(ids).size === ids.length, "用户重复"),
+    ids: selectedUserIds,
     banned: z.boolean(),
 });

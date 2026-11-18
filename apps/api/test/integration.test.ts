@@ -13,6 +13,7 @@ import { flushMail } from "../src/jobs/mail-queue";
 import { runMaintenance } from "../src/jobs/maintenance";
 import { hitRateLimit } from "../src/http/rate-limit";
 import { login, sessionDigest } from "../src/modules/auth/service";
+import { publicSite, SETTING_DEFAULTS } from "../src/modules/site/service";
 
 // Each run owns an isolated schema, with cleanup limited to that random name.
 const testSchema = `test_${randomUUID().replaceAll("-", "")}`;
@@ -475,8 +476,7 @@ describe("development API slice", () => {
             protocol: "vless",
             host: "node.example.test",
             port: 443,
-            serverName: "node.example.test",
-            cipher: "aes-128-gcm",
+            settings: { tls: { serverName: "node.example.test" } },
             enabled: true,
             planIds: [platformPlan],
         });
@@ -1198,8 +1198,7 @@ describe("development API slice", () => {
                 protocol: "vless",
                 host: "doomed.example.test",
                 port: 443,
-                serverName: "",
-                cipher: "aes-128-gcm",
+                settings: { tls: { serverName: "" } },
                 enabled: true,
                 planIds: [],
             })
@@ -1213,8 +1212,7 @@ describe("development API slice", () => {
                     protocol: "vless",
                     host: "bad.example.test",
                     port: 443,
-                    serverName: "",
-                    cipher: "aes-128-gcm",
+                    settings: { tls: { serverName: "" } },
                     enabled: true,
                     planIds: [plan.id],
                 })
@@ -1275,12 +1273,9 @@ describe("development API slice", () => {
                 string,
                 unknown
             >;
-        assert.deepEqual(await site(), {
-            siteName: "Xboard",
-            registrationOpen: true,
-            supportNote: "",
-        });
+        assert.deepEqual(await site(), publicSite(SETTING_DEFAULTS));
         const closed = {
+            ...SETTING_DEFAULTS,
             siteName: "测试站",
             registrationOpen: false,
             supportNote: "工作日回复",
@@ -1289,7 +1284,9 @@ describe("development API slice", () => {
             (await platform("/admin/settings", "PUT", closed)).status,
             200,
         );
-        assert.deepEqual(await site(), closed);
+        assert.deepEqual(await site(), publicSite(closed));
+        // Domain rules, caps and the trial plan stay admin-only.
+        assert.equal("emailDomains" in (await site()), false);
         assert.deepEqual(
             await (await platform("/admin/settings")).json(),
             closed,

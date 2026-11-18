@@ -1,10 +1,14 @@
 import { createHash, randomBytes } from "node:crypto";
-import { Prisma, type User } from "@prisma/client";
+import type { User } from "@prisma/client";
 import { db, lockUser, type Tx } from "../../db";
-import { conflict, forbidden, unauthorized } from "../../http/errors";
+import { HttpError, unauthorized } from "../../http/errors";
 import { blockedFor, hitRateLimit, tooMany } from "../../http/rate-limit";
-import { readSettings } from "../site/service";
 import { hashPassword, verifyPassword } from "./password";
+import { factorUpdate } from "./totp";
+import {
+    releaseTwoFactorAttempt,
+    reserveTwoFactorAttempt,
+} from "./two-factor-limit";
 
 export const SESSION_COOKIE = "xboard_session";
 export const SESSION_TTL_SECONDS = 60 * 60 * 8;
@@ -31,31 +35,17 @@ export async function revokeAccess(tx: Tx, userId: number) {
     await tx.emailToken.deleteMany({ where: { userId } });
 }
 
-export async function register(email: string, password: string) {
-    if (!(await readSettings()).registrationOpen)
-        throw forbidden("暂未开放注册。");
-    try {
-        const user = await db.user.create({
-            data: { email, password: await hashPassword(password) },
-        });
-        return { email: user.email };
-    } catch (error) {
-        if (
-            error instanceof Prisma.PrismaClientKnownRequestError &&
-            error.code === "P2002"
-        )
-            throw conflict("无法使用此邮箱注册，请登录或使用其他邮箱。");
-        throw error;
-    }
-}
-
 // Failed sign-ins per mailbox, on top of the per-IP limit: the 10th failure
 // within 15 minutes locks the mailbox for 15 minutes, from any IP.
 const FAILURE_WINDOW_MS = 15 * 60_000;
 const FAILURES_BEFORE_LOCK = 10;
 
 /** Check the password and open a session. `email` must already be normalised. */
-export async function login(email: string, password: string) {
+export async function login(
+    email: string,
+    password: string,
+    options: { twoFactorCode?: string; userAgent?: string } = {},
+) {
     const failureKey = `login-fail:${email}`;
     const wait = await blockedFor(failureKey);
     if (wait > 0) throw tooMany(wait);
@@ -65,16 +55,22 @@ export async function login(email: string, password: string) {
         password,
         user?.password ?? (await dummyHash),
     );
-    if (!user || !verified || user.banned) {
-        await hitRateLimit(
+    const countFailure = () =>
+        hitRateLimit(
             failureKey,
             FAILURE_WINDOW_MS,
             FAILURES_BEFORE_LOCK - 1,
             FAILURE_WINDOW_MS,
         );
+    if (!user || !verified || user.banned) {
+        await countFailure();
         throw unauthorized("邮箱或密码不正确，或账户不可用。");
     }
     const token = newToken();
+    // Second-factor guesses have their own per-user counter, taken before the
+    // code is checked. A wrong code never touches the password counter above.
+    const guessing = user.totpSecret !== null && !!options.twoFactorCode;
+    if (guessing) await reserveTwoFactorAttempt(user.id);
     await db.$transaction(async (tx) => {
         // A ban or password change between the check above and here wins.
         await lockUser(tx, user.id);
@@ -83,21 +79,38 @@ export async function login(email: string, password: string) {
         });
         if (latest.banned || latest.password !== user.password)
             throw unauthorized("账户状态已变化，请重试。");
-        await tx.session.deleteMany({
-            where: { expiresAt: { lte: new Date() } },
-        });
+        const now = new Date();
+        let proof = {};
+        if (latest.totpSecret) {
+            if (!options.twoFactorCode)
+                throw new HttpError(
+                    401,
+                    "请输入动态验证码或恢复码。",
+                    "two_factor_required",
+                );
+            const update = factorUpdate(latest, options.twoFactorCode, now);
+            if (!update)
+                throw new HttpError(
+                    401,
+                    "动态验证码或恢复码无效。",
+                    "two_factor_invalid",
+                );
+            proof = update;
+        }
         await tx.session.create({
             data: {
                 id: sessionDigest(token),
                 userId: user.id,
-                expiresAt: new Date(Date.now() + SESSION_TTL_SECONDS * 1000),
+                expiresAt: new Date(now.getTime() + SESSION_TTL_SECONDS * 1000),
+                userAgent: options.userAgent?.trim().slice(0, 200) || null,
             },
         });
         await tx.user.update({
             where: { id: user.id },
-            data: { lastLoginAt: new Date() },
+            data: { lastLoginAt: now, ...proof },
         });
     });
+    if (guessing) await releaseTwoFactorAttempt(user.id);
     return { token, email: user.email };
 }
 

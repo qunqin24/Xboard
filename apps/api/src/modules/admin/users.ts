@@ -4,7 +4,9 @@ import type { Prisma, User } from "@prisma/client";
 import {
     banBody,
     bulkBanBody,
+    bulkResetTrafficBody,
     creditBody,
+    createOrderBody,
     idParam,
     resetTrafficBody,
     updateUserBody,
@@ -15,21 +17,30 @@ import { db, lockUser } from "../../db";
 import { badRequest, conflict, notFound } from "../../http/errors";
 import { currentUser } from "../../http/session";
 import { parse } from "../../http/validate";
+import { hasActivePlan } from "../account/entitlement";
 import { unixSeconds } from "../account/service";
+import { clearUsage, trafficSchedule } from "../account/traffic-cycle";
 import { hashPassword } from "../auth/password";
 import { revokeAccess } from "../auth/service";
+import { clearTwoFactorAttempts } from "../auth/two-factor-limit";
+import { MAX_BALANCE_MINOR } from "../orders/credit";
+import { createOrder } from "../orders/service";
 import { audit, numericTerm, pageArgs, paged, isoOrNull, iso } from "./shared";
 
 export const userRoutes = Router();
-const MAX_BALANCE_MINOR = 2_000_000_000;
 
-function toAdminUser(user: User): AdminUser {
+const withInviter = { invitedBy: { select: { email: true } } } as const;
+
+function toAdminUser(
+    user: User & { invitedBy: { email: string } | null },
+): AdminUser {
     return {
         id: user.id,
         email: user.email,
         role: user.role,
         balance: user.balance,
         banned: user.banned,
+        twoFactorEnabled: user.totpSecret !== null,
         transferEnable: user.transferEnable.toString(),
         upload: user.upload.toString(),
         download: user.download.toString(),
@@ -40,6 +51,7 @@ function toAdminUser(user: User): AdminUser {
         deviceLimit: user.deviceLimit,
         createdAt: iso(user.createdAt),
         lastLoginAt: unixSeconds(user.lastLoginAt),
+        invitedBy: user.invitedBy?.email ?? null,
     };
 }
 
@@ -86,6 +98,7 @@ userRoutes.get("/users", async (req, res) => {
         db.user.findMany({
             where,
             orderBy: { id: "desc" },
+            include: withInviter,
             ...pageArgs(query),
         }),
     ]);
@@ -95,9 +108,21 @@ userRoutes.get("/users", async (req, res) => {
 userRoutes.get("/users/:id", async (req, res) => {
     const user = await db.user.findUnique({
         where: { id: parse(idParam, req.params.id) },
+        include: withInviter,
     });
     if (!user) throw notFound("用户不存在。");
     res.json(toAdminUser(user));
+});
+
+userRoutes.post("/users/:id/orders", async (req, res) => {
+    const id = parse(idParam, req.params.id);
+    res.status(201).json(
+        await createOrder(
+            id,
+            parse(createOrderBody, req.body),
+            currentUser(req).id,
+        ),
+    );
 });
 
 /** Edit the subscription: plan, expiry, quota and limits. */
@@ -109,24 +134,45 @@ userRoutes.put("/users/:id", async (req, res) => {
         await lockUser(tx, id);
         const before = await tx.user.findUnique({ where: { id } });
         if (!before) throw notFound("用户不存在。");
-        if (
-            input.planId !== null &&
-            !(await tx.plan.findFirst({
-                where: { id: input.planId, deletedAt: null },
-            }))
-        )
+        const plan =
+            input.planId === null
+                ? null
+                : await tx.plan.findFirst({
+                      where: { id: input.planId, deletedAt: null },
+                  });
+        if (input.planId !== null && !plan)
             throw badRequest("套餐不存在或已删除。");
+        const now = new Date();
+        const expiredAt =
+            input.expiredAt === unixSeconds(before.expiredAt)
+                ? before.expiredAt
+                : input.expiredAt === null
+                  ? null
+                  : new Date(input.expiredAt * 1000);
+        const newTerm =
+            before.planId !== input.planId ||
+            (!hasActivePlan(before, now) &&
+                hasActivePlan({ planId: input.planId, expiredAt }, now));
         const data = {
             planId: input.planId,
-            expiredAt:
-                input.expiredAt === null
-                    ? null
-                    : new Date(input.expiredAt * 1000),
+            expiredAt,
             transferEnable: BigInt(input.transferBytes),
             speedLimit: input.speedLimit,
             deviceLimit: input.deviceLimit,
         };
-        await tx.user.update({ where: { id }, data });
+        await tx.user.update({
+            where: { id },
+            data: {
+                ...data,
+                ...(newTerm && {
+                    ...trafficSchedule(plan?.trafficResetMode ?? "none", now),
+                    entitlementVersion: { increment: 1 },
+                }),
+                ...(expiredAt !== before.expiredAt || newTerm
+                    ? { expiryReminderMask: 0 }
+                    : {}),
+            },
+        });
         const snapshot = (user: typeof data) => ({
             planId: user.planId,
             expiredAt: unixSeconds(user.expiredAt),
@@ -241,29 +287,52 @@ userRoutes.post("/users/:id/ban", async (req, res) => {
     res.status(201).json({ ok: true });
 });
 
+async function resetUsersTraffic(
+    actorId: number,
+    ids: number[],
+    reason: string,
+    bulk: boolean,
+) {
+    return db.$transaction(async (tx) => {
+        const users = await tx.$queryRaw<
+            { id: number; upload: bigint; download: bigint }[]
+        >`
+            SELECT id, upload, download FROM "User" WHERE id = ANY(${ids}::int[]) ORDER BY id FOR UPDATE`;
+        if (!bulk && !users.length) throw notFound("用户不存在。");
+        await tx.user.updateMany({
+            where: { id: { in: users.map(({ id }) => id) } },
+            data: clearUsage,
+        });
+        await tx.audit.createMany({
+            data: users.map(({ id, upload, download }) => ({
+                actorId,
+                action: "traffic.reset",
+                target: String(id),
+                detail: {
+                    reason,
+                    ...(bulk && { bulk: true }),
+                    before: {
+                        upload: upload.toString(),
+                        download: download.toString(),
+                    },
+                },
+            })),
+        });
+        return { updated: users.length, skipped: ids.length - users.length };
+    });
+}
+
+userRoutes.post("/users/reset-traffic", async (req, res) => {
+    const { ids, reason } = parse(bulkResetTrafficBody, req.body);
+    res.status(201).json(
+        await resetUsersTraffic(currentUser(req).id, ids, reason, true),
+    );
+});
+
 userRoutes.post("/users/:id/reset-traffic", async (req, res) => {
     const id = parse(idParam, req.params.id);
     const { reason } = parse(resetTrafficBody, req.body);
-    const actor = currentUser(req);
-    await db.$transaction(async (tx) => {
-        await lockUser(tx, id);
-        const before = await tx.user.findUnique({
-            where: { id },
-            select: { upload: true, download: true },
-        });
-        if (!before) throw notFound("用户不存在。");
-        await tx.user.update({
-            where: { id },
-            data: { upload: 0n, download: 0n },
-        });
-        await audit(tx, actor.id, "traffic.reset", id, {
-            reason,
-            before: {
-                upload: before.upload.toString(),
-                download: before.download.toString(),
-            },
-        });
-    });
+    await resetUsersTraffic(currentUser(req).id, [id], reason, false);
     res.status(201).json({ ok: true });
 });
 
@@ -288,6 +357,35 @@ userRoutes.post("/users/:id/password", async (req, res) => {
         await audit(tx, actor.id, "user.password_reset", id);
     });
     res.status(201).json({ password });
+});
+
+/**
+ * Lock-out recovery: remove the user's two-factor setup and sign them out
+ * everywhere. Admin accounts are excluded, as for password resets.
+ */
+userRoutes.post("/users/:id/two-factor/reset", async (req, res) => {
+    const id = parse(idParam, req.params.id);
+    const actor = currentUser(req);
+    await db.$transaction(async (tx) => {
+        await lockUser(tx, id);
+        const target = await tx.user.findUnique({ where: { id } });
+        if (!target) throw notFound("用户不存在。");
+        if (target.role === "admin")
+            throw badRequest("不能通过此接口重置管理员的两步验证。");
+        if (!target.totpSecret) throw conflict("该用户未启用两步验证。");
+        await tx.user.update({
+            where: { id },
+            data: {
+                totpSecret: null,
+                totpLastStep: null,
+                totpRecoveryHashes: [],
+            },
+        });
+        await revokeAccess(tx, id);
+        await audit(tx, actor.id, "user.two_factor_reset", id);
+    });
+    await clearTwoFactorAttempts(id);
+    res.status(201).json({ ok: true });
 });
 
 /** New proxy UUID for a user whose client config leaked. */

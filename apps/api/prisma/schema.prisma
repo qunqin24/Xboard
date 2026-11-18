@@ -8,34 +8,70 @@ datasource db {
 }
 
 model User {
-  id             Int       @id @default(autoincrement())
-  email          String    @unique
-  password       String
-  banned         Boolean   @default(false)
-  planId         Int?
-  transferEnable BigInt    @default(0)
-  upload         BigInt    @default(0)
-  download       BigInt    @default(0)
-  expiredAt      DateTime?
-  balance        Int       @default(0)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  lastLoginAt    DateTime?
-  plan           Plan?     @relation(fields: [planId], references: [id])
-  sessions       Session[]
-  orders         Order[]
-  ledger         BalanceEntry[]
-  speedLimit     Int?
-  deviceLimit    Int?
-  role           Role      @default(user)
-  verifiedAt     DateTime?
-  proxyUuid      String    @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  subscribeHash  String?   @unique
-  emailTokens    EmailToken[]
-  tickets        Ticket[]
-  traffic        TrafficRecord[]
+  id                  Int              @id @default(autoincrement())
+  email               String           @unique
+  password            String
+  banned              Boolean          @default(false)
+  planId              Int?
+  transferEnable      BigInt           @default(0)
+  upload              BigInt           @default(0)
+  download            BigInt           @default(0)
+  expiredAt           DateTime?
+  balance             Int              @default(0)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  lastLoginAt         DateTime?
+  plan                Plan?            @relation(fields: [planId], references: [id])
+  sessions            Session[]
+  orders              Order[]
+  ledger              BalanceEntry[]
+  speedLimit          Int?
+  deviceLimit         Int?
+  role                Role             @default(user)
+  verifiedAt          DateTime?
+  proxyUuid           String           @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subscribeHash       String?          @unique
+  /// Current subscription link token. subscribeHash only matches links issued before it existed.
+  subscribeToken      String?          @unique
+  emailTokens         EmailToken[]
+  tickets             Ticket[]
+  traffic             TrafficRecord[]
+  /// Mailbox the address delivers to (Gmail dots and "+tag" removed); see auth/registration.ts.
+  emailKey            String?
+  /// Rate-limit subject (IPv4 address or IPv6 /64) the account was registered from.
+  registerIp          String?
+  /// This user's invite code, created on first view.
+  inviteCode          String?          @unique
+  invitedById         Int?
+  invitedBy           User?            @relation("Invites", fields: [invitedById], references: [id], onDelete: SetNull)
+  invitees            User[]           @relation("Invites")
+  termsAcceptedAt     DateTime?
+  entitlementVersion  Int              @default(0)
+  trafficResetMode    TrafficResetMode @default(none)
+  trafficResetDay     Int?
+  nextTrafficResetAt  DateTime?
+  expiryReminderMask  Int              @default(0)
+  trafficReminderMask Int              @default(0)
+  giftRedemptions     GiftCode[]
+  totpSecret          String?
+  totpLastStep        BigInt?
+  totpRecoveryHashes  String[]         @default([])
 
   @@index([planId, expiredAt])
+  @@index([emailKey])
+  @@index([registerIp, createdAt])
+  @@index([invitedById])
+  @@index([nextTrafficResetAt])
+}
+
+/// Sign-up email codes, one live code per mailbox (no account exists yet).
+model RegisterCode {
+  email     String   @id
+  /// SHA-256 of "email:code".
+  codeHash  String
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  sentAt    DateTime
 }
 
 enum BillingPeriod {
@@ -44,23 +80,32 @@ enum BillingPeriod {
   yearly
 }
 
+enum TrafficResetMode {
+  none
+  activation_day
+  month_start
+}
+
 model Plan {
-  id             Int         @id @default(autoincrement())
-  name           String
-  content        String?
-  transferEnable BigInt
-  speedLimit     Int?
-  deviceLimit    Int?
-  published      Boolean     @default(false)
-  sort           Int         @default(0)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  id                     Int              @id @default(autoincrement())
+  name                   String
+  content                String?
+  transferEnable         BigInt
+  speedLimit             Int?
+  deviceLimit            Int?
+  published              Boolean          @default(false)
+  sort                   Int              @default(0)
+  trafficResetMode       TrafficResetMode @default(none)
+  trafficResetPriceMinor Int?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
   // Soft delete keeps order history intact; deleted plans are hidden everywhere.
-  deletedAt      DateTime?
-  prices         PlanPrice[]
-  users          User[]
-  orders         Order[]
-  nodes          NodePlan[]
+  deletedAt              DateTime?
+  prices                 PlanPrice[]
+  users                  User[]
+  orders                 Order[]
+  nodes                  NodePlan[]
+  gifts                  GiftCode[]
 }
 
 model PlanPrice {
@@ -75,11 +120,15 @@ model PlanPrice {
 }
 
 model Session {
-  id        String   @id
-  userId    Int
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                   String    @id
+  userId               Int
+  expiresAt            DateTime
+  createdAt            DateTime  @default(now())
+  publicId             String    @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userAgent            String?
+  pendingTotp          String?
+  pendingTotpExpiresAt DateTime?
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
@@ -91,28 +140,99 @@ enum OrderStatus {
   cancelled
 }
 
+enum OrderKind {
+  subscription
+  traffic_reset
+}
+
 model Order {
-  id             String        @id @default(uuid()) @db.Uuid
-  userId         Int
-  planId         Int
-  requestId      String        @db.Uuid
-  status         OrderStatus   @default(pending)
-  planName       String
-  period         BillingPeriod
-  amountMinor    Int
-  transferBytes  BigInt
-  speedLimit     Int?
-  deviceLimit    Int?
-  durationDays   Int
-  createdAt      DateTime      @default(now())
-  expiresAt      DateTime
-  paidAt         DateTime?
-  user           User          @relation(fields: [userId], references: [id])
-  plan           Plan          @relation(fields: [planId], references: [id])
-  entry          BalanceEntry?
+  id                 String           @id @default(uuid()) @db.Uuid
+  userId             Int
+  planId             Int
+  requestId          String           @db.Uuid
+  status             OrderStatus      @default(pending)
+  planName           String
+  kind               OrderKind        @default(subscription)
+  period             BillingPeriod?
+  amountMinor        Int
+  creditMinor        Int              @default(0)
+  discountMinor      Int              @default(0)
+  couponId           Int?
+  transferBytes      BigInt
+  speedLimit         Int?
+  deviceLimit        Int?
+  durationDays       Int
+  trafficResetMode   TrafficResetMode @default(none)
+  entitlementVersion Int?
+  replacesPlan       Boolean          @default(false)
+  priorExpiresAt     DateTime?
+  serviceUntil       DateTime?
+  createdAt          DateTime         @default(now())
+  expiresAt          DateTime
+  paidAt             DateTime?
+  user               User             @relation(fields: [userId], references: [id])
+  plan               Plan             @relation(fields: [planId], references: [id])
+  entry              BalanceEntry?
+  coupon             Coupon?          @relation(fields: [couponId], references: [id], onDelete: Restrict)
 
   @@unique([userId, requestId])
   @@index([userId, createdAt])
+  @@index([userId, entitlementVersion])
+  @@index([couponId, status])
+}
+
+model Coupon {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique
+  amountMinor Int
+  maxUses     Int
+  expiresAt   DateTime?
+  enabled     Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  orders      Order[]
+}
+
+enum GiftKind {
+  balance
+  subscription
+}
+
+model GiftCode {
+  id           Int            @id @default(autoincrement())
+  digest       String         @unique
+  label        String
+  kind         GiftKind
+  amountMinor  Int?
+  planId       Int?
+  period       BillingPeriod?
+  expiresAt    DateTime?
+  enabled      Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  redeemedById Int?
+  redeemedAt   DateTime?
+  plan         Plan?          @relation(fields: [planId], references: [id], onDelete: Restrict)
+  redeemedBy   User?          @relation(fields: [redeemedById], references: [id], onDelete: Restrict)
+}
+
+model HelpArticle {
+  id        Int     @id @default(autoincrement())
+  title     String
+  body      String
+  sort      Int     @default(0)
+  published Boolean @default(false)
+}
+
+model MailTemplate {
+  key     String @id
+  subject String
+  text    String
+}
+
+model MailBroadcast {
+  requestId  String @id @db.Uuid
+  actorId    Int
+  digest     String
+  recipients Int
 }
 
 model BalanceEntry {
@@ -151,15 +271,15 @@ model EmailToken {
 }
 
 model Mail {
-  id          Int      @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   to          String
   subject     String
   text        String
-  attempts    Int      @default(0)
+  attempts    Int       @default(0)
   sentAt      DateTime?
-  nextAttempt DateTime @default(now())
+  nextAttempt DateTime  @default(now())
   lastError   String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 }
 
 enum NodeProtocol {
@@ -169,27 +289,56 @@ enum NodeProtocol {
   shadowsocks
   hysteria2
   tuic
+  hysteria
+  anytls
+  socks
+  http
+  naive
+  mieru
 }
 
 model Node {
-  id          Int          @id @default(autoincrement())
-  name        String
-  protocol    NodeProtocol
-  host        String
-  port        Int
-  serverName  String
-  cipher      String       @default("aes-128-gcm")
-  enabled     Boolean      @default(false)
-  tokenHash   String
-  lastSeenAt  DateTime?
-  status      Json?
-  createdAt   DateTime     @default(now())
+  id              Int              @id @default(autoincrement())
+  name            String
+  protocol        NodeProtocol
+  host            String
+  /// The port clients dial.
+  port            Int
+  /// The port the node software listens on.
+  serverPort      Int
+  /// Protocol options, validated by NODE_SETTINGS[protocol] in @xboard/contracts.
+  settings        Json             @default("{}")
+  /// Secret behind the Shadowsocks 2022 server key; never shown.
+  serverSecret    String           @default(dbgenerated("md5((random())::text)"))
+  enabled         Boolean          @default(false)
+  /// Listed in subscriptions; a hidden node still serves its users.
+  visible         Boolean          @default(true)
+  tags            String[]         @default([])
+  /// Traffic multiplier applied when the node reports usage.
+  rate            Float            @default(1)
+  /// [{ start: "HH:MM", end: "HH:MM", rate }] in Asia/Shanghai; first match wins.
+  rateRanges      Json             @default("[]")
+  /// V2bX route rules, custom outbounds/routes and certificate settings sent to the node.
+  routes          Json             @default("[]")
+  customOutbounds Json             @default("[]")
+  customRoutes    Json             @default("[]")
+  certConfig      Json             @default("{}")
+  /// A relay entry: listed with its own address, served by the parent's backend.
+  parentId        Int?
+  parent          Node?            @relation("NodeRelay", fields: [parentId], references: [id], onDelete: Restrict)
+  children        Node[]           @relation("NodeRelay")
+  tokenHash       String
+  lastSeenAt      DateTime?
+  status          Json?
+  createdAt       DateTime         @default(now())
   // Soft delete keeps traffic history; deleted nodes are disabled and keyless.
-  deletedAt   DateTime?
-  plans       NodePlan[]
-  traffic     TrafficRecord[]
-  receipts    TrafficReceipt[]
-  online      OnlineDevice[]
+  deletedAt       DateTime?
+  plans           NodePlan[]
+  traffic         TrafficRecord[]
+  receipts        TrafficReceipt[]
+  online          OnlineDevice[]
+
+  @@index([parentId])
 }
 
 model NodePlan {
@@ -197,11 +346,12 @@ model NodePlan {
   planId Int
   node   Node @relation(fields: [nodeId], references: [id], onDelete: Cascade)
   plan   Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
   @@id([nodeId, planId])
 }
 
 model TrafficRecord {
-  id        Int      @id @default(autoincrement())
+  id        BigInt   @id @default(autoincrement())
   nodeId    Int
   userId    Int
   upload    BigInt
@@ -209,15 +359,18 @@ model TrafficRecord {
   createdAt DateTime @default(now())
   node      Node     @relation(fields: [nodeId], references: [id])
   user      User     @relation(fields: [userId], references: [id])
+
   @@index([userId, createdAt])
+  @@index([createdAt])
 }
 
 model TrafficReceipt {
-  nodeId Int
-  key    String
-  digest String
+  nodeId    Int
+  key       String
+  digest    String
   createdAt DateTime @default(now())
-  node Node @relation(fields: [nodeId], references: [id])
+  node      Node     @relation(fields: [nodeId], references: [id])
+
   @@id([nodeId, key])
 }
 
@@ -226,7 +379,8 @@ model OnlineDevice {
   userId Int
   ip     String
   seenAt DateTime @default(now())
-  node Node @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  node   Node     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
   @@id([nodeId, userId, ip])
 }
 
@@ -239,14 +393,15 @@ model Notice {
 }
 
 model Ticket {
-  id        Int      @id @default(autoincrement())
+  id        Int             @id @default(autoincrement())
   userId    Int
   subject   String
-  closed    Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id])
+  closed    Boolean         @default(false)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  user      User            @relation(fields: [userId], references: [id])
   messages  TicketMessage[]
+
   @@index([userId, updatedAt])
 }
 
@@ -261,7 +416,7 @@ model TicketMessage {
 }
 
 model RateLimit {
-  key          String   @id
+  key          String    @id
   hits         Int
   expiresAt    DateTime
   blockedUntil DateTime?

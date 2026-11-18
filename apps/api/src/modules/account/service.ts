@@ -1,12 +1,19 @@
 import { randomUUID } from "node:crypto";
 import type { User } from "@prisma/client";
-import type { Account, LedgerItem, TrafficItem } from "@xboard/contracts";
+import type {
+    Account,
+    LedgerItem,
+    TrafficDay,
+    TrafficItem,
+} from "@xboard/contracts";
 import { getConfig, getSmtpConfig } from "../../config";
 import { db, lockUser } from "../../db";
 import { badRequest, HttpError } from "../../http/errors";
 import { hashPassword, verifyPassword } from "../auth/password";
 import { newToken, revokeAccess, sessionDigest } from "../auth/service";
 import { toPlan } from "../plans/service";
+import { enqueueTemplate } from "../mail/templates";
+import { readSettings } from "../site/service";
 
 export function unixSeconds(date: Date | null): number | null {
     return date === null ? null : Math.floor(date.getTime() / 1000);
@@ -25,6 +32,7 @@ export async function toAccount(user: User): Promise<Account> {
         email: user.email,
         role: user.role,
         emailVerified: user.verifiedAt !== null,
+        twoFactorEnabled: user.totpSecret !== null,
         balanceMinor: user.balance,
         speedLimitMbps: user.speedLimit,
         deviceLimit: user.deviceLimit,
@@ -32,6 +40,8 @@ export async function toAccount(user: User): Promise<Account> {
         downloadBytes: user.download.toString(),
         transferBytes: user.transferEnable.toString(),
         expiredAt: unixSeconds(user.expiredAt),
+        trafficResetMode: user.trafficResetMode,
+        nextTrafficResetAt: user.nextTrafficResetAt?.toISOString() ?? null,
         plan: plan ? toPlan(plan) : null,
     };
 }
@@ -97,13 +107,13 @@ export async function sendEmailLink(
                 expiresAt: new Date(now + LINK_TTL_MS),
             },
         });
-        await tx.mail.create({
-            data: {
-                to: user.email,
-                subject: purpose === "verify" ? "验证你的邮箱" : "重置账户密码",
-                text: `请在 30 分钟内打开链接：\n${link}\n若非本人操作，请忽略此邮件。`,
-            },
-        });
+        const { siteName } = await readSettings(tx);
+        await enqueueTemplate(
+            tx,
+            purpose === "verify" ? "verify_email" : "reset_password",
+            user.email,
+            { link, siteName },
+        );
         return true;
     });
 }
@@ -193,6 +203,40 @@ export async function listLedger(userId: number): Promise<LedgerItem[]> {
     }));
 }
 
+/**
+ * One user's upload and download per Asia/Shanghai day for the last `days`
+ * days (today included), oldest first; days without reports are zero.
+ */
+export async function dailyTraffic(
+    userId: number,
+    days: number,
+): Promise<TrafficDay[]> {
+    const rows = await db.$queryRaw<
+        { date: string; upload: string; download: string }[]
+    >`
+        WITH day AS (
+            SELECT generate_series(
+                (now() AT TIME ZONE 'Asia/Shanghai')::date - ${days - 1}::int,
+                (now() AT TIME ZONE 'Asia/Shanghai')::date,
+                interval '1 day'
+            )::date AS d
+        ),
+        used AS (
+            SELECT ("createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Shanghai')::date AS d,
+                   SUM(upload) AS upload, SUM(download) AS download
+            FROM "TrafficRecord"
+            WHERE "userId" = ${userId}
+              AND "createdAt" >= (now() - make_interval(days => ${days}::int + 1))
+            GROUP BY 1
+        )
+        SELECT to_char(day.d, 'YYYY-MM-DD') AS date,
+               COALESCE(used.upload, 0)::text AS upload,
+               COALESCE(used.download, 0)::text AS download
+        FROM day LEFT JOIN used ON used.d = day.d
+        ORDER BY day.d`;
+    return rows;
+}
+
 export async function listTraffic(userId: number): Promise<TrafficItem[]> {
     const rows = await db.trafficRecord.findMany({
         where: { userId },
@@ -208,6 +252,7 @@ export async function listTraffic(userId: number): Promise<TrafficItem[]> {
     });
     return rows.map((row) => ({
         ...row,
+        id: row.id.toString(),
         upload: row.upload.toString(),
         download: row.download.toString(),
         createdAt: row.createdAt.toISOString(),

@@ -1,12 +1,16 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import type { Plan } from "@xboard/contracts";
-import { Check, Loader2 } from "lucide-react";
+import {
+    couponCodeSchema,
+    type CreateOrderBody,
+    type Period,
+    type Plan,
+} from "@xboard/contracts";
+import { Check, RotateCcw } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAccount, useCreateOrder, usePlans } from "@/api/hooks";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
-import { InfoTip } from "@/components/info-tip";
 import { Page } from "@/components/layout/page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,33 +24,66 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
-    daysLeft,
+    formatDateTime,
     formatMinor,
     formatTraffic,
     periodLabel,
 } from "@/lib/format";
+import { RedeemGift } from "./redeem-gift";
 
-type Period = "monthly" | "quarterly" | "yearly";
+function useOrderCheckout() {
+    const navigate = useNavigate();
+    const create = useCreateOrder();
+    const previous = useRef<{ key: string; id: string } | null>(null);
+    function submit(
+        input:
+            | Omit<
+                  Extract<CreateOrderBody, { kind?: "subscription" }>,
+                  "requestId"
+              >
+            | Omit<
+                  Extract<CreateOrderBody, { kind: "traffic_reset" }>,
+                  "requestId"
+              >,
+    ) {
+        const key = JSON.stringify(input);
+        if (previous.current?.key !== key)
+            previous.current = { key, id: crypto.randomUUID() };
+        create.mutate(
+            { ...input, requestId: previous.current.id },
+            {
+                onSuccess: () => {
+                    previous.current = null;
+                    toast.success("订单已创建，请在 30 分钟内确认结算。");
+                    void navigate({ to: "/orders" });
+                },
+            },
+        );
+    }
+    return { submit, pending: create.isPending };
+}
 
 function PlanCard({
     plan,
     current,
-    locked,
+    switching,
+    permanent,
+    couponCode,
 }: {
     plan: Plan;
     current: boolean;
-    /** The user holds another plan that is still valid, so only renewal is allowed. */
-    locked: boolean;
+    switching: boolean;
+    permanent: boolean;
+    couponCode: string;
 }) {
-    const navigate = useNavigate();
-    const create = useCreateOrder();
+    const checkout = useOrderCheckout();
     const [period, setPeriod] = useState<Period>(
-        (plan.prices[0]?.period as Period) ?? "monthly",
+        plan.prices[0]?.period ?? "monthly",
     );
-    // One request id per period choice, so a double click never makes two orders.
-    const requestId = useRef<string | null>(null);
     const price =
         plan.prices.find((p) => p.period === period) ?? plan.prices[0];
 
@@ -79,7 +116,6 @@ function PlanCard({
                         onValueChange={(value) => {
                             if (!value) return;
                             setPeriod(value as Period);
-                            requestId.current = null;
                         }}
                         className="w-full"
                         aria-label="付款周期"
@@ -93,7 +129,7 @@ function PlanCard({
                 ) : null}
                 <ul className="space-y-field text-sm">
                     {[
-                        `每周期 ${formatTraffic(plan.transferBytes)} 流量`,
+                        `${plan.trafficResetMode === "none" ? "每周期" : "每月"} ${formatTraffic(plan.transferBytes)} 流量`,
                         plan.speedLimitMbps
                             ? `峰值 ${plan.speedLimitMbps} Mbps`
                             : "不限速",
@@ -111,37 +147,36 @@ function PlanCard({
             <CardFooter className="mt-auto gap-inline">
                 <Button
                     className="flex-1"
-                    disabled={!price || create.isPending || locked}
+                    disabled={!price || checkout.pending || permanent}
                     onClick={() => {
-                        requestId.current ??= crypto.randomUUID();
-                        create.mutate(
-                            {
-                                planId: plan.id,
-                                period,
-                                requestId: requestId.current,
-                            },
-                            {
-                                onSuccess: () => {
-                                    requestId.current = null;
-                                    toast.success(
-                                        "订单已创建，请在 30 分钟内完成支付。",
-                                    );
-                                    void navigate({ to: "/orders" });
-                                },
-                            },
-                        );
+                        if (!price) return;
+                        const coupon = couponCode
+                            ? couponCodeSchema.safeParse(couponCode)
+                            : null;
+                        if (coupon && !coupon.success) {
+                            toast.error(
+                                coupon.error.issues[0]?.message ??
+                                    "优惠码格式不正确。",
+                            );
+                            return;
+                        }
+                        checkout.submit({
+                            planId: plan.id,
+                            period: price.period,
+                            ...(coupon?.success && { couponCode: coupon.data }),
+                        });
                     }}
                 >
-                    {create.isPending ? (
-                        <Loader2 className="animate-spin" />
-                    ) : null}
-                    {current ? "续费" : "购买"}
+                    {checkout.pending
+                        ? "创建订单中…"
+                        : permanent
+                          ? "已有长期套餐"
+                          : switching
+                            ? "更换套餐"
+                            : current
+                              ? "续费"
+                              : "购买"}
                 </Button>
-                {locked ? (
-                    <InfoTip label="无法购买的原因">
-                        有效期内仅可续费当前套餐
-                    </InfoTip>
-                ) : null}
             </CardFooter>
         </Card>
     );
@@ -150,21 +185,62 @@ function PlanCard({
 export function Plans() {
     const account = useAccount();
     const plans = usePlans(account.isSuccess);
+    const checkout = useOrderCheckout();
+    const [couponCode, setCouponCode] = useState("");
     const currentId = account.data?.plan?.id;
-    const expiry = daysLeft(account.data?.expiredAt ?? null);
+    const expiry = account.data?.expiredAt ?? null;
     const hasActivePlan =
-        currentId !== undefined && (expiry === null || expiry > 0);
+        currentId !== undefined &&
+        (expiry === null || expiry * 1000 > Date.now());
+    const resetPrice = account.data?.plan?.trafficResetPriceMinor ?? null;
+    const nextReset = account.data?.nextTrafficResetAt;
 
     return (
         <Page
             title="选购套餐"
+            actions={<RedeemGift />}
             help={
                 <>
                     月付 30 天、季付 90 天、年付 365 天。
-                    有效期内仅可续费当前套餐，续费后时长与流量累加。
+                    更换套餐时，按剩余时间折算已购买的权益。抵扣后的差额将从余额扣除或退回余额。
                 </>
             }
         >
+            {hasActivePlan &&
+                (resetPrice !== null ||
+                    (nextReset &&
+                        (expiry === null ||
+                            Date.parse(nextReset) < expiry * 1000))) && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>流量重置</CardTitle>
+                            <CardDescription>
+                                {nextReset &&
+                                (expiry === null ||
+                                    Date.parse(nextReset) < expiry * 1000)
+                                    ? `下次自动重置时间为 ${formatDateTime(nextReset)}（北京时间）。`
+                                    : "购买重置包可清零当前套餐的已用流量。"}
+                            </CardDescription>
+                        </CardHeader>
+                        {resetPrice !== null && currentId !== undefined && (
+                            <CardFooter>
+                                <Button
+                                    variant="outline"
+                                    disabled={checkout.pending}
+                                    onClick={() =>
+                                        checkout.submit({
+                                            planId: currentId,
+                                            kind: "traffic_reset",
+                                        })
+                                    }
+                                >
+                                    <RotateCcw /> 购买重置包{" "}
+                                    {formatMinor(resetPrice)}
+                                </Button>
+                            </CardFooter>
+                        )}
+                    </Card>
+                )}
             {account.isError || plans.isError ? (
                 <ErrorState
                     error={account.error ?? plans.error}
@@ -179,16 +255,39 @@ export function Plans() {
                     <Skeleton className="h-96" />
                 </div>
             ) : plans.data?.length ? (
-                <div className="grid gap-group md:grid-cols-2 xl:grid-cols-3">
-                    {plans.data.map((plan) => (
-                        <PlanCard
-                            key={plan.id}
-                            plan={plan}
-                            current={currentId === plan.id}
-                            locked={hasActivePlan && currentId !== plan.id}
+                <>
+                    <div className="flex flex-wrap items-center gap-inline">
+                        <Label htmlFor="plan-coupon">优惠码</Label>
+                        <Input
+                            id="plan-coupon"
+                            autoComplete="off"
+                            className="w-48 max-w-full"
+                            value={couponCode}
+                            maxLength={48}
+                            onChange={(event) =>
+                                setCouponCode(event.target.value)
+                            }
                         />
-                    ))}
-                </div>
+                    </div>
+                    <div className="grid gap-group md:grid-cols-2 xl:grid-cols-3">
+                        {plans.data.map((plan) => (
+                            <PlanCard
+                                key={plan.id}
+                                plan={plan}
+                                current={hasActivePlan && currentId === plan.id}
+                                switching={
+                                    hasActivePlan && currentId !== plan.id
+                                }
+                                permanent={
+                                    hasActivePlan &&
+                                    expiry === null &&
+                                    currentId === plan.id
+                                }
+                                couponCode={couponCode.trim()}
+                            />
+                        ))}
+                    </div>
+                </>
             ) : (
                 <Card>
                     <EmptyState

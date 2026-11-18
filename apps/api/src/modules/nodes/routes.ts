@@ -5,13 +5,14 @@ import { badRequest, unauthorized } from "../../http/errors";
 import {
     aliveCounts,
     authenticateNode,
-    nodeConfig,
     nodeUsers,
     parseNodeId,
     recordAlive,
     recordTraffic,
     saveStatus,
 } from "./service";
+import { nodeConfig, xrayStreamSettings } from "./node-config";
+import { typedSettings, sniOf } from "./settings";
 
 /** Node-facing API. Called by node software, not browsers; auth is node_id + token in the query. */
 export const nodeRoutes = Router();
@@ -83,26 +84,29 @@ async function adapterNode(adapter: string, query: Record<string, unknown>) {
 nodeRoutes.get("/v1/server/:adapter/config", async (req, res) => {
     const { adapter } = req.params;
     const node = await adapterNode(adapter, req.query);
-    const serverName = node.serverName || node.host;
+    const typed = typedSettings(node);
     if (adapter === "TrojanTidalab") {
-        res.json({ local_port: node.port, ssl: { sni: serverName } });
+        const sni =
+            typed.protocol === "trojan" && typed.settings.security === "tls"
+                ? sniOf(typed.settings.tls, node.host)
+                : node.host;
+        res.json({ local_port: node.serverPort, ssl: { sni } });
         return;
     }
     if (adapter === "ShadowsocksTidalab") {
-        res.json({ server_port: node.port, cipher: node.cipher });
+        res.json({
+            server_port: node.serverPort,
+            cipher:
+                typed.protocol === "shadowsocks" ? typed.settings.cipher : null,
+        });
         return;
     }
     res.json({
         inbound: {
-            port: node.port,
+            port: node.serverPort,
             protocol: node.protocol,
             settings: { clients: [] },
-            streamSettings: {
-                network: "tcp",
-                security: "tls",
-                tlsSettings: { serverName },
-                tcpSettings: { header: { type: "none" } },
-            },
+            streamSettings: xrayStreamSettings(node),
         },
         routing: { rules: [] },
     });
@@ -111,6 +115,7 @@ nodeRoutes.get("/v1/server/:adapter/config", async (req, res) => {
 nodeRoutes.get("/v1/server/:adapter/user", async (req, res) => {
     const { adapter } = req.params;
     const node = await adapterNode(adapter, req.query);
+    const typed = typedSettings(node);
     const users = await nodeUsers(node.id);
     res.json({
         data: users.map((user) => ({
@@ -127,8 +132,11 @@ nodeRoutes.get("/v1/server/:adapter/user", async (req, res) => {
                   ? { trojan_user: { password: user.uuid } }
                   : {
                         secret: user.uuid,
-                        cipher: node.cipher,
-                        port: node.port,
+                        cipher:
+                            typed.protocol === "shadowsocks"
+                                ? typed.settings.cipher
+                                : null,
+                        port: node.serverPort,
                     }),
         })),
     });

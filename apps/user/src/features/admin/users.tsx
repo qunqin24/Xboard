@@ -3,13 +3,21 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { type ColumnDef } from "@tanstack/react-table";
 import {
     Ban,
+    CalendarClock,
     Check,
+    CircleCheck,
     Copy,
     KeyRound,
     Loader2,
+    MailCheck,
+    MailPlus,
+    MailWarning,
+    Package,
     RefreshCw,
+    ShieldOff,
     UserCheck,
     UserRound,
+    Wallet,
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -29,6 +37,8 @@ import {
 import { DatePicker } from "@/components/date-picker";
 import { InfoTip } from "@/components/info-tip";
 import { Page } from "@/components/layout/page";
+import { IconBlock } from "@/components/ui/icon-block";
+import { IconText } from "@/components/icon-text";
 import { LongText } from "@/components/long-text";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -74,6 +84,8 @@ import {
     usedPercent,
 } from "@/lib/format";
 import type { Paged, PlanRow, UserRow } from "./types";
+import { BroadcastEditor } from "./mail-tools";
+import { BulkResetTraffic, ManualOrder } from "./user-operations";
 import {
     bytesToGiB,
     fromDateInput,
@@ -496,6 +508,7 @@ function UserSheet({
     onResetPassword,
     onToggleBan,
     onRotateCredentials,
+    onResetTwoFactor,
 }: {
     user: UserRow | undefined;
     plans: PlanRow[];
@@ -503,6 +516,7 @@ function UserSheet({
     onResetPassword: (user: UserRow) => void;
     onToggleBan: (user: UserRow) => void;
     onRotateCredentials: (user: UserRow) => void;
+    onResetTwoFactor: (user: UserRow) => void;
 }) {
     const plan = plans.find((p) => p.id === user?.planId);
     const used = user ? sumBytes(user.upload, user.download) : "0";
@@ -560,6 +574,14 @@ function UserSheet({
                                             : "—"}
                                     </dd>
                                 </div>
+                                <div className="min-w-0">
+                                    <dt className="text-xs text-muted-foreground">
+                                        邀请人
+                                    </dt>
+                                    <dd className="truncate">
+                                        {user.invitedBy ?? "—"}
+                                    </dd>
+                                </div>
                                 <div className="col-span-2">
                                     <dt className="text-xs text-muted-foreground">
                                         已用流量
@@ -596,6 +618,9 @@ function UserSheet({
                                     <TabsTrigger value="traffic">
                                         流量
                                     </TabsTrigger>
+                                    <TabsTrigger value="order">
+                                        开单
+                                    </TabsTrigger>
                                 </TabsList>
                                 <TabsContent
                                     value="subscription"
@@ -612,6 +637,9 @@ function UserSheet({
                                 </TabsContent>
                                 <TabsContent value="traffic" className="pt-4">
                                     <ResetTrafficForm user={user} />
+                                </TabsContent>
+                                <TabsContent value="order" className="pt-4">
+                                    <ManualOrder user={user} plans={plans} />
                                 </TabsContent>
                             </Tabs>
                             <Separator />
@@ -641,6 +669,16 @@ function UserSheet({
                                         }
                                     >
                                         <RefreshCw /> 更换节点凭据
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        disabled={
+                                            user.role === "admin" ||
+                                            !user.twoFactorEnabled
+                                        }
+                                        onClick={() => onResetTwoFactor(user)}
+                                    >
+                                        <ShieldOff /> 重置两步验证
                                     </Button>
                                     <Button
                                         variant={
@@ -732,6 +770,7 @@ function TemporaryPassword({
 type Pending =
     | { kind: "password"; user: UserRow }
     | { kind: "credentials"; user: UserRow }
+    | { kind: "two-factor"; user: UserRow }
     | { kind: "ban"; user: UserRow }
     | { kind: "bulk-ban"; users: UserRow[]; clear: () => void };
 
@@ -751,6 +790,11 @@ export function AdminUsers() {
     const navigate = useNavigate();
     const action = useCommand();
     const [pending, setPending] = useState<Pending | null>(null);
+    const [reset, setReset] = useState<{
+        users: UserRow[];
+        clear: () => void;
+    } | null>(null);
+    const [mail, setMail] = useState<number[] | null>(null);
     const [password, setPassword] = useState<{
         email: string;
         password: string;
@@ -802,21 +846,35 @@ export function AdminUsers() {
                 <DataTableColumnHeader column={column} title="用户" />
             ),
             cell: ({ row }) => (
-                <div>
-                    <div className="flex items-center gap-2">
-                        <LongText className="max-w-52">
-                            {row.original.email}
-                        </LongText>
-                        {row.original.role === "admin" ? (
-                            <Badge variant="secondary">管理员</Badge>
-                        ) : null}
-                        {row.original.verifiedAt ? null : (
-                            <Badge variant="warning">未验证</Badge>
-                        )}
+                <div className="flex items-center gap-3">
+                    <IconBlock
+                        size="sm"
+                        tone={
+                            row.original.banned
+                                ? "danger"
+                                : row.original.role === "admin"
+                                  ? "brand"
+                                  : "neutral"
+                        }
+                    >
+                        {row.original.email.slice(0, 1).toUpperCase()}
+                    </IconBlock>
+                    <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                            <LongText className="max-w-52">
+                                {row.original.email}
+                            </LongText>
+                            {row.original.role === "admin" ? (
+                                <Badge variant="secondary">管理员</Badge>
+                            ) : null}
+                            {row.original.verifiedAt ? null : (
+                                <Badge variant="warning">未验证</Badge>
+                            )}
+                        </div>
+                        <p className="numeric text-xs text-muted-foreground">
+                            #{row.original.id}
+                        </p>
                     </div>
-                    <p className="numeric text-xs text-muted-foreground">
-                        #{row.original.id}
-                    </p>
                 </div>
             ),
             enableHiding: false,
@@ -830,6 +888,7 @@ export function AdminUsers() {
             ),
             cell: ({ getValue }) => (
                 <Badge variant={getValue() === "已封禁" ? "danger" : "success"}>
+                    {getValue() === "已封禁" ? <Ban /> : <CircleCheck />}
                     {getValue<string>()}
                 </Badge>
             ),
@@ -849,7 +908,9 @@ export function AdminUsers() {
                 getValue<string>() === "未开通" ? (
                     <span className="text-muted-foreground">未开通</span>
                 ) : (
-                    getValue<string>()
+                    <IconText icon={Package} className="font-sans">
+                        {getValue<string>()}
+                    </IconText>
                 ),
             filterFn: inFilter,
             meta: { title: "套餐" },
@@ -862,6 +923,7 @@ export function AdminUsers() {
                 <Badge
                     variant={getValue() === "已验证" ? "success" : "warning"}
                 >
+                    {getValue() === "已验证" ? <MailCheck /> : <MailWarning />}
                     {getValue<string>()}
                 </Badge>
             ),
@@ -876,13 +938,14 @@ export function AdminUsers() {
             header: ({ column }) => (
                 <DataTableColumnHeader column={column} title="到期" />
             ),
-            cell: ({ row }) => (
-                <span className="numeric text-muted-foreground">
-                    {row.original.planId
-                        ? formatDate(row.original.expiredAt)
-                        : "—"}
-                </span>
-            ),
+            cell: ({ row }) =>
+                row.original.planId ? (
+                    <IconText icon={CalendarClock}>
+                        {formatDate(row.original.expiredAt)}
+                    </IconText>
+                ) : (
+                    <span className="text-muted-foreground">—</span>
+                ),
             sortUndefined: "last",
             meta: {
                 title: "到期",
@@ -910,7 +973,7 @@ export function AdminUsers() {
                             / {formatTraffic(row.original.transferEnable)}
                         </p>
                         <Progress
-                            className="mt-1 h-1.5"
+                            className="mt-1"
                             value={percent}
                             tone={percent >= 90 ? "warning" : "default"}
                         />
@@ -929,9 +992,9 @@ export function AdminUsers() {
                 <DataTableColumnHeader column={column} title="余额" />
             ),
             cell: ({ row }) => (
-                <span className="numeric">
+                <IconText icon={Wallet}>
                     {formatMinor(row.original.balance)}
-                </span>
+                </IconText>
             ),
             meta: {
                 title: "余额",
@@ -979,9 +1042,11 @@ export function AdminUsers() {
             ? `重置 ${pending.user.email} 的密码？`
             : pending?.kind === "credentials"
               ? `更换 ${pending.user.email} 的节点凭据？`
-              : pending?.kind === "ban"
-                ? `封禁 ${pending.user.email}？`
-                : `封禁选中的 ${pending?.users.length ?? 0} 个用户？`;
+              : pending?.kind === "two-factor"
+                ? `重置 ${pending.user.email} 的两步验证？`
+                : pending?.kind === "ban"
+                  ? `封禁 ${pending.user.email}？`
+                  : `封禁选中的 ${pending?.users.length ?? 0} 个用户？`;
 
     return (
         <Page
@@ -1040,6 +1105,20 @@ export function AdminUsers() {
                         <Button
                             size="sm"
                             variant="outline"
+                            onClick={() => setReset({ users: rows, clear })}
+                        >
+                            <RefreshCw /> 清零流量
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setMail(rows.map((row) => row.id))}
+                        >
+                            <MailPlus /> 群发邮件
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="outline"
                             onClick={() => bulkUnban(rows, clear)}
                         >
                             <UserCheck /> 解封
@@ -1060,6 +1139,22 @@ export function AdminUsers() {
                     </>
                 )}
             />
+            {mail && (
+                <BroadcastEditor
+                    selectedIds={mail}
+                    close={() => setMail(null)}
+                />
+            )}
+            {reset && (
+                <BulkResetTraffic
+                    users={reset.users}
+                    close={() => setReset(null)}
+                    onDone={() => {
+                        reset.clear();
+                        setReset(null);
+                    }}
+                />
+            )}
             <UserSheet
                 user={selected}
                 plans={plans.data ?? []}
@@ -1071,6 +1166,9 @@ export function AdminUsers() {
                 onRotateCredentials={(user) =>
                     setPending({ kind: "credentials", user })
                 }
+                onResetTwoFactor={(user) =>
+                    setPending({ kind: "two-factor", user })
+                }
             />
             <ConfirmDialog
                 open={pending !== null}
@@ -1081,16 +1179,20 @@ export function AdminUsers() {
                         ? "将生成临时密码并使该用户所有登录会话失效，原密码立即作废。"
                         : pending?.kind === "credentials"
                           ? "原节点凭据在节点下次同步用户时失效，用户需要重新导入订阅。"
-                          : pending?.kind === "ban"
-                            ? "该用户所有登录会话将立即失效，节点将停止为其提供服务。可随时解除封禁。"
-                            : "所选管理员账户将被跳过。被封禁用户将立即登出，节点停止为其提供服务。"
+                          : pending?.kind === "two-factor"
+                            ? "将移除该用户的两步验证和恢复码，并使其所有登录会话失效。用户之后仅凭密码登录，可自行重新启用。请先确认账户持有人身份。"
+                            : pending?.kind === "ban"
+                              ? "该用户所有登录会话将立即失效，节点将停止为其提供服务。可随时解除封禁。"
+                              : "所选管理员账户将被跳过。被封禁用户将立即登出，节点停止为其提供服务。"
                 }
                 confirmText={
                     pending?.kind === "password"
                         ? "重置"
                         : pending?.kind === "credentials"
                           ? "更换"
-                          : "封禁"
+                          : pending?.kind === "two-factor"
+                            ? "重置"
+                            : "封禁"
                 }
                 destructive
                 isLoading={action.isPending}
@@ -1119,6 +1221,18 @@ export function AdminUsers() {
                             {
                                 onSuccess: () => {
                                     toast.success("已更换节点凭据");
+                                    setPending(null);
+                                },
+                            },
+                        );
+                    else if (pending.kind === "two-factor")
+                        action.mutate(
+                            {
+                                path: `/admin/users/${pending.user.id}/two-factor/reset`,
+                            },
+                            {
+                                onSuccess: () => {
+                                    toast.success("已重置两步验证");
                                     setPending(null);
                                 },
                             },

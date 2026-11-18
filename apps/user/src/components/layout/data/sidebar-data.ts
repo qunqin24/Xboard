@@ -1,5 +1,6 @@
 import {
     ClipboardList,
+    BookOpen,
     CreditCard,
     FileText,
     LayoutDashboard,
@@ -14,7 +15,9 @@ import {
     Server,
     Settings,
     ShieldCheck,
+    TicketPercent,
     UserCog,
+    UserPlus,
     Users,
     Wallet,
 } from "lucide-react";
@@ -29,6 +32,7 @@ export const userNav: NavGroup[] = [
             { title: "选购套餐", url: "/plans", icon: Package },
             { title: "我的订单", url: "/orders", icon: Receipt },
             { title: "订阅链接", url: "/subscription", icon: Link2 },
+            { title: "帮助文档", url: "/help", icon: BookOpen },
             { title: "使用记录", url: "/records", icon: FileText },
             { title: "工单", url: "/tickets", icon: MessagesSquare },
         ],
@@ -45,6 +49,11 @@ export const userNav: NavGroup[] = [
                         title: "安全",
                         url: "/settings/security",
                         icon: ShieldCheck,
+                    },
+                    {
+                        title: "邀请",
+                        url: "/settings/invite",
+                        icon: UserPlus,
                     },
                     {
                         title: "外观",
@@ -67,6 +76,11 @@ export const adminNav: NavGroup[] = [
         title: "商品",
         items: [
             { title: "套餐", url: "/admin/plans", icon: Package },
+            {
+                title: "优惠与兑换",
+                url: "/admin/promotions",
+                icon: TicketPercent,
+            },
             { title: "节点", url: "/admin/nodes", icon: Server },
         ],
     },
@@ -82,6 +96,7 @@ export const adminNav: NavGroup[] = [
         title: "内容与支持",
         items: [
             { title: "公告", url: "/admin/notices", icon: Megaphone },
+            { title: "帮助文档", url: "/admin/help", icon: BookOpen },
             { title: "工单", url: "/admin/tickets", icon: MessagesSquare },
         ],
     },

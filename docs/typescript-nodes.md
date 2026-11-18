@@ -24,18 +24,60 @@
 ## 在后台创建节点
 
 1. 先创建发布套餐，并给测试账户入账购买。
-2. `/admin` → 节点，填写真实域名/IP、端口、协议和 TLS 证书域名。
+2. `/admin` → 节点，填写真实域名/IP、连接端口与服务端口、协议，以及该协议的安全、传输等设置。
 3. 勾选允许使用的套餐，启用节点。
-4. 保存创建时显示的节点编号和密钥。密钥不再回显，遗失后重置。
-5. TLS 证书、监听、防火墙由节点后端自身配置，面板不传输私钥。
+4. 保存创建时显示的节点编号和密钥。密钥不再回显，遗失后重置。中转节点没有密钥。
+5. TLS 证书默认由节点后端自身配置；“证书”中的设置以 `cert_config` 下发，仅对读取它的后端（如 v2node）有效。
+   Reality 私钥、ECH 密钥会随节点配置下发，不会出现在订阅中。
 
-协议约束：
+协议与选项（字段名见 `packages/contracts/src/nodes.ts`）：
 
-- VMess/VLESS：TCP + TLS；VMess alterId=0；VLESS 不启用 Reality/XTLS flow。
-- Trojan：TCP + TLS。
-- Shadowsocks：aes-128-gcm / aes-256-gcm / chacha20-ietf-poly1305。
-- Hysteria2：TLS，不设置混淆，省略空带宽参数。
-- TUIC：TLS，bbr，不启用 0-RTT。
+| 协议 | 选项 |
+| --- | --- |
+| VLESS | TLS / Reality / 无；TCP（可选 HTTP 伪装）、WS、gRPC、HTTPUpgrade、XHTTP；flow `xtls-rprx-vision`；uTLS 指纹；多路复用；ECH |
+| VMess | TLS / 无；TCP（可选 HTTP 伪装）、WS、gRPC、HTTPUpgrade；uTLS；多路复用；ECH |
+| Trojan | TLS / Reality；TCP、WS、gRPC；uTLS；多路复用；ECH |
+| Shadowsocks | aes-128/256-gcm、chacha20-ietf-poly1305、2022-blake3-aes-128/256-gcm；插件 obfs、v2ray-plugin |
+| Hysteria2 | Salamander 混淆、上下行带宽、端口跳跃（范围与间隔） |
+| Hysteria | 混淆密码、上下行带宽（必填）、端口跳跃 |
+| TUIC | v5 / v4、拥塞控制 cubic/new_reno/bbr、UDP 转发 native/quic、ALPN |
+| AnyTLS | 填充方案 |
+| SOCKS5、HTTP | 无 / TLS |
+| Naive | TLS |
+| Mieru | TCP / UDP、端口范围、traffic pattern |
+
+所有 TLS 类协议都有 SNI、ALPN、允许不安全证书和 ECH。Reality 不选 uTLS 指纹时，订阅使用 chrome。
+Shadowsocks 2022 的服务端密钥由节点私有随机串派生，用户密钥为 UUID 前 16/32 个字符的 base64，与 V2bX 一致。
+
+节点级选项：倍率与分时段倍率、在订阅中显示、标签、父节点（中转）、V2bX `routes` 路由规则、
+`custom_outbounds` / `custom_routes`（原样下发）、证书设置。
+
+## 对照的官方版本（2026-11-18）
+
+- 节点后端：wyx2685/V2bX `dev_new` 71277de（Xray 内核 fork v1.251202.0、sing-box 1.13.0、hysteria v2.6.4）；
+  XrayR 官方仓库已废弃并清空，最后有效版本 v0.9.4 只保留 UniProxy（newV2board）接口，旧 V2board 适配器只服务旧分支。
+- Xray-core v26.11.9 与 XTLS/Xray-docs-next；mihomo v1.19.34；sing-box v1.14.4。
+
+后端限制：
+
+- V2bX 只运行 vmess、vless、trojan、shadowsocks、tuic、anytls、hysteria、hysteria2。SOCKS、HTTP、Naive、Mieru
+  的节点配置照常下发，需使用支持它们的后端。
+- V2bX 的 TLS 证书、ALPN、ECH 密钥、多路复用都取自节点本机配置；面板下发的 `cert_config`、`custom_outbounds`、
+  `custom_routes`、`multiplex`、Shadowsocks 插件不被 V2bX 读取。`routes` 中只处理 block 与 dns。
+- XHTTP 只能用 V2bX 的 Xray 内核；sing 内核不支持。V2bX 的 Trojan 不支持 Reality。
+- V2bX 在节点没有任何可用用户时拒绝启动。
+
+## 与原 PHP 版的差异（以官方实现为准）
+
+- 去掉 HTTP/2 传输：Xray-core 已移除，V2bX 两个内核和 XrayR 都不支持。
+- Trojan 只提供 TCP、WS、gRPC，且不支持 HTTP 伪装：V2bX 的 Xray 内核对 HTTPUpgrade 报错，sing 内核静默降级，Mihomo 忽略 HTTP 伪装。
+- WebSocket 同时下发 `host` 和 `headers.Host`（Xray 已改用 `host`，V2bX sing 内核与 XrayR 只读 `headers.Host`）；
+  路径中的 `?ed=` 在订阅中转换为 Mihomo 的 `max-early-data` 与 sing-box 的 `max_early_data`。
+- 不再给 VLESS 下发 `encryption: "none"`（V2bX 会因此拒绝启动）。
+- VMess 在订阅中使用 XUDP（Mihomo `packet-encoding: xudp`，sing-box `packet_encoding: xudp`）。
+- Mieru：Mihomo 不允许 `port` 与 `port-range` 同时出现，端口范围只能一段；补上 `udp` 与 `traffic-pattern`。
+- sing-box 订阅包含 Naive（1.13 起有 naive 出站），不包含开启 TLS 的 TCP HTTP 伪装（sing-box 会改用 HTTP/2）。
+- TUIC 的 Mihomo 输出不再带无效的 `udp` 字段；sing-box 的 AnyTLS 不再默认 `alpn: h3`；Shadowsocks obfs 在 sing-box 中写作 `obfs-local`。
 
 ## V2bX 配置示例
 
@@ -123,7 +165,7 @@ UniProxy 上报增量字节：`{"1":[上传字节,下载字节]}`。
 
 用户在 `/subscription` 生成链接，选择 Mihomo 或 Sing-box 格式导入。
 链接重置立即使旧链接无法再下载；已经导入的节点凭据不会因此轮换。
-订阅仅返回当前有效套餐的已启用节点，不包括管理密钥。
+订阅仅返回当前有效套餐中已启用且显示的节点；中转节点仅在父节点启用时出现。不包括管理密钥。
 
 当前输出 JSON，Mihomo 可将其作为 YAML 解析。尚未使用真实客户端二进制做配置验收，
 也没有进行节点连接测速。不能把接口响应成功当作代理连接成功。

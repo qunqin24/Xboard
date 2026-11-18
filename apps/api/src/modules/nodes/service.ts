@@ -4,7 +4,9 @@ import type { Node } from "@prisma/client";
 import { db } from "../../db";
 import { badRequest, conflict, unauthorized } from "../../http/errors";
 import { canUseNodes } from "../account/entitlement";
+import { resetDueTraffic, type CycleUser } from "../account/traffic-cycle";
 import { sessionDigest } from "../auth/service";
+import { applyRate, currentRate } from "./settings";
 
 type Query = Record<string, unknown>;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -45,6 +47,8 @@ export async function authenticateNode(
         !node ||
         !node.enabled ||
         node.deletedAt !== null ||
+        // A relay child has no backend of its own; its parent serves it.
+        node.parentId !== null ||
         type !== node.protocol ||
         expected.length !== given.length ||
         !timingSafeEqual(expected, given)
@@ -54,46 +58,6 @@ export async function authenticateNode(
     return node;
 }
 
-export function nodeConfig(node: Node) {
-    const common = {
-        host: node.host,
-        server_port: node.port,
-        server_name: node.serverName || node.host,
-        routes: [],
-        base_config: { push_interval: 60, pull_interval: 60 },
-    };
-    switch (node.protocol) {
-        case "vmess":
-        case "vless":
-            return {
-                ...common,
-                tls: 1,
-                tls_settings: { server_name: common.server_name },
-                network: "tcp",
-                network_settings: {},
-                flow: "",
-                encryption: "none",
-            };
-        case "shadowsocks":
-            return { ...common, cipher: node.cipher };
-        case "trojan":
-            return { ...common, network: "tcp", networkSettings: {} };
-        case "hysteria2":
-            return {
-                ...common,
-                ignore_client_bandwidth: true,
-                obfs: "",
-                "obfs-password": "",
-            };
-        case "tuic":
-            return {
-                ...common,
-                congestion_control: "bbr",
-                zero_rtt_handshake: false,
-            };
-    }
-}
-
 export type NodeUser = {
     id: number;
     uuid: string;
@@ -101,13 +65,26 @@ export type NodeUser = {
     device_limit: number;
 };
 
-/** Users allowed on a node: their plan includes it and they may use nodes now. */
+/**
+ * The nodes a backend serves: itself and its enabled relay children. Users of
+ * a child's plans connect through the relay to this backend.
+ */
+export async function servedNodeIds(nodeId: number): Promise<number[]> {
+    const children = await db.node.findMany({
+        where: { parentId: nodeId, enabled: true, deletedAt: null },
+        select: { id: true },
+    });
+    return [nodeId, ...children.map((child) => child.id)];
+}
+
+/** Users allowed on a backend: their plan includes it or one of its relays, and they may use nodes now. */
 export async function nodeUsers(nodeId: number): Promise<NodeUser[]> {
     const now = new Date();
+    const served = await servedNodeIds(nodeId);
     const users = await db.user.findMany({
         where: {
             banned: false,
-            plan: { nodes: { some: { nodeId } } },
+            plan: { nodes: { some: { nodeId: { in: served } } } },
             OR: [{ expiredAt: null }, { expiredAt: { gt: now } }],
         },
         select: {
@@ -139,9 +116,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Add a node's traffic report `{ "<userId>": [upload, download] }`. With an
- * idempotency key, a retried batch is applied once; reusing the key for
- * different content is a 409.
+ * Add a node's traffic report `{ "<userId>": [upload, download] }`, multiplied
+ * by the node's current rate (see `currentRate`); the records keep the charged
+ * amounts. With an idempotency key, a retried batch is applied once; reusing
+ * the key for different content is a 409.
  */
 export async function recordTraffic(node: Node, input: unknown, key?: string) {
     if (!isPlainObject(input)) throw badRequest("Invalid traffic map");
@@ -151,6 +129,7 @@ export async function recordTraffic(node: Node, input: unknown, key?: string) {
         (key !== undefined && (key.length > 128 || !/^[\w-]+$/.test(key)))
     )
         throw badRequest("Invalid traffic report");
+    const rate = currentRate(node);
     const records = entries
         .map(([id, values]) => {
             if (
@@ -166,8 +145,8 @@ export async function recordTraffic(node: Node, input: unknown, key?: string) {
                 throw badRequest("Invalid traffic counters");
             return {
                 userId: Number(id),
-                upload: BigInt(values[0]),
-                download: BigInt(values[1]),
+                upload: applyRate(BigInt(values[0]), rate),
+                download: applyRate(BigInt(values[1]), rate),
             };
         })
         .filter((row) => row.upload > 0n || row.download > 0n)
@@ -176,6 +155,7 @@ export async function recordTraffic(node: Node, input: unknown, key?: string) {
         .update(JSON.stringify(input))
         .digest("hex");
 
+    const served = await servedNodeIds(node.id);
     await db.$transaction(
         async (tx) => {
             await tx.$queryRaw`SELECT id FROM "Node" WHERE id = ${node.id} FOR UPDATE`;
@@ -193,16 +173,19 @@ export async function recordTraffic(node: Node, input: unknown, key?: string) {
                 // One statement locks every reported user, in id order, so two
                 // nodes reporting overlapping users cannot deadlock.
                 const ids = records.map((row) => row.userId);
-                const owned = await tx.$queryRaw<Array<{ id: number }>>`
-                    SELECT u.id FROM "User" u
+                const owned = await tx.$queryRaw<CycleUser[]>`
+                    SELECT u.id, u."planId", u."expiredAt", u.upload, u.download,
+                           u."nextTrafficResetAt", u."trafficResetDay"
+                    FROM "User" u
                     WHERE u.id = ANY(${ids}::int[])
-                      AND EXISTS (SELECT 1 FROM "NodePlan" np WHERE np."nodeId" = ${node.id} AND np."planId" = u."planId")
+                      AND EXISTS (SELECT 1 FROM "NodePlan" np WHERE np."nodeId" = ANY(${served}::int[]) AND np."planId" = u."planId")
                     ORDER BY u.id FOR UPDATE OF u`;
                 const allowed = new Set(owned.map((row) => row.id));
                 const accepted = records.filter((row) =>
                     allowed.has(row.userId),
                 );
                 if (accepted.length) {
+                    await resetDueTraffic(tx, owned, new Date());
                     await tx.$executeRaw`
                         UPDATE "User" AS u
                         SET upload = u.upload + t.up, download = u.download + t.down,

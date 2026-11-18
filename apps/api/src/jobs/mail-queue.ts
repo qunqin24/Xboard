@@ -1,8 +1,9 @@
 import nodemailer from "nodemailer";
 import { getConfig, getSmtpConfig } from "../config";
 import { db } from "../db";
+import { errorFields, log, reportJobFailure } from "../logging";
 
-const MAX_ATTEMPTS = 5;
+export const MAX_MAIL_ATTEMPTS = 5;
 const BATCH = 5;
 let busy = false;
 
@@ -33,7 +34,7 @@ export async function flushMail() {
             // without zone, and NOW() would follow the database session's time zone.
             const rows = await tx.$queryRaw<Array<{ id: number }>>`
                 SELECT id FROM "Mail"
-                WHERE "sentAt" IS NULL AND attempts < ${MAX_ATTEMPTS}
+                WHERE "sentAt" IS NULL AND attempts < ${MAX_MAIL_ATTEMPTS}
                   AND "nextAttempt" <= ${now.toISOString()}::timestamp(3)
                 ORDER BY id LIMIT ${BATCH} FOR UPDATE SKIP LOCKED`;
             const claimed = [];
@@ -65,11 +66,27 @@ export async function flushMail() {
                     data: { sentAt: new Date(), text: "", lastError: null },
                 });
             } catch (error) {
-                const reason =
-                    error instanceof Error ? error.message : String(error);
-                console.warn(
-                    `Mail ${mail.id} attempt ${mail.attempts} failed: ${reason}`,
-                );
+                const details = errorFields(error);
+                const responseCode =
+                    error instanceof Error &&
+                    "responseCode" in error &&
+                    typeof error.responseCode === "number"
+                        ? error.responseCode
+                        : null;
+                const reason = [details.code ?? details.type, responseCode]
+                    .filter(Boolean)
+                    .join(" ");
+                if (mail.attempts >= MAX_MAIL_ATTEMPTS)
+                    reportJobFailure("mail delivery", error, {
+                        mailId: mail.id,
+                        attempts: mail.attempts,
+                    });
+                else
+                    log("warn", "mail.retry", {
+                        mailId: mail.id,
+                        attempt: mail.attempts,
+                        error: details,
+                    });
                 await db.mail.update({
                     where: { id: mail.id },
                     data: {
@@ -82,7 +99,7 @@ export async function flushMail() {
             }
         }
     } catch (error) {
-        console.error("Mail queue failed; retrying on the next tick.", error);
+        reportJobFailure("mail queue", error);
     } finally {
         transport.close();
         busy = false;

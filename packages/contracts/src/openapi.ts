@@ -3,7 +3,7 @@ import { endpoints, errorSchema } from "./endpoints";
 
 const ERRORS: Record<number, string> = {
     400: "参数错误",
-    401: "未登录",
+    401: "未通过身份验证",
     403: "无权限或来源不受信任",
     404: "不存在",
     409: "冲突",
@@ -63,8 +63,8 @@ export function buildOpenApi() {
             },
         };
         for (const code of endpoint.auth === "none"
-            ? [400, 409, 429]
-            : [400, 401, 403, 404, 409])
+            ? [400, 401, 403, 409, 429]
+            : [400, 401, 403, 404, 409, 429])
             responses[code] = {
                 description: ERRORS[code],
                 content: errorContent,
