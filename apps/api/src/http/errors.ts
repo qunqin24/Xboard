@@ -35,7 +35,7 @@ export const errorHandler: ErrorRequestHandler = (
     res,
     _next,
 ) => {
-    const { status, message } = describe(error);
+    const { status, message } = describeHttpError(error);
     if (status >= 500) res.locals.requestError = errorFields(error);
     if (res.headersSent) {
         res.destroy();
@@ -50,7 +50,10 @@ export const errorHandler: ErrorRequestHandler = (
     );
 };
 
-function describe(error: unknown): { status: number; message: string } {
+export function describeHttpError(error: unknown): {
+    status: number;
+    message: string;
+} {
     if (error instanceof HttpError)
         return { status: error.status, message: error.message };
     if (error instanceof Prisma.PrismaClientKnownRequestError) {

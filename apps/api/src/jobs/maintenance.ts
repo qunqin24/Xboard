@@ -19,6 +19,17 @@ function tasks(now: Date) {
             db.$transaction((tx) => expirePendingOrders(tx, now)),
         "delete expired sessions": () =>
             db.session.deleteMany({ where: { expiresAt: { lte: now } } }),
+        "delete invalidated ops response replays": () =>
+            db.opsWriteRequest.deleteMany({
+                where: {
+                    token: {
+                        OR: [
+                            { expiresAt: { lte: now } },
+                            { revokedAt: { not: null } },
+                        ],
+                    },
+                },
+            }),
         "delete expired email links": () =>
             db.emailToken.deleteMany({ where: { expiresAt: { lte: now } } }),
         // Kept a day past expiry so the resend cooldown still sees them.

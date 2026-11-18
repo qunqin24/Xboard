@@ -23,4 +23,5 @@ auth.json
 /backups/
 **/.tanstack/
 packages/contracts/openapi.json
+packages/contracts/ops-openapi.json
 *.tsbuildinfo

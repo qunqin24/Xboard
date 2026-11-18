@@ -80,8 +80,9 @@ export async function createOrder(
     userId: number,
     input: CreateOrderBody,
     actorId?: number,
+    transaction?: Tx,
 ): Promise<Order> {
-    return db.$transaction(async (tx) => {
+    const create = async (tx: Tx) => {
         const user = await lockBuyer(tx, userId);
         // Retrying the same purchase returns the order it already created.
         const existing = await tx.order.findUnique({
@@ -173,7 +174,8 @@ export async function createOrder(
                 planId: plan.id,
             });
         return toOrder(order);
-    });
+    };
+    return transaction ? create(transaction) : db.$transaction(create);
 }
 
 /**
@@ -234,20 +236,21 @@ export async function cancelOrder(userId: number, id: string): Promise<Order> {
 }
 
 export function payOrder(userId: number, id: string): Promise<Order> {
-    return settleOrder(userId, id);
+    return db.$transaction((tx) => settleOrder(tx, userId, id));
 }
 
 export async function confirmOfflinePayment(
+    tx: Tx,
     actorId: number,
     id: string,
     input: OfflineOrderPaymentBody,
 ): Promise<Order> {
-    const order = await db.order.findUnique({
+    const order = await tx.order.findUnique({
         where: { id },
         select: { userId: true },
     });
     if (!order) throw notFound("订单不存在。");
-    return settleOrder(order.userId, id, {
+    return settleOrder(tx, order.userId, id, {
         actorId,
         amountMinor: input.amountMinor,
         reason: input.reason || "确认线下收款",
@@ -256,153 +259,148 @@ export async function confirmOfflinePayment(
 
 /** Settle against the original quote under the same locks for both payment methods. */
 async function settleOrder(
+    tx: Tx,
     userId: number,
     id: string,
     receipt?: OfflineReceipt,
 ): Promise<Order> {
-    return db.$transaction(async (tx) => {
-        const user = await lockBuyer(tx, userId);
-        // The maintenance expiry task also changes order rows.
-        await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${id}::uuid AND "userId" = ${userId} FOR UPDATE`;
-        const order = await tx.order.findFirst({ where: { id, userId } });
-        if (!order) throw notFound("订单不存在。");
-        if (order.status === "paid") {
-            if (receipt) {
-                const prior = await tx.audit.findFirst({
-                    where: {
-                        action: OFFLINE_PAYMENT_ACTION,
-                        target: order.id,
-                        actorId: receipt.actorId,
-                        AND: [
-                            {
-                                detail: {
-                                    path: ["amountMinor"],
-                                    equals: receipt.amountMinor,
-                                },
+    const user = await lockBuyer(tx, userId);
+    // The maintenance expiry task also changes order rows.
+    await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${id}::uuid AND "userId" = ${userId} FOR UPDATE`;
+    const order = await tx.order.findFirst({ where: { id, userId } });
+    if (!order) throw notFound("订单不存在。");
+    if (order.status === "paid") {
+        if (receipt) {
+            const prior = await tx.audit.findFirst({
+                where: {
+                    action: OFFLINE_PAYMENT_ACTION,
+                    target: order.id,
+                    actorId: receipt.actorId,
+                    AND: [
+                        {
+                            detail: {
+                                path: ["amountMinor"],
+                                equals: receipt.amountMinor,
                             },
-                            {
-                                detail: {
-                                    path: ["reason"],
-                                    equals: receipt.reason,
-                                },
+                        },
+                        {
+                            detail: {
+                                path: ["reason"],
+                                equals: receipt.reason,
                             },
-                        ],
-                    },
-                    select: { id: true },
-                });
-                if (!prior) throw conflict("订单已结算，请刷新订单列表。");
-            }
-            return toOrder(order);
-        }
-        if (order.status !== "pending")
-            throw conflict("订单状态已改变，请刷新。");
-        const plan = await orderPlan(tx, order.planId);
-        const now = new Date();
-        if (order.expiresAt <= now)
-            throw conflict("订单已超时，请取消后重新下单。");
-        const payableMinor = payableAmount(order);
-        if (
-            receipt &&
-            (payableMinor <= 0 || receipt.amountMinor !== payableMinor)
-        )
-            throw conflict("实收金额须与订单应付金额一致，且大于 0 元。");
-        const balanceDebit = receipt ? 0 : payableMinor;
-        if (user.balance < balanceDebit)
-            throw badRequest("余额不足，暂未开放在线充值。");
-        if (balanceDebit < 0 && user.balance - balanceDebit > MAX_BALANCE_MINOR)
-            throw conflict("退回差额后余额将超过上限，请联系管理员。");
-        let paidSnapshot: Pick<OrderRow, "serviceUntil" | "entitlementVersion">;
-        if (order.kind === "traffic_reset") {
-            resetPrice(user, plan, now);
-            if (order.entitlementVersion !== user.entitlementVersion)
-                throw conflict("当前套餐已变更，请取消后重新下单。");
-            // A due monthly reset below zeroes `user` in place; record what the
-            // account had used before either reset.
-            const usedBefore = {
-                upload: user.upload.toString(),
-                download: user.download.toString(),
-            };
-            await resetDueTraffic(tx, [user], now);
-            await tx.user.update({
-                where: { id: userId },
-                data: { balance: { decrement: balanceDebit }, ...clearUsage },
-            });
-            await tx.audit.create({
-                data: {
-                    actorId: receipt?.actorId ?? userId,
-                    action: "traffic.paid_reset",
-                    target: String(userId),
-                    detail: {
-                        orderId: id,
-                        ...usedBefore,
-                    },
+                        },
+                    ],
                 },
+                select: { id: true },
             });
-            paidSnapshot = {
-                serviceUntil: null,
-                entitlementVersion: order.entitlementVersion,
-            };
-        } else {
-            priceOnSale(plan, order.period!);
-            if (order.couponId !== null)
-                await availableCoupon(tx, userId, { id: order.couponId });
-            const purchase = purchaseType(user, plan.id, now);
-            if (
-                (purchase === "switch") !== order.replacesPlan ||
-                (order.replacesPlan &&
-                    (order.entitlementVersion !== user.entitlementVersion ||
-                        (order.priorExpiresAt?.getTime() ?? null) !==
-                            (user.expiredAt?.getTime() ?? null)))
-            )
-                throw conflict("当前套餐已变更，请取消后重新下单。");
-            paidSnapshot = await applyTerm(
-                tx,
-                user,
-                order,
-                purchase === "renewal",
-                now,
-                balanceDebit,
-            );
+            if (!prior) throw conflict("订单已结算，请刷新订单列表。");
         }
-        const payment = await tx.balanceEntry.create({
+        return toOrder(order);
+    }
+    if (order.status !== "pending") throw conflict("订单状态已改变，请刷新。");
+    const plan = await orderPlan(tx, order.planId);
+    const now = new Date();
+    if (order.expiresAt <= now)
+        throw conflict("订单已超时，请取消后重新下单。");
+    const payableMinor = payableAmount(order);
+    if (receipt && (payableMinor <= 0 || receipt.amountMinor !== payableMinor))
+        throw conflict("实收金额须与订单应付金额一致，且大于 0 元。");
+    const balanceDebit = receipt ? 0 : payableMinor;
+    if (user.balance < balanceDebit)
+        throw badRequest("余额不足，暂未开放在线充值。");
+    if (balanceDebit < 0 && user.balance - balanceDebit > MAX_BALANCE_MINOR)
+        throw conflict("退回差额后余额将超过上限，请联系管理员。");
+    let paidSnapshot: Pick<OrderRow, "serviceUntil" | "entitlementVersion">;
+    if (order.kind === "traffic_reset") {
+        resetPrice(user, plan, now);
+        if (order.entitlementVersion !== user.entitlementVersion)
+            throw conflict("当前套餐已变更，请取消后重新下单。");
+        // A due monthly reset below zeroes `user` in place; record what the
+        // account had used before either reset.
+        const usedBefore = {
+            upload: user.upload.toString(),
+            download: user.download.toString(),
+        };
+        await resetDueTraffic(tx, [user], now);
+        await tx.user.update({
+            where: { id: userId },
+            data: { balance: { decrement: balanceDebit }, ...clearUsage },
+        });
+        await tx.audit.create({
             data: {
-                userId,
-                orderId: id,
-                actorId: receipt?.actorId,
-                amountMinor: -payableMinor,
-                reason: receipt
-                    ? "线下收款结算"
-                    : order.kind === "traffic_reset"
-                      ? "购买流量重置包"
-                      : order.replacesPlan
-                        ? "套餐更换结算"
-                        : null,
+                actorId: receipt?.actorId ?? userId,
+                action: "traffic.paid_reset",
+                target: String(userId),
+                detail: {
+                    orderId: id,
+                    ...usedBefore,
+                },
             },
         });
-        if (receipt) {
-            // The receipt is credited and spent in the same transaction. Only
-            // the journal entries move, so the account's existing balance stays intact.
-            const credit = await tx.balanceEntry.create({
-                data: {
-                    userId,
-                    actorId: receipt.actorId,
-                    amountMinor: payableMinor,
-                    reason: `线下收款（订单 ${order.id}）`,
-                },
-            });
-            await audit(tx, receipt.actorId, OFFLINE_PAYMENT_ACTION, order.id, {
-                userId,
-                amountMinor: payableMinor,
-                reason: receipt.reason,
-                creditEntryId: credit.id,
-                paymentEntryId: payment.id,
-            });
-        }
-        return toOrder(
-            await tx.order.update({
-                where: { id },
-                data: { status: "paid", paidAt: now, ...paidSnapshot },
-            }),
+        paidSnapshot = {
+            serviceUntil: null,
+            entitlementVersion: order.entitlementVersion,
+        };
+    } else {
+        priceOnSale(plan, order.period!);
+        if (order.couponId !== null)
+            await availableCoupon(tx, userId, { id: order.couponId });
+        const purchase = purchaseType(user, plan.id, now);
+        if (
+            (purchase === "switch") !== order.replacesPlan ||
+            (order.replacesPlan &&
+                (order.entitlementVersion !== user.entitlementVersion ||
+                    (order.priorExpiresAt?.getTime() ?? null) !==
+                        (user.expiredAt?.getTime() ?? null)))
+        )
+            throw conflict("当前套餐已变更，请取消后重新下单。");
+        paidSnapshot = await applyTerm(
+            tx,
+            user,
+            order,
+            purchase === "renewal",
+            now,
+            balanceDebit,
         );
+    }
+    const payment = await tx.balanceEntry.create({
+        data: {
+            userId,
+            orderId: id,
+            actorId: receipt?.actorId,
+            amountMinor: -payableMinor,
+            reason: receipt
+                ? "线下收款结算"
+                : order.kind === "traffic_reset"
+                  ? "购买流量重置包"
+                  : order.replacesPlan
+                    ? "套餐更换结算"
+                    : null,
+        },
     });
+    if (receipt) {
+        // The receipt is credited and spent in the same transaction. Only
+        // the journal entries move, so the account's existing balance stays intact.
+        const credit = await tx.balanceEntry.create({
+            data: {
+                userId,
+                actorId: receipt.actorId,
+                amountMinor: payableMinor,
+                reason: `线下收款（订单 ${order.id}）`,
+            },
+        });
+        await audit(tx, receipt.actorId, OFFLINE_PAYMENT_ACTION, order.id, {
+            userId,
+            amountMinor: payableMinor,
+            reason: receipt.reason,
+            creditEntryId: credit.id,
+            paymentEntryId: payment.id,
+        });
+    }
+    return toOrder(
+        await tx.order.update({
+            where: { id },
+            data: { status: "paid", paidAt: now, ...paidSnapshot },
+        }),
+    );
 }

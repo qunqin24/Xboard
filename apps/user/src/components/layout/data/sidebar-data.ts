@@ -4,6 +4,7 @@ import {
     CreditCard,
     FileText,
     LayoutDashboard,
+    KeyRound,
     Link2,
     Mail,
     Megaphone,
@@ -106,6 +107,7 @@ export const adminNav: NavGroup[] = [
         title: "系统",
         items: [
             { title: "审计日志", url: "/admin/audit", icon: ClipboardList },
+            { title: "运维令牌", url: "/admin/ops-tokens", icon: KeyRound },
             { title: "邮件队列", url: "/admin/mail", icon: Mail },
             { title: "系统设置", url: "/admin/settings", icon: ScrollText },
         ],

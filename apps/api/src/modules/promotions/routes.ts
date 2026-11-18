@@ -26,19 +26,21 @@ import {
     planSnapshot,
     purchaseType,
 } from "../orders/terms";
+import { adminActorId, adminRead, adminWrite } from "../admin/operations";
 
 export const adminPromotionRoutes = Router();
 export const redemptionRoutes = Router();
 
-adminPromotionRoutes.get("/coupons", async (_req, res) => {
-    const coupons = await db.coupon.findMany({
-        orderBy: { id: "desc" },
-        include: {
-            _count: { select: { orders: { where: { status: "paid" } } } },
-        },
-    });
-    res.json(
-        coupons.map((row): Coupon => ({
+adminPromotionRoutes.get(
+    "/coupons",
+    adminRead(async (_req) => {
+        const coupons = await db.coupon.findMany({
+            orderBy: { id: "desc" },
+            include: {
+                _count: { select: { orders: { where: { status: "paid" } } } },
+            },
+        });
+        return coupons.map((row): Coupon => ({
             id: row.id,
             code: row.code,
             amountMinor: row.amountMinor,
@@ -46,9 +48,9 @@ adminPromotionRoutes.get("/coupons", async (_req, res) => {
             expiresAt: isoOrNull(row.expiresAt),
             enabled: row.enabled,
             used: row._count.orders,
-        })),
-    );
-});
+        }));
+    }),
+);
 
 function giftExpiry(value: string | null) {
     if (value === null) return null;
@@ -57,39 +59,42 @@ function giftExpiry(value: string | null) {
     return date;
 }
 
-adminPromotionRoutes.post("/coupons", async (req, res) => {
-    const input = parse(couponBody, req.body);
-    const actor = currentUser(req);
-    const id = await db.$transaction(async (tx) => {
+adminPromotionRoutes.post(
+    "/coupons",
+    adminWrite(201, async (req, tx) => {
+        const input = parse(couponBody, req.body);
+        const actorId = adminActorId(req);
         const coupon = await tx.coupon.create({
             data: { ...input, expiresAt: giftExpiry(input.expiresAt) },
         });
-        await audit(tx, actor.id, "coupon.create", coupon.id, {
+        await audit(tx, actorId, "coupon.create", coupon.id, {
             amountMinor: coupon.amountMinor,
             maxUses: coupon.maxUses,
         });
-        return coupon.id;
-    });
-    res.status(201).json({ id });
-});
+        const id = coupon.id;
+        return { id };
+    }),
+);
 
-adminPromotionRoutes.put("/coupons/:id/enabled", async (req, res) => {
-    const id = parse(idParam, req.params.id);
-    const data = parse(enabledBody, req.body);
-    await db.$transaction(async (tx) => {
+adminPromotionRoutes.put(
+    "/coupons/:id/enabled",
+    adminWrite(200, async (req, tx) => {
+        const id = parse(idParam, req.params.id);
+        const data = parse(enabledBody, req.body);
         await tx.coupon.update({ where: { id }, data });
-        await audit(tx, currentUser(req).id, "coupon.enabled", id, data);
-    });
-    res.json({ ok: true });
-});
+        await audit(tx, adminActorId(req), "coupon.enabled", id, data);
+        return { ok: true };
+    }),
+);
 
-adminPromotionRoutes.get("/gift-codes", async (_req, res) => {
-    const gifts = await db.giftCode.findMany({
-        orderBy: { id: "desc" },
-        include: { plan: { select: { name: true } } },
-    });
-    res.json(
-        gifts.map((row): Gift => ({
+adminPromotionRoutes.get(
+    "/gift-codes",
+    adminRead(async (_req) => {
+        const gifts = await db.giftCode.findMany({
+            orderBy: { id: "desc" },
+            include: { plan: { select: { name: true } } },
+        });
+        return gifts.map((row): Gift => ({
             id: row.id,
             label: row.label,
             kind: row.kind,
@@ -99,15 +104,16 @@ adminPromotionRoutes.get("/gift-codes", async (_req, res) => {
             expiresAt: isoOrNull(row.expiresAt),
             enabled: row.enabled,
             redeemedAt: isoOrNull(row.redeemedAt),
-        })),
-    );
-});
+        }));
+    }),
+);
 
-adminPromotionRoutes.post("/gift-codes", async (req, res) => {
-    const input = parse(giftBody, req.body);
-    const actor = currentUser(req);
-    const code = `GIFT-${randomBytes(16).toString("hex").toUpperCase()}`;
-    const id = await db.$transaction(async (tx) => {
+adminPromotionRoutes.post(
+    "/gift-codes",
+    adminWrite(201, async (req, tx) => {
+        const input = parse(giftBody, req.body);
+        const actorId = adminActorId(req);
+        const code = `GIFT-${randomBytes(16).toString("hex").toUpperCase()}`;
         if (input.kind === "subscription") await orderPlan(tx, input.planId);
         const row = await tx.giftCode.create({
             data: {
@@ -116,26 +122,27 @@ adminPromotionRoutes.post("/gift-codes", async (req, res) => {
                 digest: sessionDigest(code),
             },
         });
-        await audit(tx, actor.id, "gift.create", row.id, {
+        await audit(tx, actorId, "gift.create", row.id, {
             kind: row.kind,
             amountMinor: row.amountMinor,
             planId: row.planId,
             period: row.period,
         });
-        return row.id;
-    });
-    res.status(201).json({ id, code });
-});
+        const id = row.id;
+        return { id, code };
+    }),
+);
 
-adminPromotionRoutes.put("/gift-codes/:id/enabled", async (req, res) => {
-    const id = parse(idParam, req.params.id);
-    const data = parse(enabledBody, req.body);
-    await db.$transaction(async (tx) => {
+adminPromotionRoutes.put(
+    "/gift-codes/:id/enabled",
+    adminWrite(200, async (req, tx) => {
+        const id = parse(idParam, req.params.id);
+        const data = parse(enabledBody, req.body);
         await tx.giftCode.update({ where: { id }, data });
-        await audit(tx, currentUser(req).id, "gift.enabled", id, data);
-    });
-    res.json({ ok: true });
-});
+        await audit(tx, adminActorId(req), "gift.enabled", id, data);
+        return { ok: true };
+    }),
+);
 
 async function redeem(
     userId: number,

@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import type { Notice, Ticket } from "@xboard/contracts";
-import { db } from "../../db";
+import { db, type Tx } from "../../db";
 import { badRequest, notFound } from "../../http/errors";
 
 export async function listPublishedNotices(): Promise<Notice[]> {
@@ -87,8 +87,9 @@ export async function replyToTicket(
     actor: TicketActor,
     id: number,
     content: string,
+    transaction?: Tx,
 ): Promise<Ticket> {
-    return db.$transaction(async (tx) => {
+    const reply = async (tx: Tx) => {
         await tx.$queryRaw`SELECT id FROM "Ticket" WHERE id = ${id} FOR UPDATE`;
         const ticket = await tx.ticket.findFirst({ where: scope(actor, id) });
         if (!ticket) throw notFound("工单不存在。");
@@ -108,15 +109,17 @@ export async function replyToTicket(
             include: ticketInclude,
         });
         return toTicket(row);
-    });
+    };
+    return transaction ? reply(transaction) : db.$transaction(reply);
 }
 
 export async function setTicketClosed(
     actor: TicketActor,
     id: number,
     closed: boolean,
+    client: Tx = db,
 ) {
-    const result = await db.ticket.updateMany({
+    const result = await client.ticket.updateMany({
         where: scope(actor, id),
         data: { closed },
     });

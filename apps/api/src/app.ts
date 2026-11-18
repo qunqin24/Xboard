@@ -4,7 +4,11 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import swaggerUi from "swagger-ui-express";
-import { buildOpenApi } from "@xboard/contracts";
+import {
+    buildOpenApi,
+    buildOpsOpenApi,
+    OPS_API_PREFIX,
+} from "@xboard/contracts";
 import { getConfig } from "./config";
 import { db } from "./db";
 import { errorHandler, notFoundHandler } from "./http/errors";
@@ -24,6 +28,7 @@ import { siteRoutes } from "./modules/site/routes";
 import { supportRoutes } from "./modules/support/routes";
 import { helpRoutes } from "./modules/help/routes";
 import { redemptionRoutes } from "./modules/promotions/routes";
+import { opsRoutes } from "./modules/ops/routes";
 
 /**
  * Build the HTTP app. Tests call this directly; server.ts adds listening,
@@ -46,6 +51,7 @@ export function createApp(options: { logging?: boolean } = {}) {
         res.setHeader("Cache-Control", "no-store");
         next();
     });
+    app.use(OPS_API_PREFIX, opsRoutes);
     app.use(originCheck(config));
     app.use(cookieParser());
     app.use(express.json({ limit: "1mb" }));
@@ -64,6 +70,10 @@ export function createApp(options: { logging?: boolean } = {}) {
         const document = buildOpenApi();
         api.get("/docs/openapi.json", (_req, res) => {
             res.json(document);
+        });
+        const opsDocument = buildOpsOpenApi();
+        api.get("/docs/ops-openapi.json", (_req, res) => {
+            res.json(opsDocument);
         });
         api.use(
             "/docs",

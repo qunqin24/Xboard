@@ -9,11 +9,11 @@ import { adminHelpRoutes } from "../help/routes";
 import { adminMailRoutes } from "../mail/admin";
 import { adminPromotionRoutes } from "../promotions/routes";
 import { templateRoutes } from "../templates/routes";
+import { opsTokenRoutes } from "../ops/tokens";
 
-/** Everything under /api/admin requires an admin session. */
-export const adminRoutes = Router();
-adminRoutes.use(requireAdmin);
-adminRoutes.use(
+/** Business operations used by both authenticated transports. */
+export const adminOperations = Router();
+adminOperations.use(
     userRoutes,
     catalogRoutes,
     recordRoutes,
@@ -24,3 +24,7 @@ adminRoutes.use(
     adminMailRoutes,
     templateRoutes,
 );
+
+/** Everything under /api/admin requires an admin session. */
+export const adminRoutes = Router();
+adminRoutes.use(requireAdmin, adminOperations, opsTokenRoutes);

@@ -6,6 +6,7 @@ import * as templates from "./templates";
 import * as auth from "./auth";
 import { errorSchema, okSchema, pagedSchema } from "./common";
 import * as operations from "./operations";
+import { createdOpsTokenSchema, opsTokenBody, opsTokenSchema } from "./ops";
 import * as promotions from "./promotions";
 import * as security from "./security";
 import * as orders from "./orders";
@@ -24,6 +25,8 @@ export type Endpoint = {
     summary: string;
     tag: string;
     auth: "none" | "user" | "admin";
+    /** Administration of the Bearer credentials themselves uses a browser session. */
+    browserOnly?: true;
     body?: z.ZodType;
     query?: z.ZodType;
     response?: z.ZodType;
@@ -468,11 +471,14 @@ export const endpoints: Endpoint[] = [
     {
         method: "post",
         path: "/admin/nodes",
-        summary: "新建节点（返回一次性密钥）",
+        summary: "新建节点（独立节点返回通信密钥）",
         tag: "admin",
         auth: "admin",
         body: nodes.nodeBody,
-        response: z.object({ id: z.number().int(), token: z.string() }),
+        response: z.object({
+            id: z.number().int(),
+            token: z.string().optional(),
+        }),
         status: 201,
     },
     {
@@ -614,6 +620,35 @@ export const endpoints: Endpoint[] = [
         auth: "admin",
         query: admin.auditListQuery,
         response: pagedSchema(admin.auditSchema),
+    },
+    {
+        method: "get",
+        path: "/admin/ops-tokens",
+        summary: "运维令牌列表",
+        tag: "admin",
+        auth: "admin",
+        browserOnly: true,
+        response: z.array(opsTokenSchema),
+    },
+    {
+        method: "post",
+        path: "/admin/ops-tokens",
+        summary: "签发运维令牌（明文只返回一次）",
+        tag: "admin",
+        auth: "admin",
+        browserOnly: true,
+        body: opsTokenBody,
+        response: createdOpsTokenSchema,
+        status: 201,
+    },
+    {
+        method: "delete",
+        path: "/admin/ops-tokens/:id",
+        summary: "吊销运维令牌",
+        tag: "admin",
+        auth: "admin",
+        browserOnly: true,
+        response: ok,
     },
     {
         method: "get",
@@ -895,5 +930,12 @@ export const endpoints: Endpoint[] = [
         status: 201,
     },
 ];
+
+export const opsEndpoints = endpoints
+    .filter((endpoint) => endpoint.auth === "admin" && !endpoint.browserOnly)
+    .map((endpoint) => ({
+        ...endpoint,
+        path: endpoint.path.slice("/admin".length),
+    }));
 
 export { errorSchema };
