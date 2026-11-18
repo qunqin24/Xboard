@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useDelayedFlag } from "@/hooks/use-delayed-flag";
 import { Tile } from "@/components/ui/tile";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { formatDateTime, formatMinor, formatTraffic } from "@/lib/format";
@@ -138,7 +139,10 @@ export function AdminDashboard() {
     // cover only the selected range.
     const stats = usePanel<Stats>(
         `/admin/stats?days=${range * 2}&topDays=${range}`,
+        { keepPrevious: true },
     );
+    // Switching the range keeps the old numbers, dimmed, until the new ones arrive.
+    const refreshing = useDelayedFlag(stats.isPlaceholderData);
     const overview = usePanel<Overview>("/admin/overview");
     const nodes = usePanel<NodeRow[]>("/admin/nodes");
     const orders = usePanel<Paged<OrderRow>>("/admin/orders?pageSize=6");
@@ -166,7 +170,19 @@ export function AdminDashboard() {
 
     /** Skeleton while the stats load; the error state is handled above. */
     const chart = (height: number, content: React.ReactNode) =>
-        stats.isPending ? <Skeleton style={{ height }} /> : content;
+        stats.isPending ? (
+            <Skeleton style={{ height }} />
+        ) : (
+            <div
+                aria-busy={refreshing}
+                className={cn(
+                    "transition-opacity duration-200",
+                    refreshing && "opacity-60",
+                )}
+            >
+                {content}
+            </div>
+        );
 
     return (
         <Page
@@ -231,7 +247,7 @@ export function AdminDashboard() {
                 <Card>
                     <ErrorState
                         error={stats.error}
-                        onRetry={() => void stats.refetch()}
+                        onRetry={() => stats.refetch()}
                     />
                 </Card>
             ) : (
@@ -548,7 +564,7 @@ export function AdminDashboard() {
                         {orders.isError ? (
                             <ErrorState
                                 error={orders.error}
-                                onRetry={() => void orders.refetch()}
+                                onRetry={() => orders.refetch()}
                             />
                         ) : orders.isPending ? (
                             <Skeleton className="h-40" />
@@ -599,7 +615,7 @@ export function AdminDashboard() {
                         {nodes.isError ? (
                             <ErrorState
                                 error={nodes.error}
-                                onRetry={() => void nodes.refetch()}
+                                onRetry={() => nodes.refetch()}
                             />
                         ) : nodes.isPending ? (
                             <Skeleton className="h-40" />

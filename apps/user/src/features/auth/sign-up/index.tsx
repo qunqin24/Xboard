@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
-import { Info, Loader2, UserPlus } from "lucide-react";
+import { Info, UserPlus } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import type { Site } from "@xboard/contracts";
 import { useRegister, useRegisterCode } from "@/api/hooks";
 import { useSite } from "@/api/panel";
+import { LoadingButton } from "@/components/loading-button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -80,11 +81,12 @@ function CodeButton({ onSend }: { onSend: () => Promise<number | null> }) {
         return () => clearTimeout(timer);
     }, [left]);
     return (
-        <Button
+        <LoadingButton
             type="button"
             variant="outline"
             className="shrink-0"
-            disabled={sending || left > 0}
+            loading={sending}
+            disabled={left > 0}
             onClick={async () => {
                 setSending(true);
                 try {
@@ -95,9 +97,8 @@ function CodeButton({ onSend }: { onSend: () => Promise<number | null> }) {
                 }
             }}
         >
-            {sending ? <Loader2 className="animate-spin" /> : null}
             {left > 0 ? `${left} 秒后重发` : "获取验证码"}
-        </Button>
+        </LoadingButton>
     );
 }
 
@@ -300,14 +301,13 @@ function SignUpForm({ site, invite }: { site: Site; invite?: string }) {
                         )}
                     />
                 ) : null}
-                <Button className="w-full" disabled={register.isPending}>
-                    {register.isPending ? (
-                        <Loader2 className="animate-spin" />
-                    ) : (
-                        <UserPlus />
-                    )}
+                <LoadingButton
+                    icon={<UserPlus />}
+                    className="w-full"
+                    loading={register.isPending}
+                >
                     创建账户
-                </Button>
+                </LoadingButton>
             </form>
         </Form>
     );

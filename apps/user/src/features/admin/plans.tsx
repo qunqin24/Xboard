@@ -21,6 +21,8 @@ import {
     trafficResetModeSchema,
     type TrafficResetMode,
 } from "@xboard/contracts";
+import { useOptimisticRows } from "@/api/use-optimistic-rows";
+import { SaveStatus } from "@/components/save-status";
 import { useCommand, usePanel } from "@/api/panel";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
@@ -134,7 +136,7 @@ function PlanSheet({
     open: boolean;
     onClose: () => void;
 }) {
-    const save = useCommand();
+    const save = useCommand({ inline: true });
     const price = (period: string) => {
         const found = plan?.prices.find((p) => p.period === period);
         return found ? minorToYuan(found.amountMinor) : "";
@@ -245,6 +247,7 @@ function PlanSheet({
             formId="plan-form"
             submitLabel={plan ? "保存修改" : "创建套餐"}
             pending={save.isPending}
+            error={save.error}
         >
             <Form {...form}>
                 <form
@@ -363,6 +366,7 @@ export function AdminPlans() {
     const list = usePanel<PlanRow[]>("/admin/plans");
     const editor = useEditorSearch("/admin/plans");
     const action = useCommand();
+    const optimistic = useOptimisticRows<PlanRow>("/admin/plans");
     const [deleting, setDeleting] = useState<PlanRow | null>(null);
     const editing = list.data?.find((p) => p.id === editor.editId) ?? null;
 
@@ -394,15 +398,21 @@ export function AdminPlans() {
             header: ({ column }) => (
                 <DataTableColumnHeader column={column} title="状态" />
             ),
-            cell: ({ getValue }) => (
-                <Badge variant={PUBLISH_TONE[getValue<string>()]}>
-                    {getValue<string>() === "销售中" ? (
-                        <CircleCheck />
-                    ) : (
-                        <CircleDashed />
-                    )}
-                    {getValue<string>()}
-                </Badge>
+            cell: ({ row, getValue }) => (
+                <div className="flex items-center gap-inline">
+                    <Badge variant={PUBLISH_TONE[getValue<string>()]}>
+                        {getValue<string>() === "销售中" ? (
+                            <CircleCheck />
+                        ) : (
+                            <CircleDashed />
+                        )}
+                        {getValue<string>()}
+                    </Badge>
+                    <SaveStatus
+                        state={optimistic.status(row.original.id)}
+                        onRetry={() => optimistic.retry(row.original.id)}
+                    />
+                </div>
             ),
             filterFn: inFilter,
             meta: { title: "状态" },
@@ -518,24 +528,17 @@ export function AdminPlans() {
                                 !row.original.published &&
                                 !row.original.prices.length,
                             onSelect: () =>
-                                action.mutate(
-                                    {
-                                        path: `/admin/plans/${row.original.id}`,
-                                        method: "PUT",
-                                        body: planBody(
-                                            row.original,
-                                            !row.original.published,
-                                        ),
+                                optimistic.change({
+                                    id: row.original.id,
+                                    fields: {
+                                        published: !row.original.published,
                                     },
-                                    {
-                                        onSuccess: () =>
-                                            toast.success(
-                                                row.original.published
-                                                    ? "已下架"
-                                                    : "已发布",
-                                            ),
-                                    },
-                                ),
+                                    path: `/admin/plans/${row.original.id}`,
+                                    body: planBody(
+                                        row.original,
+                                        !row.original.published,
+                                    ),
+                                }),
                         },
                         "separator",
                         {
@@ -564,7 +567,7 @@ export function AdminPlans() {
                 data={list.data}
                 isLoading={list.isPending}
                 error={list.isError ? list.error : undefined}
-                onRetry={() => void list.refetch()}
+                onRetry={() => list.refetch()}
                 columns={columns}
                 getRowId={(p) => String(p.id)}
                 searchPlaceholder="套餐名称…"

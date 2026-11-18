@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CircleAlert, Loader2, RotateCcw } from "lucide-react";
+import { CircleAlert, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import {
     TEMPLATE_FORMATS,
@@ -10,6 +10,7 @@ import {
 } from "@xboard/contracts";
 import { ApiError, request } from "@/api/client";
 import { usePanel } from "@/api/panel";
+import { LoadingButton } from "@/components/loading-button";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ErrorState } from "@/components/error-state";
 import { InfoTip } from "@/components/info-tip";
@@ -97,15 +98,13 @@ function TemplateEditor({ template }: { template: SubscriptionTemplate }) {
                         <RotateCcw />
                         恢复默认
                     </Button>
-                    <Button
-                        disabled={!dirty || command.isPending}
+                    <LoadingButton
+                        loading={command.isPending}
+                        disabled={!dirty}
                         onClick={() => command.mutate("PUT")}
                     >
-                        {command.isPending ? (
-                            <Loader2 className="animate-spin" />
-                        ) : null}
                         保存
-                    </Button>
+                    </LoadingButton>
                 </div>
             </div>
             {errors.length ? (
@@ -210,7 +209,7 @@ export function AdminTemplates() {
             ) : templates.error ? (
                 <ErrorState
                     error={templates.error}
-                    onRetry={() => void templates.refetch()}
+                    onRetry={() => templates.refetch()}
                 />
             ) : (
                 <Skeleton className="h-96" />

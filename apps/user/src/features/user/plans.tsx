@@ -244,10 +244,12 @@ export function Plans() {
             {account.isError || plans.isError ? (
                 <ErrorState
                     error={account.error ?? plans.error}
-                    onRetry={() => {
-                        if (account.isError) void account.refetch();
-                        if (plans.isError) void plans.refetch();
-                    }}
+                    onRetry={() =>
+                        Promise.all([
+                            account.isError ? account.refetch() : undefined,
+                            plans.isError ? plans.refetch() : undefined,
+                        ])
+                    }
                 />
             ) : plans.isPending ? (
                 <div className="grid gap-group md:grid-cols-2 xl:grid-cols-3">

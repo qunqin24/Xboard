@@ -190,8 +190,9 @@ export function AdminOrders() {
                     rowCount: list.data?.total,
                 }}
                 isLoading={list.isPending}
+                isRefreshing={list.isPlaceholderData}
                 error={list.isError ? list.error : undefined}
-                onRetry={() => void list.refetch()}
+                onRetry={() => list.refetch()}
                 columns={columns}
                 getRowId={(o) => o.id}
                 searchPlaceholder="邮箱、套餐或单号…"
@@ -312,8 +313,9 @@ export function AdminLedger() {
                     rowCount: list.data?.total,
                 }}
                 isLoading={list.isPending}
+                isRefreshing={list.isPlaceholderData}
                 error={list.isError ? list.error : undefined}
-                onRetry={() => void list.refetch()}
+                onRetry={() => list.refetch()}
                 columns={columns}
                 getRowId={(e) => e.id}
                 searchPlaceholder="邮箱或说明…"
@@ -458,8 +460,9 @@ export function AdminAudit() {
                     rowCount: list.data?.total,
                 }}
                 isLoading={list.isPending}
+                isRefreshing={list.isPlaceholderData}
                 error={list.isError ? list.error : undefined}
-                onRetry={() => void list.refetch()}
+                onRetry={() => list.refetch()}
                 columns={columns}
                 getRowId={(a) => String(a.id)}
                 searchPlaceholder="操作或对象…"
@@ -478,6 +481,9 @@ export function AdminAudit() {
     );
 }
 
+/** Still in the queue: not sent and not given up on (see MAX_MAIL_ATTEMPTS). */
+const waiting = (mail: MailRow) => !mail.sentAt && mail.attempts < 5;
+
 function mailStatus(mail: MailRow) {
     if (mail.sentAt) return "已发送";
     if (mail.attempts >= 5) return "已放弃";
@@ -486,7 +492,12 @@ function mailStatus(mail: MailRow) {
 }
 
 export function AdminMail() {
-    const list = usePanel<MailRow[]>("/admin/mail");
+    // The queue is worked off in the background: poll only while mail is waiting.
+    const list = usePanel<MailRow[]>("/admin/mail", {
+        refetchInterval: (rows) => (rows?.some(waiting) ? 5000 : false),
+    });
+    const sent = list.data?.filter((mail) => mail.sentAt).length ?? 0;
+    const queued = list.data?.filter(waiting).length ?? 0;
     const columns: ColumnDef<MailRow>[] = [
         {
             accessorKey: "to",
@@ -570,14 +581,18 @@ export function AdminMail() {
         <Page
             title="邮件队列"
             actions={<MailTools />}
-            description="显示最近 100 封邮件"
+            description={
+                list.data?.length
+                    ? `最近 ${list.data.length} 封，已发送 ${sent} 封${queued ? `，待发送 ${queued} 封` : ""}`
+                    : "显示最近 100 封邮件"
+            }
             help="系统每 5 秒处理一次发送队列；失败后按指数退避重试，最多 5 次；记录保留 7 天。"
         >
             <DataTable
                 data={list.data}
                 isLoading={list.isPending}
                 error={list.isError ? list.error : undefined}
-                onRetry={() => void list.refetch()}
+                onRetry={() => list.refetch()}
                 columns={columns}
                 getRowId={(m) => String(m.id)}
                 searchPlaceholder="收件人、主题…"

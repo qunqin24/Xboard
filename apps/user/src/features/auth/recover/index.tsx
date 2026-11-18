@@ -1,10 +1,11 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link } from "@tanstack/react-router";
-import { CircleCheck, Loader2 } from "lucide-react";
+import { CircleCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useCommand } from "@/api/panel";
+import { LoadingButton } from "@/components/loading-button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -88,8 +89,8 @@ export function Recover() {
                             </Button>
                         </>
                     ) : verifying ? (
-                        <Button
-                            disabled={action.isPending}
+                        <LoadingButton
+                            loading={action.isPending}
                             onClick={() =>
                                 action.mutate(
                                     { path: "/auth/verify", body: { token } },
@@ -100,11 +101,8 @@ export function Recover() {
                                 )
                             }
                         >
-                            {action.isPending ? (
-                                <Loader2 className="animate-spin" />
-                            ) : null}
                             确认验证
-                        </Button>
+                        </LoadingButton>
                     ) : resetting ? (
                         <Form {...form}>
                             <form
@@ -140,12 +138,9 @@ export function Recover() {
                                         </FormItem>
                                     )}
                                 />
-                                <Button disabled={action.isPending}>
-                                    {action.isPending ? (
-                                        <Loader2 className="animate-spin" />
-                                    ) : null}
+                                <LoadingButton loading={action.isPending}>
                                     重置密码
-                                </Button>
+                                </LoadingButton>
                             </form>
                         </Form>
                     ) : purpose === "reset" ? (

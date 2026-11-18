@@ -6,7 +6,6 @@ import {
     Copy,
     Globe,
     KeyRound,
-    Loader2,
     Network,
     Package,
     Pencil,
@@ -22,6 +21,9 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { NODE_PROTOCOLS } from "@xboard/contracts";
 import { useCommand, usePanel } from "@/api/panel";
+import { useOptimisticRows } from "@/api/use-optimistic-rows";
+import { LoadingButton } from "@/components/loading-button";
+import { SaveStatus } from "@/components/save-status";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
     DataTable,
@@ -53,6 +55,9 @@ import { nodeSummary, PROTOCOL_LABEL } from "./node-options";
 import { NODE_STATE_TONE } from "./status";
 import type { NodeRow, PlanRow } from "./types";
 import { nodeState } from "./units";
+
+/** The API takes at most this many nodes in one bulk request. */
+const BULK_NODE_LIMIT = 200;
 
 const STATE_ICON = {
     在线: Wifi,
@@ -142,7 +147,8 @@ export function AdminNodes() {
         kind: "rotate" | "delete" | "disable";
         node: NodeRow;
     } | null>(null);
-    const [bulkPending, setBulkPending] = useState(false);
+    const bulk = useCommand<{ updated: number; skipped: number }>();
+    const optimistic = useOptimisticRows<NodeRow>("/admin/nodes");
     const [bulkDisable, setBulkDisable] = useState<{
         rows: NodeRow[];
         clear: () => void;
@@ -151,30 +157,34 @@ export function AdminNodes() {
     const byId = new Map(list.data?.map((n) => [n.id, n]));
     const editing = list.data?.find((n) => n.id === editor.editId) ?? null;
 
-    const setEnabled = async (
+    /** One request for all selected nodes; the API skips those already in that state. */
+    const setEnabled = (
         nodes: NodeRow[],
         enabled: boolean,
         clear: () => void,
+        done?: () => void,
     ) => {
-        const targets = nodes.filter((node) => node.enabled !== enabled);
-        let done = 0;
-        setBulkPending(true);
-        for (const node of targets) {
-            try {
-                await action.mutateAsync({
-                    path: `/admin/nodes/${node.id}/enabled`,
-                    method: "PUT",
-                    body: { enabled },
-                });
-                done += 1;
-            } catch {
-                /* Each failure is already reported as a toast. */
-            }
+        if (nodes.length > BULK_NODE_LIMIT) {
+            toast.error(`单次最多选择 ${BULK_NODE_LIMIT} 个节点。`);
+            return;
         }
-        setBulkPending(false);
-        if (done)
-            toast.success(`已${enabled ? "启用" : "停用"} ${done} 个节点`);
-        clear();
+        bulk.mutate(
+            {
+                path: "/admin/nodes/bulk-enabled",
+                body: { ids: nodes.map((node) => node.id), enabled },
+            },
+            {
+                onSuccess: (result) => {
+                    toast.success(
+                        result.updated
+                            ? `已${enabled ? "启用" : "停用"} ${result.updated} 个节点`
+                            : `所选节点已是${enabled ? "启用" : "停用"}状态`,
+                    );
+                    clear();
+                    done?.();
+                },
+            },
+        );
     };
 
     const columns: ColumnDef<NodeRow>[] = [
@@ -234,14 +244,20 @@ export function AdminNodes() {
             header: ({ column }) => (
                 <DataTableColumnHeader column={column} title="状态" />
             ),
-            cell: ({ getValue }) => {
+            cell: ({ row, getValue }) => {
                 const value = getValue<keyof typeof NODE_STATE_TONE>();
                 const Icon = STATE_ICON[value];
                 return (
-                    <Badge variant={NODE_STATE_TONE[value]}>
-                        <Icon />
-                        {value}
-                    </Badge>
+                    <div className="flex items-center gap-inline">
+                        <Badge variant={NODE_STATE_TONE[value]}>
+                            <Icon />
+                            {value}
+                        </Badge>
+                        <SaveStatus
+                            state={optimistic.status(row.original.id)}
+                            onRetry={() => optimistic.retry(row.original.id)}
+                        />
+                    </div>
                 );
             },
             filterFn: inFilter,
@@ -366,17 +382,12 @@ export function AdminNodes() {
                                           kind: "disable",
                                           node: row.original,
                                       })
-                                    : action.mutate(
-                                          {
-                                              path: `/admin/nodes/${row.original.id}/enabled`,
-                                              method: "PUT",
-                                              body: { enabled: true },
-                                          },
-                                          {
-                                              onSuccess: () =>
-                                                  toast.success("节点已启用"),
-                                          },
-                                      ),
+                                    : optimistic.change({
+                                          id: row.original.id,
+                                          fields: { enabled: true },
+                                          path: `/admin/nodes/${row.original.id}/enabled`,
+                                          body: { enabled: true },
+                                      }),
                         },
                         "separator",
                         ...(row.original.parentId === null
@@ -424,7 +435,7 @@ export function AdminNodes() {
                 data={list.data}
                 isLoading={list.isPending}
                 error={list.isError ? list.error : undefined}
-                onRetry={() => void list.refetch()}
+                onRetry={() => list.refetch()}
                 columns={columns}
                 getRowId={(n) => String(n.id)}
                 searchPlaceholder="名称、地址…"
@@ -464,28 +475,24 @@ export function AdminNodes() {
                 ]}
                 bulkActions={(rows, clear) => (
                     <>
-                        <Button
+                        <LoadingButton
                             size="sm"
                             variant="outline"
-                            disabled={bulkPending}
-                            onClick={() => void setEnabled(rows, true, clear)}
+                            icon={<Power />}
+                            loading={bulk.isPending}
+                            onClick={() => setEnabled(rows, true, clear)}
                         >
-                            {bulkPending ? (
-                                <Loader2 className="animate-spin" />
-                            ) : (
-                                <Power />
-                            )}
                             启用
-                        </Button>
-                        <Button
+                        </LoadingButton>
+                        <LoadingButton
                             size="sm"
                             variant="outline"
-                            disabled={bulkPending}
+                            icon={<PowerOff />}
+                            loading={bulk.isPending}
                             onClick={() => setBulkDisable({ rows, clear })}
                         >
-                            <PowerOff />
                             停用
-                        </Button>
+                        </LoadingButton>
                     </>
                 )}
             />
@@ -501,16 +508,17 @@ export function AdminNodes() {
             <TokenDialog value={token} onClose={() => setToken(null)} />
             <ConfirmDialog
                 open={bulkDisable !== null}
-                onOpenChange={(open) => !open && setBulkDisable(null)}
+                onOpenChange={(open) =>
+                    !open && !bulk.isPending && setBulkDisable(null)
+                }
                 title={`停用选中的 ${bulkDisable?.rows.length ?? 0} 个节点？`}
                 desc="停用后，节点将无法获取用户列表，用户订阅中不再包含这些节点。"
                 confirmText="停用"
-                isLoading={bulkPending}
+                isLoading={bulk.isPending}
                 handleConfirm={() => {
                     if (!bulkDisable) return;
                     const { rows, clear } = bulkDisable;
-                    setBulkDisable(null);
-                    void setEnabled(rows, false, clear);
+                    setEnabled(rows, false, clear, () => setBulkDisable(null));
                 }}
             />
             <ConfirmDialog

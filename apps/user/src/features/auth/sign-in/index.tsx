@@ -1,13 +1,14 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ApiError } from "@/api/client";
-import { Loader2, LogIn } from "lucide-react";
+import { LogIn } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useState } from "react";
 import { twoFactorCodeSchema } from "@xboard/contracts";
 import { useLogin } from "@/api/hooks";
 import { useSite } from "@/api/panel";
+import { LoadingButton } from "@/components/loading-button";
 import { Button } from "@/components/ui/button";
 import {
     Card,
@@ -169,17 +170,13 @@ export function SignIn() {
                                     )}
                                 />
                             )}
-                            <Button
+                            <LoadingButton
+                                icon={<LogIn />}
                                 className="w-full"
-                                disabled={login.isPending}
+                                loading={login.isPending}
                             >
-                                {login.isPending ? (
-                                    <Loader2 className="animate-spin" />
-                                ) : (
-                                    <LogIn />
-                                )}
                                 登录
-                            </Button>
+                            </LoadingButton>
                         </form>
                     </Form>
                 </CardContent>

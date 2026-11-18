@@ -269,6 +269,81 @@ describe("promotions and operations", () => {
         );
     });
 
+    it("enables and disables nodes in bulk, audited and admin only", async () => {
+        const make = (name: string, enabled: boolean) =>
+            db.node.create({
+                data: {
+                    name,
+                    host: "node.example.test",
+                    port: 443,
+                    serverPort: 443,
+                    protocol: "vless",
+                    tokenHash: `bulk-${name}`,
+                    enabled,
+                },
+            });
+        const [on, off, gone] = await Promise.all([
+            make("bulk-on", true),
+            make("bulk-off", false),
+            make("bulk-gone", false),
+        ]);
+        await db.node.update({
+            where: { id: gone.id },
+            data: { deletedAt: new Date() },
+        });
+        const { cookie } = await buyer("bulk-nodes-user");
+        const ids = [on.id, off.id, gone.id, on.id];
+        assert.equal(
+            (
+                await app.call("/admin/nodes/bulk-enabled", {
+                    cookie,
+                    body: { ids, enabled: true },
+                })
+            ).status,
+            403,
+        );
+        assert.equal(
+            (
+                await app.call("/admin/nodes/bulk-enabled", {
+                    cookie: admin,
+                    body: { ids: [], enabled: true },
+                })
+            ).status,
+            400,
+        );
+        const response = await app.call("/admin/nodes/bulk-enabled", {
+            cookie: admin,
+            body: { ids, enabled: true },
+        });
+        assert.equal(response.status, 200);
+        // `off` changes; `on` is already enabled and `gone` is deleted.
+        assert.deepEqual(await response.json(), { updated: 1, skipped: 2 });
+        assert.equal(
+            (await db.node.findUniqueOrThrow({ where: { id: off.id } }))
+                .enabled,
+            true,
+        );
+        assert.equal(
+            (await db.node.findUniqueOrThrow({ where: { id: gone.id } }))
+                .enabled,
+            false,
+        );
+        assert.equal(
+            await db.audit.count({ where: { action: "node.bulk_enable" } }),
+            1,
+        );
+        await app.call("/admin/nodes/bulk-enabled", {
+            cookie: admin,
+            body: { ids: [on.id, off.id], enabled: false },
+        });
+        assert.equal(
+            await db.node.count({
+                where: { id: { in: [on.id, off.id] }, enabled: false },
+            }),
+            2,
+        );
+    });
+
     it("creates a pending manual order, ranks reported traffic, and audits a bulk reset", async () => {
         const { user, cookie } = await buyer("manual-order");
         const another = await buyer("bulk-reset");

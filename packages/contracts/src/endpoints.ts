@@ -495,6 +495,15 @@ export const endpoints: Endpoint[] = [
     },
     {
         method: "post",
+        path: "/admin/nodes/bulk-enabled",
+        summary: "批量启用或停用节点",
+        tag: "admin",
+        auth: "admin",
+        body: nodes.nodeBulkEnabledBody,
+        response: nodes.nodeBulkEnabledResult,
+    },
+    {
+        method: "post",
         path: "/admin/nodes/:id/token",
         summary: "更换节点密钥",
         tag: "admin",

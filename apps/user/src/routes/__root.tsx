@@ -9,7 +9,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         component: () => (
             <>
                 <Outlet />
-                <Toaster duration={5000} />
+                <Toaster />
             </>
         ),
         notFoundComponent: NotFoundError,

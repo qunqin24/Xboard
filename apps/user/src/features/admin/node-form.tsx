@@ -1353,7 +1353,7 @@ export function NodeSheet({
     onClose: () => void;
     onToken: (value: { id: number; token: string }) => void;
 }) {
-    const save = useCommand();
+    const save = useCommand({ inline: true });
     const form = useForm<NodeFormValues>({
         resolver,
         values: toFormValues(node),
@@ -1398,6 +1398,7 @@ export function NodeSheet({
             formId="node-form"
             submitLabel={node ? "保存修改" : "创建节点"}
             pending={save.isPending}
+            error={save.error}
             wide
         >
             <Form {...form}>

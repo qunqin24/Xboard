@@ -8,7 +8,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/loading-button";
 
 type ConfirmDialogProps = {
     open: boolean;
@@ -56,15 +56,16 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
                     <AlertDialogCancel disabled={isLoading}>
                         {cancelBtnText ?? "取消"}
                     </AlertDialogCancel>
-                    <Button
+                    <LoadingButton
                         type={form ? "submit" : "button"}
                         form={form}
                         onClick={handleConfirm}
                         variant={destructive ? "destructive" : "default"}
-                        disabled={disabled || isLoading}
+                        loading={isLoading}
+                        disabled={disabled}
                     >
                         {confirmText ?? "继续"}
-                    </Button>
+                    </LoadingButton>
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>

@@ -42,7 +42,7 @@ export function LoginDevices() {
             ) : sessions.isError ? (
                 <ErrorState
                     error={sessions.error}
-                    onRetry={() => void sessions.refetch()}
+                    onRetry={() => sessions.refetch()}
                 />
             ) : (
                 sessions.data.map((device) => (

@@ -9,6 +9,8 @@ import type {
 } from "@xboard/contracts";
 import { periodSchema } from "@xboard/contracts";
 import { toast } from "sonner";
+import { useOptimisticRows } from "@/api/use-optimistic-rows";
+import { SaveStatus } from "@/components/save-status";
 import { useCommand, usePanel } from "@/api/panel";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ErrorState } from "@/components/error-state";
@@ -49,7 +51,7 @@ function PromotionEditor({
 }) {
     const coupon = tab === "coupons";
     const plans = usePanel<PlanRow[]>("/admin/plans", { enabled: !coupon });
-    const save = useCommand<GiftCreated | CouponCreated>();
+    const save = useCommand<GiftCreated | CouponCreated>({ inline: true });
     const [kind, setKind] = useState<Gift["kind"]>("balance");
     const [plan, setPlan] = useState("");
     const [period, setPeriod] = useState<Period>("monthly");
@@ -117,6 +119,7 @@ function PromotionEditor({
                 formId="promotion-form"
                 submitLabel="创建"
                 pending={save.isPending}
+                error={save.error}
                 submitDisabled={!amount && !plan}
             >
                 <form
@@ -234,7 +237,7 @@ function PromotionEditor({
                                 {plans.isError && (
                                     <ErrorState
                                         error={plans.error}
-                                        onRetry={() => void plans.refetch()}
+                                        onRetry={() => plans.refetch()}
                                     />
                                 )}
                             </div>
@@ -296,14 +299,15 @@ export function AdminPromotions() {
     const [issuedCode, setIssuedCode] = useState<string | null>(null);
     const coupons = usePanel<Coupon[]>("/admin/coupons");
     const gifts = usePanel<Gift[]>("/admin/gift-codes");
-    const update = useCommand();
+    const couponRows = useOptimisticRows<Coupon>("/admin/coupons");
+    const giftRows = useOptimisticRows<Gift>("/admin/gift-codes");
     const showRows = (query: typeof coupons | typeof gifts) => {
         if (query.isPending) return <Skeleton className="h-40" />;
         if (query.isError)
             return (
                 <ErrorState
                     error={query.error}
-                    onRetry={() => void query.refetch()}
+                    onRetry={() => query.refetch()}
                 />
             );
         if (!query.data.length)
@@ -314,6 +318,10 @@ export function AdminPromotions() {
             );
         return query.data.map((row) => {
             const isCoupon = "code" in row;
+            // The two lists share one row layout; each has its own cache entry.
+            const rows = (
+                isCoupon ? couponRows : giftRows
+            ) as typeof couponRows;
             const expired =
                 !!row.expiresAt && Date.parse(row.expiresAt) <= Date.now();
             const consumed = isCoupon
@@ -348,6 +356,10 @@ export function AdminPromotions() {
                                 ` · ${formatDateTime(row.expiresAt)} 到期`}
                         </p>
                     </div>
+                    <SaveStatus
+                        state={rows.status(row.id)}
+                        onRetry={() => rows.retry(row.id)}
+                    />
                     <Badge
                         variant={
                             consumed
@@ -365,11 +377,11 @@ export function AdminPromotions() {
                         <Button
                             size="sm"
                             variant="outline"
-                            disabled={update.isPending}
                             onClick={() =>
-                                update.mutate({
+                                rows.change({
+                                    id: row.id,
+                                    fields: { enabled: !row.enabled },
                                     path: `/admin/${isCoupon ? "coupons" : "gift-codes"}/${row.id}/enabled`,
-                                    method: "PUT",
                                     body: { enabled: !row.enabled },
                                 })
                             }

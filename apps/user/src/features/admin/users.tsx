@@ -8,7 +8,6 @@ import {
     CircleCheck,
     Copy,
     KeyRound,
-    Loader2,
     MailCheck,
     MailPlus,
     MailWarning,
@@ -25,6 +24,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { queryString } from "@/api/client";
 import { useCommand, usePanel } from "@/api/panel";
+import { LoadingButton } from "@/components/loading-button";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
     DataTable,
@@ -322,12 +322,9 @@ function SubscriptionForm({
                     />
                 </div>
                 <div className="flex items-center gap-inline">
-                    <Button type="submit" disabled={save.isPending}>
-                        {save.isPending ? (
-                            <Loader2 className="animate-spin" />
-                        ) : null}
+                    <LoadingButton type="submit" loading={save.isPending}>
                         保存订阅
-                    </Button>
+                    </LoadingButton>
                     <InfoTip>修改不产生扣费，不影响已用流量。</InfoTip>
                 </div>
             </form>
@@ -413,12 +410,9 @@ function CreditForm({ user }: { user: UserRow }) {
                         </FormItem>
                     )}
                 />
-                <Button type="submit" disabled={credit.isPending}>
-                    {credit.isPending ? (
-                        <Loader2 className="animate-spin" />
-                    ) : null}
+                <LoadingButton type="submit" loading={credit.isPending}>
                     确认入账
-                </Button>
+                </LoadingButton>
             </form>
             <ConfirmDialog
                 open={confirming !== null}
@@ -461,16 +455,13 @@ function ResetTrafficForm({ user }: { user: UserRow }) {
                         </FormItem>
                     )}
                 />
-                <Button
+                <LoadingButton
                     type="submit"
                     variant="destructive"
-                    disabled={reset.isPending}
+                    loading={reset.isPending}
                 >
-                    {reset.isPending ? (
-                        <Loader2 className="animate-spin" />
-                    ) : null}
                     清零已用流量
-                </Button>
+                </LoadingButton>
             </form>
             <ConfirmDialog
                 open={confirming !== null}
@@ -1061,8 +1052,9 @@ export function AdminUsers() {
                     rowCount: list.data?.total,
                 }}
                 isLoading={list.isPending}
+                isRefreshing={list.isPlaceholderData}
                 error={list.isError ? list.error : undefined}
-                onRetry={() => void list.refetch()}
+                onRetry={() => list.refetch()}
                 columns={columns}
                 getRowId={(u) => String(u.id)}
                 searchPlaceholder="邮箱或编号…"

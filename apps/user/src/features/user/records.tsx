@@ -127,7 +127,7 @@ export function Records() {
                         exportName="余额流水"
                         emptyText="暂无余额变动"
                         error={ledger.error}
-                        onRetry={() => void ledger.refetch()}
+                        onRetry={() => ledger.refetch()}
                         initialSorting={[{ id: "createdAt", desc: true }]}
                     />
                 </TabsContent>
@@ -141,7 +141,7 @@ export function Records() {
                         exportName="流量记录"
                         emptyText="暂无流量记录"
                         error={traffic.error}
-                        onRetry={() => void traffic.refetch()}
+                        onRetry={() => traffic.refetch()}
                         filters={[
                             {
                                 columnId: "node",

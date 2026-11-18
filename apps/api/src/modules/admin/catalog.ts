@@ -4,6 +4,7 @@ import type { Node, Prisma } from "@prisma/client";
 import {
     idParam,
     nodeBody,
+    nodeBulkEnabledBody,
     nodeEnabledBody,
     noticeBody,
     planBody,
@@ -307,6 +308,34 @@ catalogRoutes.put("/nodes/:id/enabled", async (req, res) => {
         );
     });
     res.json({ id });
+});
+
+catalogRoutes.post("/nodes/bulk-enabled", async (req, res) => {
+    const { ids, enabled } = parse(nodeBulkEnabledBody, req.body);
+    const actor = currentUser(req);
+    const updated = await db.$transaction(async (tx) => {
+        // Only nodes that exist and are not already in the target state.
+        const nodes = await tx.node.findMany({
+            where: { id: { in: ids }, deletedAt: null, enabled: !enabled },
+            select: { id: true },
+        });
+        const changed = nodes.map((node) => node.id);
+        if (changed.length) {
+            await tx.node.updateMany({
+                where: { id: { in: changed } },
+                data: { enabled },
+            });
+            await audit(
+                tx,
+                actor.id,
+                enabled ? "node.bulk_enable" : "node.bulk_disable",
+                changed.join(","),
+                { ids: changed },
+            );
+        }
+        return changed.length;
+    });
+    res.json({ updated, skipped: ids.length - updated });
 });
 
 catalogRoutes.post("/nodes/:id/token", async (req, res) => {

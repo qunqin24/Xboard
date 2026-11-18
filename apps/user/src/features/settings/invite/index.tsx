@@ -139,7 +139,7 @@ export function SettingsInvite() {
             ) : invite.isError ? (
                 <ErrorState
                     error={invite.error}
-                    onRetry={() => void invite.refetch()}
+                    onRetry={() => invite.refetch()}
                 />
             ) : (
                 <div className="space-y-group">

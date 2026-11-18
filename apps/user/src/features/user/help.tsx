@@ -28,7 +28,7 @@ export function Help() {
                 ) : articles.isError ? (
                     <ErrorState
                         error={articles.error}
-                        onRetry={() => void articles.refetch()}
+                        onRetry={() => articles.refetch()}
                     />
                 ) : articles.data.length ? (
                     articles.data.map((article) => (

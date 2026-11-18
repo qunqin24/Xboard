@@ -2,7 +2,6 @@ import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { fonts } from "@/config/fonts";
-import { toast } from "sonner";
 import { useFont } from "@/context/font-provider";
 import { useTheme } from "@/context/theme-provider";
 import { Button } from "@/components/ui/button";
@@ -79,8 +78,6 @@ export function AppearanceForm() {
     function onSubmit(data: AppearanceFormValues) {
         if (data.font != font) setFont(data.font);
         if (data.theme != theme) setTheme(data.theme);
-
-        toast.success("外观已更新");
     }
 
     return (

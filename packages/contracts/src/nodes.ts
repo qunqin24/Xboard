@@ -647,6 +647,20 @@ export type NodeBodyInput = z.input<typeof nodeBody>;
 
 export const nodeEnabledBody = z.strictObject({ enabled: z.boolean() });
 
+/** Enable or disable up to 200 nodes in one request. */
+export const nodeBulkEnabledBody = z.strictObject({
+    ids: z
+        .array(z.number().int().positive())
+        .min(1)
+        .max(200)
+        .transform((ids) => [...new Set(ids)]),
+    enabled: z.boolean(),
+});
+export const nodeBulkEnabledResult = z.object({
+    updated: z.number().int(),
+    skipped: z.number().int(),
+});
+
 // ---------- Admin response ----------
 
 const viewCommon = {

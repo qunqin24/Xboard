@@ -1,9 +1,10 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link } from "@tanstack/react-router";
-import { CircleCheck, Loader2, Send } from "lucide-react";
+import { CircleCheck, Send } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useCommand } from "@/api/panel";
+import { LoadingButton } from "@/components/loading-button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -81,17 +82,13 @@ export function ForgotPassword() {
                                         </FormItem>
                                     )}
                                 />
-                                <Button
+                                <LoadingButton
+                                    icon={<Send />}
                                     className="w-full"
-                                    disabled={send.isPending}
+                                    loading={send.isPending}
                                 >
-                                    {send.isPending ? (
-                                        <Loader2 className="animate-spin" />
-                                    ) : (
-                                        <Send />
-                                    )}
                                     发送重置邮件
-                                </Button>
+                                </LoadingButton>
                             </form>
                         </Form>
                     )}

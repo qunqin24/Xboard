@@ -42,6 +42,7 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useDelayedFlag } from "@/hooks/use-delayed-flag";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
     daysLeft,
@@ -74,7 +75,7 @@ export function Overview() {
                 {account.isError ? (
                     <ErrorState
                         error={account.error}
-                        onRetry={() => void account.refetch()}
+                        onRetry={() => account.refetch()}
                     />
                 ) : (
                     <div className="grid gap-page lg:grid-cols-3">
@@ -413,7 +414,7 @@ function NoticesCard() {
                 ) : notices.isError ? (
                     <ErrorState
                         error={notices.error}
-                        onRetry={() => void notices.refetch()}
+                        onRetry={() => notices.refetch()}
                     />
                 ) : notices.data.length ? (
                     <ul className="divide-y">
@@ -446,7 +447,9 @@ function UsageCard() {
     const [range, setRange] = useState<(typeof RANGES)[number]>(7);
     const daily = usePanel<TrafficDay[]>(
         `/account/traffic/daily?days=${range}`,
+        { keepPrevious: true },
     );
+    const refreshing = useDelayedFlag(daily.isPlaceholderData);
     const gradient = useId().replaceAll(":", "");
     const series = (daily.data ?? []).map((day) => ({
         label: day.date.slice(5).replace("-", "/"),
@@ -484,11 +487,17 @@ function UsageCard() {
                     </ToggleGroup>
                 </CardAction>
             </CardHeader>
-            <CardContent>
+            <CardContent
+                aria-busy={refreshing}
+                className={cn(
+                    "transition-opacity duration-200",
+                    refreshing && "opacity-60",
+                )}
+            >
                 {daily.isError ? (
                     <ErrorState
                         error={daily.error}
-                        onRetry={() => void daily.refetch()}
+                        onRetry={() => daily.refetch()}
                     />
                 ) : daily.isPending ? (
                     <Skeleton className="h-56" />

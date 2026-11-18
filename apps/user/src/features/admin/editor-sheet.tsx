@@ -1,6 +1,9 @@
-import { Loader2 } from "lucide-react";
+import { CircleAlert } from "lucide-react";
 import { type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/loading-button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { serverErrorMessage } from "@/lib/handle-server-error";
 import { cn } from "@/lib/utils";
 import {
     Sheet,
@@ -21,6 +24,7 @@ export function EditorSheet({
     formId,
     submitLabel,
     pending,
+    error,
     submitDisabled,
     children,
     extra,
@@ -33,6 +37,8 @@ export function EditorSheet({
     formId: string;
     submitLabel: string;
     pending?: boolean;
+    /** A failed save, shown above the buttons where the user is looking. */
+    error?: unknown;
     submitDisabled?: boolean;
     children: ReactNode;
     extra?: ReactNode;
@@ -63,20 +69,31 @@ export function EditorSheet({
                     {children}
                     {extra}
                 </div>
+                {error && !pending ? (
+                    <Alert
+                        variant="destructive"
+                        className="mx-card mb-card w-auto"
+                    >
+                        <CircleAlert />
+                        <AlertDescription>
+                            保存失败：{serverErrorMessage(error)}
+                        </AlertDescription>
+                    </Alert>
+                ) : null}
                 <SheetFooter className="flex-col-reverse gap-inline border-t sm:flex-row sm:justify-end">
                     <SheetClose asChild>
                         <Button variant="outline" disabled={pending}>
                             取消
                         </Button>
                     </SheetClose>
-                    <Button
+                    <LoadingButton
                         form={formId}
                         type="submit"
-                        disabled={pending || submitDisabled}
+                        loading={pending}
+                        disabled={submitDisabled}
                     >
-                        {pending ? <Loader2 className="animate-spin" /> : null}
                         {submitLabel}
-                    </Button>
+                    </LoadingButton>
                 </SheetFooter>
             </SheetContent>
         </Sheet>

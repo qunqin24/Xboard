@@ -1,10 +1,10 @@
-import { CheckCircle2, Loader2, MailWarning } from "lucide-react";
+import { CheckCircle2, MailWarning } from "lucide-react";
 import { useAccount } from "@/api/hooks";
 import { useCommand } from "@/api/panel";
+import { LoadingButton } from "@/components/loading-button";
 import { ErrorState } from "@/components/error-state";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate, formatMinor } from "@/lib/format";
 import { ContentSection } from "../components/content-section";
@@ -19,7 +19,7 @@ export function SettingsAccount() {
             {account.isError ? (
                 <ErrorState
                     error={account.error}
-                    onRetry={() => void account.refetch()}
+                    onRetry={() => account.refetch()}
                 />
             ) : (
                 <div className="space-y-group">
@@ -78,23 +78,19 @@ export function SettingsAccount() {
                             <AlertDescription className="space-y-field">
                                 <div className="flex flex-wrap items-center justify-between gap-group">
                                     <span>验证邮箱后可通过邮箱找回密码。</span>
-                                    <Button
+                                    <LoadingButton
                                         size="sm"
                                         variant="outline"
-                                        disabled={
-                                            verify.isPending || verify.isSuccess
-                                        }
+                                        loading={verify.isPending}
+                                        disabled={verify.isSuccess}
                                         onClick={() =>
                                             verify.mutate({
                                                 path: "/account/verify-email",
                                             })
                                         }
                                     >
-                                        {verify.isPending ? (
-                                            <Loader2 className="animate-spin" />
-                                        ) : null}
                                         发送验证邮件
-                                    </Button>
+                                    </LoadingButton>
                                 </div>
                                 {verify.isSuccess ? (
                                     <p>验证邮件已发送，30 分钟内有效</p>

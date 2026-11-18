@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2 } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -10,11 +9,11 @@ import {
     settingsBody,
 } from "@xboard/contracts";
 import { useCommand, usePanel } from "@/api/panel";
+import { LoadingButton } from "@/components/loading-button";
 import { CheckRow } from "@/components/check-row";
 import { ErrorState } from "@/components/error-state";
 import { InfoTip } from "@/components/info-tip";
 import { Page } from "@/components/layout/page";
-import { Button } from "@/components/ui/button";
 import {
     Form,
     FormControl,
@@ -171,16 +170,14 @@ function SettingsForm({
         <Page
             title="系统设置"
             actions={
-                <Button
+                <LoadingButton
                     type="submit"
                     form="site-settings"
-                    disabled={save.isPending || !form.formState.isDirty}
+                    loading={save.isPending}
+                    disabled={!form.formState.isDirty}
                 >
-                    {save.isPending ? (
-                        <Loader2 className="animate-spin" />
-                    ) : null}
                     保存设置
-                </Button>
+                </LoadingButton>
             }
         >
             <Form {...form}>
@@ -601,10 +598,9 @@ export function AdminSettings() {
             {error ? (
                 <ErrorState
                     error={error}
-                    onRetry={() => {
-                        void settings.refetch();
-                        void plans.refetch();
-                    }}
+                    onRetry={() =>
+                        Promise.all([settings.refetch(), plans.refetch()])
+                    }
                 />
             ) : (
                 <Skeleton className="h-64 max-w-2xl" />

@@ -1,10 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import {
-    Loader2,
-    MessageSquarePlus,
-    Search as SearchIcon,
-    Send,
-} from "lucide-react";
+import { MessageSquarePlus, Search as SearchIcon, Send } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -14,6 +9,9 @@ import {
     type Ticket,
 } from "@xboard/contracts";
 import { z } from "zod";
+import { useOptimisticRows } from "@/api/use-optimistic-rows";
+import { LoadingButton } from "@/components/loading-button";
+import { SaveStatus } from "@/components/save-status";
 import { useCommand, usePanel, useSite } from "@/api/panel";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
@@ -150,16 +148,13 @@ export function NewTicketDialog({
                     >
                         取消
                     </Button>
-                    <Button
+                    <LoadingButton
                         type="submit"
                         form="new-ticket"
-                        disabled={create.isPending}
+                        loading={create.isPending}
                     >
-                        {create.isPending ? (
-                            <Loader2 className="animate-spin" />
-                        ) : null}
                         提交
-                    </Button>
+                    </LoadingButton>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -173,6 +168,7 @@ export function TicketDesk({ staff = false }: { staff?: boolean }) {
     const base = staff ? "/admin/tickets" : "/tickets";
     const list = usePanel<Ticket[]>(base);
     const action = useCommand();
+    const optimistic = useOptimisticRows<Ticket>(base);
     const [filter, setFilter] = useState<"open" | "all">("open");
     const [search, setSearch] = useState("");
     const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -236,7 +232,7 @@ export function TicketDesk({ staff = false }: { staff?: boolean }) {
                     ) : list.isError ? (
                         <ErrorState
                             error={list.error}
-                            onRetry={() => void list.refetch()}
+                            onRetry={() => list.refetch()}
                         />
                     ) : tickets.length ? (
                         <ul className="flex flex-col gap-1 px-4 pb-4">
@@ -309,29 +305,27 @@ export function TicketDesk({ staff = false }: { staff?: boolean }) {
                                 {staff ? ` · ${selected.user.email}` : ""}
                             </p>
                         </div>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={action.isPending}
-                            onClick={() =>
-                                action.mutate(
-                                    {
+                        <div className="flex items-center gap-inline">
+                            <SaveStatus
+                                state={optimistic.status(selected.id)}
+                                onRetry={() => optimistic.retry(selected.id)}
+                            />
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                    optimistic.change({
+                                        id: selected.id,
+                                        fields: { closed: !selected.closed },
                                         path: `${base}/${selected.id}/status`,
+                                        method: "POST",
                                         body: { closed: !selected.closed },
-                                    },
-                                    {
-                                        onSuccess: () =>
-                                            toast.success(
-                                                selected.closed
-                                                    ? "工单已重新打开"
-                                                    : "工单已关闭",
-                                            ),
-                                    },
-                                )
-                            }
-                        >
-                            {selected.closed ? "重新打开" : "关闭工单"}
-                        </Button>
+                                    })
+                                }
+                            >
+                                {selected.closed ? "重新打开" : "关闭工单"}
+                            </Button>
+                        </div>
                     </div>
                     <ScrollArea className="flex-1">
                         <ol className="space-y-group p-4">

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
     flexRender,
     getCoreRowModel,
@@ -17,6 +17,8 @@ import {
     type VisibilityState,
 } from "@tanstack/react-table";
 import { cn } from "@/lib/utils";
+import { useDelayedFlag } from "@/hooks/use-delayed-flag";
+import { rememberCount, skeletonCount } from "@/lib/skeleton-memory";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ErrorState } from "@/components/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -84,6 +86,9 @@ type Filter = {
     }[];
 };
 
+/** Widths of the placeholder lines: a little shorter than text, varied. */
+const SKELETON_WIDTHS = ["w-3/4", "w-1/2", "w-2/3", "w-5/6", "w-1/3"];
+
 /**
  * Upstream's table recipe (toolbar + faceted filters + sortable headers +
  * pagination + bulk-action bar) behind one component, so feature pages only
@@ -99,6 +104,7 @@ export function DataTable<TData>({
     columns,
     getRowId,
     isLoading,
+    isRefreshing,
     searchPlaceholder,
     filters,
     exportName,
@@ -118,6 +124,8 @@ export function DataTable<TData>({
     columns: ColumnDef<TData>[];
     getRowId?: (row: TData) => string;
     isLoading?: boolean;
+    /** New rows are loading while the old ones stay: dim them, keep them clickable. */
+    isRefreshing?: boolean;
     searchPlaceholder?: string | false;
     filters?: Filter[];
     exportName?: string;
@@ -132,7 +140,7 @@ export function DataTable<TData>({
     emptyText?: ReactNode;
     /** A failed load; shown instead of rows so it never reads as "no records". */
     error?: unknown;
-    onRetry?: () => void;
+    onRetry?: () => unknown;
     server?: {
         state: ServerTableState;
         onStateChange: (state: ServerTableState) => void;
@@ -236,6 +244,21 @@ export function DataTable<TData>({
         table.setPageIndex(pageCount - 1);
     }, [isLoading, pageCount, pageIndex, table]);
 
+    // Skeleton rows match the number of rows shown last time, so the table
+    // keeps its height when data arrives.
+    const skeletonKey = `table:${exportName ?? entityName}`;
+    const rowCount = table.getRowModel().rows.length;
+    useEffect(() => {
+        if (!isLoading) rememberCount(skeletonKey, rowCount);
+    }, [isLoading, rowCount, skeletonKey]);
+    // Rows that replace a skeleton fade in from the top, 40 ms apart.
+    const wasLoading = useRef(false);
+    const reveal = wasLoading.current && !isLoading;
+    useEffect(() => {
+        wasLoading.current = Boolean(isLoading);
+    }, [isLoading]);
+    const refreshing = useDelayedFlag(Boolean(isRefreshing) && !isLoading);
+
     const selectedRows = table
         .getFilteredSelectedRowModel()
         .rows.map((row) => row.original);
@@ -273,7 +296,10 @@ export function DataTable<TData>({
                 exportName={server ? undefined : exportName}
                 facetCounts={!server}
             />
-            <div className="overflow-hidden rounded-surface border">
+            <div
+                className="overflow-hidden rounded-surface border"
+                aria-busy={Boolean(isLoading || refreshing)}
+            >
                 <Table>
                     <TableHeader>
                         {table.getHeaderGroups().map((headerGroup) => (
@@ -305,7 +331,12 @@ export function DataTable<TData>({
                             </TableRow>
                         ))}
                     </TableHeader>
-                    <TableBody>
+                    <TableBody
+                        className={cn(
+                            "transition-opacity duration-200",
+                            refreshing && "opacity-60",
+                        )}
+                    >
                         {error ? (
                             <TableRow>
                                 <TableCell colSpan={columnCount}>
@@ -316,15 +347,37 @@ export function DataTable<TData>({
                                 </TableCell>
                             </TableRow>
                         ) : isLoading ? (
-                            Array.from({ length: 4 }, (_, i) => (
-                                <TableRow key={i}>
-                                    <TableCell colSpan={columnCount}>
-                                        <Skeleton className="h-6" />
-                                    </TableCell>
-                                </TableRow>
-                            ))
+                            Array.from(
+                                { length: skeletonCount(skeletonKey, 5) },
+                                (_, row) => (
+                                    <TableRow
+                                        key={row}
+                                        className="hover:bg-transparent"
+                                    >
+                                        {table
+                                            .getVisibleLeafColumns()
+                                            .map((column, col) => (
+                                                <TableCell
+                                                    key={column.id}
+                                                    className="h-14"
+                                                >
+                                                    <Skeleton
+                                                        className={cn(
+                                                            "h-4",
+                                                            SKELETON_WIDTHS[
+                                                                (row * 2 +
+                                                                    col) %
+                                                                    SKELETON_WIDTHS.length
+                                                            ],
+                                                        )}
+                                                    />
+                                                </TableCell>
+                                            ))}
+                                    </TableRow>
+                                ),
+                            )
                         ) : table.getRowModel().rows.length ? (
-                            table.getRowModel().rows.map((row) => {
+                            table.getRowModel().rows.map((row, index) => {
                                 const props = clickable(row);
                                 return (
                                     <TableRow
@@ -337,8 +390,17 @@ export function DataTable<TData>({
                                         {...props}
                                         className={cn(
                                             "group/row",
+                                            reveal && "reveal",
                                             props.className,
                                         )}
+                                        style={
+                                            reveal
+                                                ? ({
+                                                      "--reveal-index":
+                                                          Math.min(index, 12),
+                                                  } as React.CSSProperties)
+                                                : undefined
+                                        }
                                     >
                                         {row.getVisibleCells().map((cell) => (
                                             <TableCell

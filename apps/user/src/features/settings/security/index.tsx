@@ -1,14 +1,13 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "@tanstack/react-router";
-import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { useCommand } from "@/api/panel";
 import { queryClient } from "@/query-client";
+import { LoadingButton } from "@/components/loading-button";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { Button } from "@/components/ui/button";
 import {
     Form,
     FormControl,
@@ -116,12 +115,12 @@ export function SettingsSecurity() {
                                     </FormItem>
                                 )}
                             />
-                            <Button type="submit" disabled={change.isPending}>
-                                {change.isPending ? (
-                                    <Loader2 className="animate-spin" />
-                                ) : null}
+                            <LoadingButton
+                                type="submit"
+                                loading={change.isPending}
+                            >
                                 修改密码
-                            </Button>
+                            </LoadingButton>
                         </form>
                     </Form>
                     <ConfirmDialog

@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { RotateCw, TriangleAlert } from "lucide-react";
+import { useSpinTurn } from "@/hooks/use-spin-turn";
 import { cn } from "@/lib/utils";
 import { serverErrorMessage } from "@/lib/handle-server-error";
 import { Button } from "./ui/button";
@@ -13,9 +15,19 @@ export function ErrorState({
     className,
 }: {
     error?: unknown;
-    onRetry?: () => void;
+    /** May return the request's promise so the retry icon turns while it runs. */
+    onRetry?: () => unknown;
     className?: string;
 }) {
+    const [retrying, setRetrying] = useState(false);
+    const spin = useSpinTurn(retrying);
+    const retry = () => {
+        const result = onRetry?.();
+        if (!(result instanceof Promise)) return;
+        setRetrying(true);
+        const done = () => setRetrying(false);
+        result.then(done, done);
+    };
     return (
         <div
             role="alert"
@@ -36,8 +48,16 @@ export function ErrorState({
                 ) : null}
             </div>
             {onRetry ? (
-                <Button variant="outline" size="sm" onClick={onRetry}>
-                    <RotateCw />
+                <Button
+                    variant="outline"
+                    size="sm"
+                    aria-busy={retrying || undefined}
+                    onClick={retrying ? undefined : retry}
+                >
+                    <RotateCw
+                        className={spin.className}
+                        onAnimationIteration={spin.onAnimationIteration}
+                    />
                     重试
                 </Button>
             ) : null}

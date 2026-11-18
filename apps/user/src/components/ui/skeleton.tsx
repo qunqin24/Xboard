@@ -1,6 +1,9 @@
 import { cn } from "@/lib/utils";
 
-/** Placeholder while loading; `shape="card"` stands in for a whole Card. */
+/**
+ * Placeholder while loading; `shape="card"` stands in for a whole Card.
+ * The light band is drawn in `styles/index.css`.
+ */
 function Skeleton({
     className,
     shape = "control",
@@ -9,8 +12,8 @@ function Skeleton({
     return (
         <div
             data-slot="skeleton"
+            aria-hidden="true"
             className={cn(
-                "animate-pulse bg-accent",
                 shape === "card" ? "rounded-card" : "rounded-control",
                 className,
             )}

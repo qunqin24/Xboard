@@ -11,5 +11,9 @@ export function serverErrorMessage(error: unknown): string {
 
 export function handleServerError(error: unknown) {
     if (import.meta.env.DEV) console.error(error);
-    toast.error(serverErrorMessage(error));
+    // A failure the user has to act on stays until it is closed.
+    toast.error(serverErrorMessage(error), {
+        duration: Infinity,
+        closeButton: true,
+    });
 }

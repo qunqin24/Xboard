@@ -7,7 +7,6 @@ import {
     Download,
     KeyRound,
     Link2Off,
-    Loader2,
     Package,
     QrCode,
 } from "lucide-react";
@@ -15,6 +14,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { useAccount } from "@/api/hooks";
 import { useCommand, usePanel, useSite } from "@/api/panel";
+import { LoadingButton } from "@/components/loading-button";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
@@ -69,7 +69,7 @@ export function Subscription() {
             {account.isError ? (
                 <ErrorState
                     error={account.error}
-                    onRetry={() => void account.refetch()}
+                    onRetry={() => account.refetch()}
                 />
             ) : account.isPending ? (
                 <div className="grid gap-page lg:grid-cols-3">
@@ -108,7 +108,7 @@ export function Subscription() {
                             {links.isError ? (
                                 <ErrorState
                                     error={links.error}
-                                    onRetry={() => void links.refetch()}
+                                    onRetry={() => links.refetch()}
                                 />
                             ) : links.data ? (
                                 <CopyLink value={links.data.url} />
@@ -348,18 +348,16 @@ function SecurityCard({ ready }: { ready: boolean }) {
                     title="重置订阅链接"
                     description="旧链接立即失效，节点凭据不变。"
                     action={
-                        <Button
+                        <LoadingButton
                             variant="outline"
                             size="sm"
                             className="text-destructive hover:text-destructive"
-                            disabled={!ready || reset.isPending}
+                            loading={reset.isPending}
+                            disabled={!ready}
                             onClick={() => setResetting(true)}
                         >
-                            {reset.isPending ? (
-                                <Loader2 className="animate-spin" />
-                            ) : null}
                             重置
-                        </Button>
+                        </LoadingButton>
                     }
                 />
                 <SecurityRow
@@ -367,18 +365,15 @@ function SecurityCard({ ready }: { ready: boolean }) {
                     title="更换节点凭据"
                     description="链接不变，已导入的客户端需更新订阅。"
                     action={
-                        <Button
+                        <LoadingButton
                             variant="outline"
                             size="sm"
                             className="text-destructive hover:text-destructive"
-                            disabled={rotate.isPending}
+                            loading={rotate.isPending}
                             onClick={() => setRotating(true)}
                         >
-                            {rotate.isPending ? (
-                                <Loader2 className="animate-spin" />
-                            ) : null}
                             更换
-                        </Button>
+                        </LoadingButton>
                     }
                 />
             </CardContent>

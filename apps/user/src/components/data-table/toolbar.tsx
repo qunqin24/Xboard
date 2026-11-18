@@ -2,6 +2,7 @@ import { Cross2Icon, DownloadIcon } from "@radix-ui/react-icons";
 import { type Table } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { DataTableFacetedFilter } from "./faceted-filter";
 import { DataTableViewOptions } from "./view-options";
@@ -47,6 +48,7 @@ export function DataTableToolbar<TData>({
                 (column) =>
                     column.columnDef.meta?.exportValue || column.accessorFn,
             );
+        toast.success(`已导出 ${rows.length} 行`);
         downloadCsv(
             exportName ?? "export",
             toCsv(

@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
+import { useOptimisticRows } from "@/api/use-optimistic-rows";
+import { SaveStatus } from "@/components/save-status";
 import { useCommand, usePanel } from "@/api/panel";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
@@ -49,7 +51,7 @@ function NoticeSheet({
     open: boolean;
     onClose: () => void;
 }) {
-    const save = useCommand();
+    const save = useCommand({ inline: true });
     const form = useForm<z.infer<typeof schema>>({
         resolver: zodResolver(schema),
         values: {
@@ -71,6 +73,7 @@ function NoticeSheet({
             formId="notice-form"
             submitLabel={notice ? "保存修改" : "创建公告"}
             pending={save.isPending}
+            error={save.error}
         >
             <Form {...form}>
                 <form
@@ -144,6 +147,7 @@ export function AdminNotices() {
     const list = usePanel<NoticeRow[]>("/admin/notices");
     const editor = useEditorSearch("/admin/notices");
     const action = useCommand();
+    const optimistic = useOptimisticRows<NoticeRow>("/admin/notices");
     const [deleting, setDeleting] = useState<NoticeRow | null>(null);
     const editing = list.data?.find((n) => n.id === editor.editId) ?? null;
 
@@ -170,10 +174,16 @@ export function AdminNotices() {
             header: ({ column }) => (
                 <DataTableColumnHeader column={column} title="状态" />
             ),
-            cell: ({ getValue }) => (
-                <Badge variant={PUBLISH_TONE[getValue<string>()]}>
-                    {getValue<string>()}
-                </Badge>
+            cell: ({ row, getValue }) => (
+                <div className="flex items-center gap-inline">
+                    <Badge variant={PUBLISH_TONE[getValue<string>()]}>
+                        {getValue<string>()}
+                    </Badge>
+                    <SaveStatus
+                        state={optimistic.status(row.original.id)}
+                        onRetry={() => optimistic.retry(row.original.id)}
+                    />
+                </div>
             ),
             filterFn: inFilter,
             meta: { title: "状态" },
@@ -193,25 +203,18 @@ export function AdminNotices() {
                             label: row.original.published ? "撤回" : "发布",
                             icon: row.original.published ? EyeOff : Eye,
                             onSelect: () =>
-                                action.mutate(
-                                    {
-                                        path: `/admin/notices/${row.original.id}`,
-                                        method: "PUT",
-                                        body: {
-                                            title: row.original.title,
-                                            content: row.original.content,
-                                            published: !row.original.published,
-                                        },
+                                optimistic.change({
+                                    id: row.original.id,
+                                    fields: {
+                                        published: !row.original.published,
                                     },
-                                    {
-                                        onSuccess: () =>
-                                            toast.success(
-                                                row.original.published
-                                                    ? "已撤回"
-                                                    : "已发布",
-                                            ),
+                                    path: `/admin/notices/${row.original.id}`,
+                                    body: {
+                                        title: row.original.title,
+                                        content: row.original.content,
+                                        published: !row.original.published,
                                     },
-                                ),
+                                }),
                         },
                         "separator",
                         {
@@ -246,7 +249,7 @@ export function AdminNotices() {
                 onRowClick={(n) => editor.open(n.id)}
                 selectedRowId={editor.editId ? String(editor.editId) : null}
                 error={list.isError ? list.error : undefined}
-                onRetry={() => void list.refetch()}
+                onRetry={() => list.refetch()}
                 exportName="公告"
                 entityName="公告"
                 emptyText={

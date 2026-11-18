@@ -27,7 +27,7 @@ function HelpEditor({
     article: HelpArticle | null;
     close: () => void;
 }) {
-    const save = useCommand();
+    const save = useCommand({ inline: true });
     const flags = useForm({
         defaultValues: { published: article?.published ?? false },
     });
@@ -62,6 +62,7 @@ function HelpEditor({
             formId="help-editor"
             submitLabel="保存文档"
             pending={save.isPending}
+            error={save.error}
         >
             <form
                 id="help-editor"
@@ -138,7 +139,7 @@ export function AdminHelp() {
             ) : articles.isError ? (
                 <ErrorState
                     error={articles.error}
-                    onRetry={() => void articles.refetch()}
+                    onRetry={() => articles.refetch()}
                 />
             ) : articles.data.length ? (
                 articles.data.map((article) => (

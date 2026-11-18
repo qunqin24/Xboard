@@ -6,16 +6,21 @@ import { ErrorState } from "@/components/error-state";
 import { IconBlock } from "@/components/ui/icon-block";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useDelayedFlag } from "@/hooks/use-delayed-flag";
+import { cn } from "@/lib/utils";
 import { formatTraffic } from "@/lib/format";
 
 export function TrafficRankings({ days }: { days: number }) {
-    const ranking = usePanel<Rankings>(`/admin/rankings?days=${days}`);
+    const ranking = usePanel<Rankings>(`/admin/rankings?days=${days}`, {
+        keepPrevious: true,
+    });
+    const refreshing = useDelayedFlag(ranking.isPlaceholderData);
     if (ranking.isError)
         return (
             <Card>
                 <ErrorState
                     error={ranking.error}
-                    onRetry={() => void ranking.refetch()}
+                    onRetry={() => ranking.refetch()}
                 />
             </Card>
         );
@@ -36,7 +41,13 @@ export function TrafficRankings({ days }: { days: number }) {
                             <CardTitle>{label}</CardTitle>
                         </div>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent
+                        aria-busy={refreshing}
+                        className={cn(
+                            "transition-opacity duration-200",
+                            refreshing && "opacity-60",
+                        )}
+                    >
                         {ranking.isPending ? (
                             <Skeleton className="h-32" />
                         ) : ranking.data[key].length ? (

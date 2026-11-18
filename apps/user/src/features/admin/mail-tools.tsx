@@ -161,7 +161,7 @@ export function BroadcastEditor({
 
 function TemplateEditor({ close }: { close: () => void }) {
     const list = usePanel<MailTemplate[]>("/admin/mail/templates");
-    const save = useCommand();
+    const save = useCommand({ inline: true });
     const [key, setKey] = useState<MailTemplateKey>("verify_email");
     const template = list.data?.find((item) => item.key === key);
     function submit(event: FormEvent<HTMLFormElement>) {
@@ -187,15 +187,13 @@ function TemplateEditor({ close }: { close: () => void }) {
             formId="mail-template"
             submitLabel="保存模板"
             pending={save.isPending}
+            error={save.error}
             submitDisabled={!template}
         >
             {list.isPending ? (
                 <Skeleton className="h-48" />
             ) : list.isError ? (
-                <ErrorState
-                    error={list.error}
-                    onRetry={() => void list.refetch()}
-                />
+                <ErrorState error={list.error} onRetry={() => list.refetch()} />
             ) : (
                 <div className="grid gap-group">
                     <div className="grid gap-field">

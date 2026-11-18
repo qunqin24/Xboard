@@ -15,6 +15,7 @@ import type {
     RegisterCodeResult,
 } from "@xboard/contracts";
 import { request } from "./client";
+import { useHeldPending } from "./held-pending";
 
 export const accountQuery = queryOptions({
     queryKey: ["account"],
@@ -27,11 +28,11 @@ export const plansQuery = queryOptions({
 });
 
 export function useAccount() {
-    return useQuery(accountQuery);
+    return useHeldPending(useQuery(accountQuery));
 }
 
 export function usePlans(enabled: boolean) {
-    return useQuery({ ...plansQuery, enabled });
+    return useHeldPending(useQuery({ ...plansQuery, enabled }));
 }
 
 export function useLogin() {
@@ -75,10 +76,12 @@ export function useLogout() {
 export type { Account, Plan };
 
 export function useOrders() {
-    return useQuery({
-        queryKey: ["orders"],
-        queryFn: () => request<Order[]>("/orders"),
-    });
+    return useHeldPending(
+        useQuery({
+            queryKey: ["orders"],
+            queryFn: () => request<Order[]>("/orders"),
+        }),
+    );
 }
 
 export function useCreateOrder() {
@@ -86,7 +89,9 @@ export function useCreateOrder() {
     return useMutation({
         mutationFn: (input: CreateOrderBody) =>
             request<Order>("/orders", "POST", input),
-        onSuccess: () => client.invalidateQueries({ queryKey: ["orders"] }),
+        // Not awaited: the button is released when the order exists.
+        onSuccess: () =>
+            void client.invalidateQueries({ queryKey: ["orders"] }),
     });
 }
 
@@ -100,11 +105,9 @@ export function useOrderAction() {
             id: string;
             action: "pay" | "cancel";
         }) => request<Order>(`/orders/${id}/${action}`, "POST"),
-        onSuccess: async () => {
-            await Promise.all([
-                client.invalidateQueries({ queryKey: ["orders"] }),
-                client.invalidateQueries({ queryKey: ["account"] }),
-            ]);
+        onSuccess: () => {
+            void client.invalidateQueries({ queryKey: ["orders"] });
+            void client.invalidateQueries({ queryKey: ["account"] });
         },
     });
 }

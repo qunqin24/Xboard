@@ -184,7 +184,7 @@ export function Orders() {
                 searchPlaceholder="搜索套餐…"
                 exportName="我的订单"
                 error={orders.error}
-                onRetry={() => void orders.refetch()}
+                onRetry={() => orders.refetch()}
                 emptyText={
                     <EmptyState
                         title="暂无订单"

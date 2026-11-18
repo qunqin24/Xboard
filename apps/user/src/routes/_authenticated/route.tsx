@@ -1,6 +1,7 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { ApiError } from "@/api/client";
 import { accountQuery } from "@/api/hooks";
+import { ShellSkeleton } from "@/components/layout/shell-skeleton";
 import { AuthenticatedLayout } from "@/components/layout/authenticated-layout";
 
 // Every page behind the sidebar needs a live session; the cookie is HttpOnly,
@@ -24,5 +25,10 @@ export const Route = createFileRoute("/_authenticated")({
             throw error;
         }
     },
+    // The router applies the same rule as the rest of the app: nothing for
+    // 300 ms, then the shell, held for at least 500 ms.
+    pendingMs: 300,
+    pendingMinMs: 500,
+    pendingComponent: ShellSkeleton,
     component: AuthenticatedLayout,
 });
