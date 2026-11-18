@@ -1,4 +1,4 @@
-import { db } from "../../db";
+import { db, type Tx } from "../../db";
 import { hitRateLimit, refundRateLimit, tooMany } from "../../http/rate-limit";
 
 // Per-user limits on second-factor guesses, separate from the password
@@ -37,8 +37,8 @@ export async function releaseTwoFactorAttempt(userId: number) {
 }
 
 /** An admin reset or a fresh setup starts the user from zero failures. */
-export async function clearTwoFactorAttempts(userId: number) {
-    await db.rateLimit.deleteMany({
+export async function clearTwoFactorAttempts(userId: number, tx: Tx = db) {
+    await tx.rateLimit.deleteMany({
         where: { key: { in: [shortKey(userId), dailyKey(userId)] } },
     });
 }

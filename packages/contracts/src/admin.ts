@@ -119,6 +119,7 @@ export const auditSchema = z.object({
     target: z.string(),
     detail: z.unknown(),
     createdAt: z.string(),
+    opsTokenId: z.uuid().optional(),
 });
 export type Audit = z.infer<typeof auditSchema>;
 
@@ -203,6 +204,11 @@ export const auditListQuery = pageQuerySchema.extend({
         .optional()
         .transform((value) => (value ? value.split(",") : []))
         .pipe(z.array(z.string().regex(/^[a-z_.]{1,50}$/)).max(50)),
+    opsTokenId: z
+        .string()
+        .optional()
+        .transform((value) => (value ? value.split(",") : []))
+        .pipe(z.array(z.uuid()).max(50)),
 });
 const statsDays = z.coerce
     .number()

@@ -14,9 +14,8 @@ import {
     type NodeBody,
     type PlanBody,
 } from "@xboard/contracts";
-import { db } from "../../db";
+import { db, type Tx } from "../../db";
 import { badRequest, conflict, notFound } from "../../http/errors";
-import { currentUser } from "../../http/session";
 import { parse } from "../../http/validate";
 import { newToken, sessionDigest } from "../auth/service";
 import {
@@ -27,6 +26,7 @@ import {
     typedSettings,
 } from "../nodes/settings";
 import { audit, iso, isoOrNull } from "./shared";
+import { adminActorId, adminRead, adminWrite } from "./operations";
 
 export const catalogRoutes = Router();
 
@@ -53,76 +53,80 @@ function toAdminPlan(plan: PlanRow): AdminPlan {
     };
 }
 
-catalogRoutes.get("/plans", async (_req, res) => {
-    const plans = await db.plan.findMany({
-        where: { deletedAt: null },
-        include: { prices: { orderBy: { id: "asc" } } },
-        orderBy: [{ sort: "asc" }, { id: "asc" }],
-    });
-    res.json(plans.map(toAdminPlan));
-});
+catalogRoutes.get(
+    "/plans",
+    adminRead(async (_req) => {
+        const plans = await db.plan.findMany({
+            where: { deletedAt: null },
+            include: { prices: { orderBy: { id: "asc" } } },
+            orderBy: [{ sort: "asc" }, { id: "asc" }],
+        });
+        return plans.map(toAdminPlan);
+    }),
+);
 
-async function savePlan(actorId: number, input: PlanBody, id?: number) {
+async function savePlan(tx: Tx, actorId: number, input: PlanBody, id?: number) {
     if (new Set(input.prices.map((p) => p.period)).size !== input.prices.length)
         throw badRequest("付款周期重复。");
     if (input.published && !input.prices.length)
         throw badRequest("已发布的套餐至少需要一个价格。");
     const { transferBytes, prices, ...rest } = input;
-    return db.$transaction(async (tx) => {
-        const before = id
-            ? await tx.plan.findFirst({
-                  where: { id, deletedAt: null },
-                  include: { prices: true },
-              })
-            : null;
-        if (id && !before) throw notFound("套餐不存在。");
-        const data = {
-            ...rest,
-            speedLimit: input.speedLimit ?? null,
-            deviceLimit: input.deviceLimit ?? null,
-            transferEnable: BigInt(transferBytes),
-        };
-        const plan = id
-            ? await tx.plan.update({ where: { id }, data })
-            : await tx.plan.create({ data });
-        await tx.planPrice.deleteMany({ where: { planId: plan.id } });
-        await tx.planPrice.createMany({
-            data: prices.map((p) => ({ ...p, planId: plan.id })),
-        });
-        const after = await tx.plan.findUniqueOrThrow({
-            where: { id: plan.id },
-            include: { prices: { orderBy: { id: "asc" } } },
-        });
-        await audit(tx, actorId, "plan.save", plan.id, {
-            name: plan.name,
-            before: before ? toAdminPlan(before) : null,
-            after: toAdminPlan(after),
-        });
-        return toAdminPlan(after);
+    const before = id
+        ? await tx.plan.findFirst({
+              where: { id, deletedAt: null },
+              include: { prices: true },
+          })
+        : null;
+    if (id && !before) throw notFound("套餐不存在。");
+    const data = {
+        ...rest,
+        speedLimit: input.speedLimit ?? null,
+        deviceLimit: input.deviceLimit ?? null,
+        transferEnable: BigInt(transferBytes),
+    };
+    const plan = id
+        ? await tx.plan.update({ where: { id }, data })
+        : await tx.plan.create({ data });
+    await tx.planPrice.deleteMany({ where: { planId: plan.id } });
+    await tx.planPrice.createMany({
+        data: prices.map((p) => ({ ...p, planId: plan.id })),
     });
+    const after = await tx.plan.findUniqueOrThrow({
+        where: { id: plan.id },
+        include: { prices: { orderBy: { id: "asc" } } },
+    });
+    await audit(tx, actorId, "plan.save", plan.id, {
+        name: plan.name,
+        before: before ? toAdminPlan(before) : null,
+        after: toAdminPlan(after),
+    });
+    return toAdminPlan(after);
 }
 
-catalogRoutes.post("/plans", async (req, res) => {
-    res.status(201).json(
-        await savePlan(currentUser(req).id, parse(planBody, req.body)),
-    );
-});
+catalogRoutes.post(
+    "/plans",
+    adminWrite(201, async (req, tx) => {
+        return savePlan(tx, adminActorId(req), parse(planBody, req.body));
+    }),
+);
 
-catalogRoutes.put("/plans/:id", async (req, res) => {
-    const id = parse(idParam, req.params.id);
-    res.json(
-        await savePlan(currentUser(req).id, parse(planBody, req.body), id),
-    );
-});
+catalogRoutes.put(
+    "/plans/:id",
+    adminWrite(200, async (req, tx) => {
+        const id = parse(idParam, req.params.id);
+        return savePlan(tx, adminActorId(req), parse(planBody, req.body), id);
+    }),
+);
 
 /**
  * Soft delete: paid orders keep their plan. A plan that still has unexpired
  * subscribers must be unpublished and left to expire first.
  */
-catalogRoutes.delete("/plans/:id", async (req, res) => {
-    const id = parse(idParam, req.params.id);
-    const actor = currentUser(req);
-    await db.$transaction(async (tx) => {
+catalogRoutes.delete(
+    "/plans/:id",
+    adminWrite(200, async (req, tx) => {
+        const id = parse(idParam, req.params.id);
+        const actorId = adminActorId(req);
         await tx.$queryRaw`SELECT id FROM "Plan" WHERE id = ${id} FOR UPDATE`;
         const plan = await tx.plan.findFirst({
             where: { id, deletedAt: null },
@@ -144,10 +148,10 @@ catalogRoutes.delete("/plans/:id", async (req, res) => {
             data: { deletedAt: new Date(), published: false },
         });
         await tx.nodePlan.deleteMany({ where: { planId: id } });
-        await audit(tx, actor.id, "plan.delete", id, { name: plan.name });
-    });
-    res.json({ ok: true });
-});
+        await audit(tx, actorId, "plan.delete", id, { name: plan.name });
+        return { ok: true };
+    }),
+);
 
 // ---------- Nodes ----------
 
@@ -174,14 +178,17 @@ function toAdminNode(node: Node & { plans: { planId: number }[] }): AdminNode {
     };
 }
 
-catalogRoutes.get("/nodes", async (_req, res) => {
-    const nodes = await db.node.findMany({
-        where: { deletedAt: null },
-        include: { plans: { select: { planId: true } } },
-        orderBy: { id: "asc" },
-    });
-    res.json(nodes.map(toAdminNode));
-});
+catalogRoutes.get(
+    "/nodes",
+    adminRead(async (_req) => {
+        const nodes = await db.node.findMany({
+            where: { deletedAt: null },
+            include: { plans: { select: { planId: true } } },
+            orderBy: { id: "asc" },
+        });
+        return nodes.map(toAdminNode);
+    }),
+);
 
 /** An IP address or a DNS name ("node1", "hk.example.com"); not "1.2.3.999". */
 function isHost(host: string): boolean {
@@ -224,7 +231,7 @@ async function checkParent(
 }
 
 /** Returns the node token only when a backend node is created; it is stored as a digest. */
-async function saveNode(actorId: number, input: NodeBody, id?: number) {
+async function saveNode(tx: Tx, actorId: number, input: NodeBody, id?: number) {
     if (!isHost(input.host)) throw badRequest("节点地址不是有效的 IP 或域名。");
     const { planIds, serverPort, ...rest } = input;
     const data = {
@@ -238,82 +245,76 @@ async function saveNode(actorId: number, input: NodeBody, id?: number) {
         certConfig: rest.certConfig as Prisma.InputJsonValue,
     };
     const token = newToken();
-    const node = await db.$transaction(async (tx) => {
-        const live = await tx.plan.count({
-            where: { id: { in: planIds }, deletedAt: null },
-        });
-        if (live !== planIds.length)
-            throw badRequest("关联的套餐不存在或已删除。");
-        await checkParent(tx, input, id);
-        // Relays share their parent's protocol: changing a parent's protocol
-        // would silently break them.
-        if (id) {
-            const before = await tx.node.findFirst({
-                where: { id, deletedAt: null },
-            });
-            if (!before) throw notFound("节点不存在。");
-            if (
-                before.protocol !== input.protocol &&
-                (await tx.node.count({
-                    where: { parentId: id, deletedAt: null },
-                }))
-            )
-                throw badRequest("该节点下有中转节点，不能更换协议。");
-        }
-        const node = id
-            ? await tx.node.update({ where: { id, deletedAt: null }, data })
-            : await tx.node.create({
-                  data: { ...data, tokenHash: sessionDigest(token) },
-              });
-        await tx.nodePlan.deleteMany({ where: { nodeId: node.id } });
-        await tx.nodePlan.createMany({
-            data: planIds.map((planId) => ({ nodeId: node.id, planId })),
-        });
-        await audit(tx, actorId, "node.save", node.id, { name: node.name });
-        return node;
+    const live = await tx.plan.count({
+        where: { id: { in: planIds }, deletedAt: null },
     });
+    if (live !== planIds.length) throw badRequest("关联的套餐不存在或已删除。");
+    await checkParent(tx, input, id);
+    // Relays share their parent's protocol: changing a parent's protocol
+    // would silently break them.
+    if (id) {
+        const before = await tx.node.findFirst({
+            where: { id, deletedAt: null },
+        });
+        if (!before) throw notFound("节点不存在。");
+        if (
+            before.protocol !== input.protocol &&
+            (await tx.node.count({
+                where: { parentId: id, deletedAt: null },
+            }))
+        )
+            throw badRequest("该节点下有中转节点，不能更换协议。");
+    }
+    const node = id
+        ? await tx.node.update({ where: { id, deletedAt: null }, data })
+        : await tx.node.create({
+              data: { ...data, tokenHash: sessionDigest(token) },
+          });
+    await tx.nodePlan.deleteMany({ where: { nodeId: node.id } });
+    await tx.nodePlan.createMany({
+        data: planIds.map((planId) => ({ nodeId: node.id, planId })),
+    });
+    await audit(tx, actorId, "node.save", node.id, { name: node.name });
     return { id: node.id, ...(id || node.parentId !== null ? {} : { token }) };
 }
 
-catalogRoutes.post("/nodes", async (req, res) => {
-    res.status(201).json(
-        await saveNode(currentUser(req).id, parse(nodeBody, req.body)),
-    );
-});
+catalogRoutes.post(
+    "/nodes",
+    adminWrite(201, async (req, tx) => {
+        return saveNode(tx, adminActorId(req), parse(nodeBody, req.body));
+    }),
+);
 
-catalogRoutes.put("/nodes/:id", async (req, res) => {
-    const id = parse(idParam, req.params.id);
-    res.json(
-        await saveNode(currentUser(req).id, parse(nodeBody, req.body), id),
-    );
-});
+catalogRoutes.put(
+    "/nodes/:id",
+    adminWrite(200, async (req, tx) => {
+        const id = parse(idParam, req.params.id);
+        return saveNode(tx, adminActorId(req), parse(nodeBody, req.body), id);
+    }),
+);
 
-catalogRoutes.put("/nodes/:id/enabled", async (req, res) => {
-    const id = parse(idParam, req.params.id);
-    const { enabled } = parse(nodeEnabledBody, req.body);
-    const actor = currentUser(req);
-    await db.$transaction(async (tx) => {
+catalogRoutes.put(
+    "/nodes/:id/enabled",
+    adminWrite(200, async (req, tx) => {
+        const id = parse(idParam, req.params.id);
+        const { enabled } = parse(nodeEnabledBody, req.body);
+        const actorId = adminActorId(req);
         const node = await tx.node.update({
             where: { id, deletedAt: null },
             data: { enabled },
         });
-        await audit(
-            tx,
-            actor.id,
-            enabled ? "node.enable" : "node.disable",
-            id,
-            {
-                name: node.name,
-            },
-        );
-    });
-    res.json({ id });
-});
+        await audit(tx, actorId, enabled ? "node.enable" : "node.disable", id, {
+            name: node.name,
+        });
+        return { id };
+    }),
+);
 
-catalogRoutes.post("/nodes/bulk-enabled", async (req, res) => {
-    const { ids, enabled } = parse(nodeBulkEnabledBody, req.body);
-    const actor = currentUser(req);
-    const updated = await db.$transaction(async (tx) => {
+catalogRoutes.post(
+    "/nodes/bulk-enabled",
+    adminWrite(200, async (req, tx) => {
+        const { ids, enabled } = parse(nodeBulkEnabledBody, req.body);
+        const actorId = adminActorId(req);
         // Only nodes that exist and are not already in the target state.
         const nodes = await tx.node.findMany({
             where: { id: { in: ids }, deletedAt: null, enabled: !enabled },
@@ -327,38 +328,40 @@ catalogRoutes.post("/nodes/bulk-enabled", async (req, res) => {
             });
             await audit(
                 tx,
-                actor.id,
+                actorId,
                 enabled ? "node.bulk_enable" : "node.bulk_disable",
                 changed.join(","),
                 { ids: changed },
             );
         }
-        return changed.length;
-    });
-    res.json({ updated, skipped: ids.length - updated });
-});
+        const updated = changed.length;
+        return { updated, skipped: ids.length - updated };
+    }),
+);
 
-catalogRoutes.post("/nodes/:id/token", async (req, res) => {
-    const id = parse(idParam, req.params.id);
-    const actor = currentUser(req);
-    const token = newToken();
-    await db.$transaction(async (tx) => {
+catalogRoutes.post(
+    "/nodes/:id/token",
+    adminWrite(201, async (req, tx) => {
+        const id = parse(idParam, req.params.id);
+        const actorId = adminActorId(req);
+        const token = newToken();
         const node = await tx.node.update({
             where: { id, deletedAt: null },
             data: { tokenHash: sessionDigest(token) },
         });
         if (node.parentId !== null)
             throw badRequest("中转节点由父节点的后端提供服务，没有通信密钥。");
-        await audit(tx, actor.id, "node.rotate", id);
-    });
-    res.status(201).json({ token });
-});
+        await audit(tx, actorId, "node.rotate", id);
+        return { token };
+    }),
+);
 
 /** Soft delete keeps traffic history; a fresh unknown token locks out a still-running backend. */
-catalogRoutes.delete("/nodes/:id", async (req, res) => {
-    const id = parse(idParam, req.params.id);
-    const actor = currentUser(req);
-    await db.$transaction(async (tx) => {
+catalogRoutes.delete(
+    "/nodes/:id",
+    adminWrite(200, async (req, tx) => {
+        const id = parse(idParam, req.params.id);
+        const actorId = adminActorId(req);
         const relays = await tx.node.count({
             where: { parentId: id, deletedAt: null },
         });
@@ -375,10 +378,10 @@ catalogRoutes.delete("/nodes/:id", async (req, res) => {
             },
         });
         await tx.nodePlan.deleteMany({ where: { nodeId: id } });
-        await audit(tx, actor.id, "node.delete", id, { name: node.name });
-    });
-    res.json({ ok: true });
-});
+        await audit(tx, actorId, "node.delete", id, { name: node.name });
+        return { ok: true };
+    }),
+);
 
 // ---------- Notices ----------
 
@@ -392,43 +395,47 @@ function toAdminNotice(notice: {
     return { ...notice, createdAt: iso(notice.createdAt) };
 }
 
-catalogRoutes.get("/notices", async (_req, res) => {
-    const notices = await db.notice.findMany({
-        orderBy: { id: "desc" },
-        take: 100,
-    });
-    res.json(notices.map(toAdminNotice));
-});
+catalogRoutes.get(
+    "/notices",
+    adminRead(async (_req) => {
+        const notices = await db.notice.findMany({
+            orderBy: { id: "desc" },
+            take: 100,
+        });
+        return notices.map(toAdminNotice);
+    }),
+);
 
-catalogRoutes.post("/notices", async (req, res) => {
-    const data = parse(noticeBody, req.body);
-    const actor = currentUser(req);
-    const notice = await db.$transaction(async (tx) => {
+catalogRoutes.post(
+    "/notices",
+    adminWrite(201, async (req, tx) => {
+        const data = parse(noticeBody, req.body);
+        const actorId = adminActorId(req);
         const notice = await tx.notice.create({ data });
-        await audit(tx, actor.id, "notice.create", notice.id);
-        return notice;
-    });
-    res.status(201).json(toAdminNotice(notice));
-});
+        await audit(tx, actorId, "notice.create", notice.id);
+        return toAdminNotice(notice);
+    }),
+);
 
-catalogRoutes.put("/notices/:id", async (req, res) => {
-    const id = parse(idParam, req.params.id);
-    const data = parse(noticeBody, req.body);
-    const actor = currentUser(req);
-    const notice = await db.$transaction(async (tx) => {
+catalogRoutes.put(
+    "/notices/:id",
+    adminWrite(200, async (req, tx) => {
+        const id = parse(idParam, req.params.id);
+        const data = parse(noticeBody, req.body);
+        const actorId = adminActorId(req);
         const notice = await tx.notice.update({ where: { id }, data });
-        await audit(tx, actor.id, "notice.update", id);
-        return notice;
-    });
-    res.json(toAdminNotice(notice));
-});
+        await audit(tx, actorId, "notice.update", id);
+        return toAdminNotice(notice);
+    }),
+);
 
-catalogRoutes.delete("/notices/:id", async (req, res) => {
-    const id = parse(idParam, req.params.id);
-    const actor = currentUser(req);
-    await db.$transaction(async (tx) => {
+catalogRoutes.delete(
+    "/notices/:id",
+    adminWrite(200, async (req, tx) => {
+        const id = parse(idParam, req.params.id);
+        const actorId = adminActorId(req);
         await tx.notice.delete({ where: { id } });
-        await audit(tx, actor.id, "notice.delete", id);
-    });
-    res.json({ ok: true });
-});
+        await audit(tx, actorId, "notice.delete", id);
+        return { ok: true };
+    }),
+);

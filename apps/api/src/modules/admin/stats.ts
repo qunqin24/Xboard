@@ -8,28 +8,34 @@ import {
 } from "@xboard/contracts";
 import { db } from "../../db";
 import { parse } from "../../http/validate";
+import { adminRead } from "./operations";
 
 export const statsRoutes = Router();
 
-statsRoutes.get("/overview", async (_req, res) => {
-    const [users, orders, nodes, openTickets, payments] = await Promise.all([
-        db.user.count(),
-        db.order.count(),
-        db.node.count({ where: { deletedAt: null } }),
-        db.ticket.count({ where: { closed: false } }),
-        db.$queryRaw<{ revenue: bigint }[]>`
+statsRoutes.get(
+    "/overview",
+    adminRead(async (_req) => {
+        const [users, orders, nodes, openTickets, payments] = await Promise.all(
+            [
+                db.user.count(),
+                db.order.count(),
+                db.node.count({ where: { deletedAt: null } }),
+                db.ticket.count({ where: { closed: false } }),
+                db.$queryRaw<{ revenue: bigint }[]>`
             SELECT COALESCE(SUM("amountMinor"::bigint - "creditMinor" - "discountMinor"), 0)::bigint AS revenue
             FROM "Order" WHERE status = 'paid'`,
-    ]);
-    const overview: Overview = {
-        users,
-        orders,
-        nodes,
-        openTickets,
-        revenueMinor: Number(payments[0]?.revenue ?? 0),
-    };
-    res.json(overview);
-});
+            ],
+        );
+        const overview: Overview = {
+            users,
+            orders,
+            nodes,
+            openTickets,
+            revenueMinor: Number(payments[0]?.revenue ?? 0),
+        };
+        return overview;
+    }),
+);
 
 /** A UTC timestamp column as an Asia/Shanghai calendar date. */
 const local = (column: string) =>
@@ -43,18 +49,20 @@ const firstOf = (count: number) =>
  * Daily totals for the last `days` days (Asia/Shanghai), oldest first, every
  * day present. Top plans cover the last `topDays` days (default: `days`).
  */
-statsRoutes.get("/stats", async (req, res) => {
-    const { days, topDays = days } = parse(statsQuery, req.query);
-    const first = firstOf(days);
-    const rows = await db.$queryRaw<
-        {
-            date: string;
-            revenue: bigint;
-            orders: bigint;
-            users: bigint;
-            traffic: string;
-        }[]
-    >`
+statsRoutes.get(
+    "/stats",
+    adminRead(async (req) => {
+        const { days, topDays = days } = parse(statsQuery, req.query);
+        const first = firstOf(days);
+        const rows = await db.$queryRaw<
+            {
+                date: string;
+                revenue: bigint;
+                orders: bigint;
+                users: bigint;
+                traffic: string;
+            }[]
+        >`
         WITH day AS (
             SELECT generate_series(${first}, (now() AT TIME ZONE 'Asia/Shanghai')::date, interval '1 day')::date AS d
         ),
@@ -83,47 +91,51 @@ statsRoutes.get("/stats", async (req, res) => {
         LEFT JOIN joined ON joined.d = day.d
         LEFT JOIN used ON used.d = day.d
         ORDER BY day.d`;
-    const top = await db.$queryRaw<
-        { planName: string; orders: bigint; revenue: bigint }[]
-    >`
+        const top = await db.$queryRaw<
+            { planName: string; orders: bigint; revenue: bigint }[]
+        >`
         SELECT "planName", COUNT(*) AS orders, SUM("amountMinor"::bigint - "creditMinor" - "discountMinor")::bigint AS revenue
         FROM "Order"
         WHERE status = 'paid' AND kind = 'subscription' AND "amountMinor" > 0 AND "paidAt" IS NOT NULL AND ${local("paidAt")} >= ${firstOf(topDays)}
         GROUP BY "planName"
         ORDER BY revenue DESC, orders DESC
         LIMIT 5`;
-    const stats: Stats = {
-        days: rows.map((row) => ({
-            date: row.date,
-            revenueMinor: Number(row.revenue),
-            paidOrders: Number(row.orders),
-            newUsers: Number(row.users),
-            trafficBytes: row.traffic,
-        })),
-        topPlans: top.map((row) => ({
-            planName: row.planName,
-            orders: Number(row.orders),
-            revenueMinor: Number(row.revenue),
-        })),
-    };
-    res.json(stats);
-});
+        const stats: Stats = {
+            days: rows.map((row) => ({
+                date: row.date,
+                revenueMinor: Number(row.revenue),
+                paidOrders: Number(row.orders),
+                newUsers: Number(row.users),
+                trafficBytes: row.traffic,
+            })),
+            topPlans: top.map((row) => ({
+                planName: row.planName,
+                orders: Number(row.orders),
+                revenueMinor: Number(row.revenue),
+            })),
+        };
+        return stats;
+    }),
+);
 
 const rankingsQuery = statsQuery.pick({ days: true });
-statsRoutes.get("/rankings", async (req, res) => {
-    const { days } = parse(rankingsQuery, req.query);
-    const cutoff = Prisma.sql`(${firstOf(days)}::timestamp AT TIME ZONE 'Asia/Shanghai' AT TIME ZONE 'UTC')`;
-    const [users, nodes] = await db.$transaction([
-        db.$queryRaw<Rankings["users"]>`
+statsRoutes.get(
+    "/rankings",
+    adminRead(async (req) => {
+        const { days } = parse(rankingsQuery, req.query);
+        const cutoff = Prisma.sql`(${firstOf(days)}::timestamp AT TIME ZONE 'Asia/Shanghai' AT TIME ZONE 'UTC')`;
+        const [users, nodes] = await db.$transaction([
+            db.$queryRaw<Rankings["users"]>`
             SELECT u.id, u.email AS name, SUM(t.upload::numeric + t.download)::text AS "trafficBytes"
             FROM "TrafficRecord" t JOIN "User" u ON t."userId" = u.id
             WHERE t."createdAt" >= ${cutoff}
             GROUP BY u.id ORDER BY SUM(t.upload::numeric + t.download) DESC, u.id LIMIT 10`,
-        db.$queryRaw<Rankings["nodes"]>`
+            db.$queryRaw<Rankings["nodes"]>`
             SELECT n.id, n.name, SUM(t.upload::numeric + t.download)::text AS "trafficBytes"
             FROM "TrafficRecord" t JOIN "Node" n ON t."nodeId" = n.id
             WHERE t."createdAt" >= ${cutoff}
             GROUP BY n.id ORDER BY SUM(t.upload::numeric + t.download) DESC, n.id LIMIT 10`,
-    ]);
-    res.json({ users, nodes } satisfies Rankings);
-});
+        ]);
+        return { users, nodes } satisfies Rankings;
+    }),
+);

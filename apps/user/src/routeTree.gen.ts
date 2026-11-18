@@ -36,6 +36,7 @@ import { Route as AuthenticatedAdminLedgerRouteImport } from './routes/_authenti
 import { Route as AuthenticatedAdminMailRouteImport } from './routes/_authenticated/admin/mail'
 import { Route as AuthenticatedAdminNodesRouteImport } from './routes/_authenticated/admin/nodes'
 import { Route as AuthenticatedAdminNoticesRouteImport } from './routes/_authenticated/admin/notices'
+import { Route as AuthenticatedAdminOpsTokensRouteImport } from './routes/_authenticated/admin/ops-tokens'
 import { Route as AuthenticatedAdminOrdersRouteImport } from './routes/_authenticated/admin/orders'
 import { Route as AuthenticatedAdminPlansRouteImport } from './routes/_authenticated/admin/plans'
 import { Route as AuthenticatedAdminPromotionsRouteImport } from './routes/_authenticated/admin/promotions'
@@ -186,6 +187,12 @@ const AuthenticatedAdminNoticesRoute =
     path: '/notices',
     getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
+const AuthenticatedAdminOpsTokensRoute =
+  AuthenticatedAdminOpsTokensRouteImport.update({
+    id: '/ops-tokens',
+    path: '/ops-tokens',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
 const AuthenticatedAdminOrdersRoute =
   AuthenticatedAdminOrdersRouteImport.update({
     id: '/orders',
@@ -277,6 +284,7 @@ export interface FileRoutesByFullPath {
   '/admin/mail': typeof AuthenticatedAdminMailRoute
   '/admin/nodes': typeof AuthenticatedAdminNodesRoute
   '/admin/notices': typeof AuthenticatedAdminNoticesRoute
+  '/admin/ops-tokens': typeof AuthenticatedAdminOpsTokensRoute
   '/admin/orders': typeof AuthenticatedAdminOrdersRoute
   '/admin/plans': typeof AuthenticatedAdminPlansRoute
   '/admin/promotions': typeof AuthenticatedAdminPromotionsRoute
@@ -314,6 +322,7 @@ export interface FileRoutesByTo {
   '/admin/mail': typeof AuthenticatedAdminMailRoute
   '/admin/nodes': typeof AuthenticatedAdminNodesRoute
   '/admin/notices': typeof AuthenticatedAdminNoticesRoute
+  '/admin/ops-tokens': typeof AuthenticatedAdminOpsTokensRoute
   '/admin/orders': typeof AuthenticatedAdminOrdersRoute
   '/admin/plans': typeof AuthenticatedAdminPlansRoute
   '/admin/promotions': typeof AuthenticatedAdminPromotionsRoute
@@ -355,6 +364,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/mail': typeof AuthenticatedAdminMailRoute
   '/_authenticated/admin/nodes': typeof AuthenticatedAdminNodesRoute
   '/_authenticated/admin/notices': typeof AuthenticatedAdminNoticesRoute
+  '/_authenticated/admin/ops-tokens': typeof AuthenticatedAdminOpsTokensRoute
   '/_authenticated/admin/orders': typeof AuthenticatedAdminOrdersRoute
   '/_authenticated/admin/plans': typeof AuthenticatedAdminPlansRoute
   '/_authenticated/admin/promotions': typeof AuthenticatedAdminPromotionsRoute
@@ -396,6 +406,7 @@ export interface FileRouteTypes {
     | '/admin/mail'
     | '/admin/nodes'
     | '/admin/notices'
+    | '/admin/ops-tokens'
     | '/admin/orders'
     | '/admin/plans'
     | '/admin/promotions'
@@ -433,6 +444,7 @@ export interface FileRouteTypes {
     | '/admin/mail'
     | '/admin/nodes'
     | '/admin/notices'
+    | '/admin/ops-tokens'
     | '/admin/orders'
     | '/admin/plans'
     | '/admin/promotions'
@@ -473,6 +485,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/mail'
     | '/_authenticated/admin/nodes'
     | '/_authenticated/admin/notices'
+    | '/_authenticated/admin/ops-tokens'
     | '/_authenticated/admin/orders'
     | '/_authenticated/admin/plans'
     | '/_authenticated/admin/promotions'
@@ -692,6 +705,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminNoticesRouteImport
       parentRoute: typeof AuthenticatedAdminRouteRoute
     }
+    '/_authenticated/admin/ops-tokens': {
+      id: '/_authenticated/admin/ops-tokens'
+      path: '/ops-tokens'
+      fullPath: '/admin/ops-tokens'
+      preLoaderRoute: typeof AuthenticatedAdminOpsTokensRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
     '/_authenticated/admin/orders': {
       id: '/_authenticated/admin/orders'
       path: '/orders'
@@ -779,6 +799,7 @@ interface AuthenticatedAdminRouteRouteChildren {
   AuthenticatedAdminMailRoute: typeof AuthenticatedAdminMailRoute
   AuthenticatedAdminNodesRoute: typeof AuthenticatedAdminNodesRoute
   AuthenticatedAdminNoticesRoute: typeof AuthenticatedAdminNoticesRoute
+  AuthenticatedAdminOpsTokensRoute: typeof AuthenticatedAdminOpsTokensRoute
   AuthenticatedAdminOrdersRoute: typeof AuthenticatedAdminOrdersRoute
   AuthenticatedAdminPlansRoute: typeof AuthenticatedAdminPlansRoute
   AuthenticatedAdminPromotionsRoute: typeof AuthenticatedAdminPromotionsRoute
@@ -797,6 +818,7 @@ const AuthenticatedAdminRouteRouteChildren: AuthenticatedAdminRouteRouteChildren
     AuthenticatedAdminMailRoute: AuthenticatedAdminMailRoute,
     AuthenticatedAdminNodesRoute: AuthenticatedAdminNodesRoute,
     AuthenticatedAdminNoticesRoute: AuthenticatedAdminNoticesRoute,
+    AuthenticatedAdminOpsTokensRoute: AuthenticatedAdminOpsTokensRoute,
     AuthenticatedAdminOrdersRoute: AuthenticatedAdminOrdersRoute,
     AuthenticatedAdminPlansRoute: AuthenticatedAdminPlansRoute,
     AuthenticatedAdminPromotionsRoute: AuthenticatedAdminPromotionsRoute,

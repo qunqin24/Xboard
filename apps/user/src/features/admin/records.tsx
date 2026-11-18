@@ -9,6 +9,7 @@ import {
     type LucideIcon,
 } from "lucide-react";
 import { queryString } from "@/api/client";
+import type { OpsTokenInfo } from "@xboard/contracts";
 import { usePanel } from "@/api/panel";
 import {
     DataTable,
@@ -375,12 +376,17 @@ export const AUDIT_LABELS: Record<string, string> = {
     "notice.update": "编辑公告",
     "notice.delete": "删除公告",
     "settings.update": "系统设置",
+    "ops.request": "运维接口调用",
+    "ops.token_create": "签发运维令牌",
+    "ops.token_revoke": "吊销运维令牌",
 };
 
 export function AdminAudit() {
     const table = useServerTable();
+    const tokens = usePanel<OpsTokenInfo[]>("/admin/ops-tokens");
+    const tokenNames = new Map(tokens.data?.map(({ id, name }) => [id, name]));
     const list = usePanel<Paged<AuditRow>>(
-        `/admin/audit${queryString({ ...table.query, action: table.filter("action") })}`,
+        `/admin/audit${queryString({ ...table.query, action: table.filter("action"), opsTokenId: table.filter("opsTokenId") })}`,
         { keepPrevious: true },
     );
     const columns: ColumnDef<AuditRow>[] = [
@@ -414,12 +420,31 @@ export function AdminAudit() {
             ),
             cell: ({ row }) => (
                 <span className="numeric text-muted-foreground">
-                    {row.original.actorId === null
+                    {row.original.actorId === 0
                         ? "系统"
                         : `#${row.original.actorId}`}
                 </span>
             ),
             meta: { title: "操作人" },
+        },
+        {
+            accessorKey: "opsTokenId",
+            header: "运维令牌",
+            cell: ({ row }) => {
+                const id = row.original.opsTokenId;
+                return id ? (
+                    <LongText className="max-w-48">
+                        {tokenNames.get(id) ?? id}
+                    </LongText>
+                ) : (
+                    "—"
+                );
+            },
+            filterFn: inFilter,
+            meta: {
+                title: "运维令牌",
+                exportValue: (record) => record.opsTokenId ?? "",
+            },
         },
         {
             accessorKey: "target",
@@ -448,9 +473,7 @@ export function AdminAudit() {
     return (
         <Page
             title="审计日志"
-            description={
-                list.data ? `共 ${list.data.total} 条管理操作` : undefined
-            }
+            description={list.data ? `共 ${list.data.total} 条记录` : undefined}
         >
             <DataTable
                 data={list.data?.items}
@@ -475,6 +498,18 @@ export function AdminAudit() {
                             ([value, label]) => ({ value, label }),
                         ),
                     },
+                    ...(tokens.data?.length
+                        ? [
+                              {
+                                  columnId: "opsTokenId",
+                                  title: "运维令牌",
+                                  options: tokens.data.map(({ id, name }) => ({
+                                      value: id,
+                                      label: `${name} · ${id.slice(0, 8)}`,
+                                  })),
+                              },
+                          ]
+                        : []),
                 ]}
             />
         </Page>

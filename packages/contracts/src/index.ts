@@ -16,5 +16,6 @@ export * from "./templates";
 export * from "./operations";
 export * from "./promotions";
 export * from "./security";
+export * from "./ops";
 export * from "./endpoints";
-export { buildOpenApi } from "./openapi";
+export { buildOpenApi, buildOpsOpenApi } from "./openapi";
