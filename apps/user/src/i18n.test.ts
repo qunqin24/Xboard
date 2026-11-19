@@ -25,6 +25,15 @@ describe("interface language", () => {
         expect(result).toContain('aria-label={__xboardText("订单")}');
         expect(result).toContain('__xboardText("订单 {0}", [name])');
         expect(result).toContain("{description}");
+        // Whole phrases translate as one unit, so word order can change.
+        const pager = localizeSource(
+            "function P({a, b}: Props) {return <div>{`第 ${a} / ${b} 页`}</div>;}",
+            "pager.tsx",
+        );
+        expect(pager).toContain('__xboardText("第 {0} / {1} 页", [a, b])');
+        expect(translate("en-US", "第 {0} / {1} 页", [1, 3])).toBe(
+            "Page 1 of 3",
+        );
     });
 
     it("keeps every placeholder and contains no machine-translation debris", () => {
