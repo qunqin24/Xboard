@@ -17,5 +17,13 @@ export * from "./operations";
 export * from "./promotions";
 export * from "./security";
 export * from "./ops";
+export * from "./system";
 export * from "./endpoints";
 export { buildOpenApi, buildOpsOpenApi } from "./openapi";
+export * from "./payments";
+
+export * from "./commission";
+
+export * from "./telegram";
+
+export * from "./locale";

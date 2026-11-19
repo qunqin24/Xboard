@@ -1,13 +1,14 @@
 import {
-    createCipheriv,
-    createDecipheriv,
     createHash,
     createHmac,
     randomBytes,
     timingSafeEqual,
 } from "node:crypto";
 import type { User } from "@prisma/client";
-import { HttpError } from "../../http/errors";
+import {
+    openApplicationSecret,
+    sealApplicationSecret,
+} from "../system/secrets";
 
 const BASE32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
@@ -74,36 +75,12 @@ export function verifyTotp(
     return null;
 }
 
-function encryptionKey() {
-    const key = process.env.TOTP_ENCRYPTION_KEY ?? "";
-    if (
-        !/^[A-Za-z0-9_-]{43}$/.test(key) ||
-        Buffer.from(key, "base64url").length !== 32
-    )
-        throw new HttpError(503, "两步验证密钥尚未配置，请联系管理员。");
-    return Buffer.from(key, "base64url");
-}
-
 export function sealSecret(userId: number, secret: Buffer) {
-    const nonce = randomBytes(12);
-    const cipher = createCipheriv("aes-256-gcm", encryptionKey(), nonce);
-    cipher.setAAD(Buffer.from(`totp:${userId}`));
-    const ciphertext = Buffer.concat([cipher.update(secret), cipher.final()]);
-    return Buffer.concat([nonce, cipher.getAuthTag(), ciphertext]).toString(
-        "base64url",
-    );
+    return sealApplicationSecret(`totp:${userId}`, secret);
 }
 
 export function openSecret(userId: number, encrypted: string) {
-    const data = Buffer.from(encrypted, "base64url");
-    const cipher = createDecipheriv(
-        "aes-256-gcm",
-        encryptionKey(),
-        data.subarray(0, 12),
-    );
-    cipher.setAAD(Buffer.from(`totp:${userId}`));
-    cipher.setAuthTag(data.subarray(12, 28));
-    return Buffer.concat([cipher.update(data.subarray(28)), cipher.final()]);
+    return openApplicationSecret(`totp:${userId}`, encrypted);
 }
 
 const digest = (code: string) =>

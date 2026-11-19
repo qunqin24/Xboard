@@ -36,6 +36,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { PlanRow, SiteSettings } from "./types";
+import { LanguageSettings } from "./language-settings";
+import { TelegramSettings } from "./telegram-settings";
+import { CommissionSettings } from "./commission-settings";
+import { PaymentSettings } from "./payment-settings";
+import { OperationalSettings } from "./operational-settings";
 
 const shape = settingsBody.shape;
 
@@ -188,7 +193,7 @@ function SettingsForm({
                             const body = toBody(values);
                             save.mutate(
                                 {
-                                    path: "/admin/settings",
+                                    path: "/admin/settings/site",
                                     method: "PUT",
                                     body,
                                 },
@@ -217,7 +222,7 @@ function SettingsForm({
                         onValueChange={(value) => setTab(value as Tab)}
                         className="gap-page"
                     >
-                        <TabsList>
+                        <TabsList className="h-auto max-w-full flex-wrap justify-start">
                             {TABS.map((name) => (
                                 <TabsTrigger
                                     key={name}
@@ -583,12 +588,17 @@ function SettingsForm({
                     </Tabs>
                 </form>
             </Form>
+            <OperationalSettings />
+            <PaymentSettings />
+            <CommissionSettings />
+            <TelegramSettings />
+            <LanguageSettings />
         </Page>
     );
 }
 
 export function AdminSettings() {
-    const settings = usePanel<SiteSettings>("/admin/settings");
+    const settings = usePanel<SiteSettings>("/admin/settings/site");
     const plans = usePanel<PlanRow[]>("/admin/plans");
     const error = settings.error ?? plans.error;
     if (settings.data && plans.data)

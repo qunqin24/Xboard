@@ -32,6 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PasswordInput } from "@/components/password-input";
 import { AuthLayout } from "../auth-layout";
+import { useCaptcha } from "../captcha";
 
 const route = getRouteApi("/(auth)/sign-up");
 
@@ -131,6 +132,8 @@ function SignUpForm({ site, invite }: { site: Site; invite?: string }) {
     const navigate = useNavigate();
     const register = useRegister();
     const sendCode = useRegisterCode();
+    const captcha = useCaptcha("register");
+    const codeCaptcha = useCaptcha("register_code", site.emailCodeRequired);
     const termsShown = site.termsUrl !== "" || site.privacyUrl !== "";
     const schema = useMemo(() => buildSchema(site), [site]);
     const form = useForm<Values>({
@@ -147,10 +150,13 @@ function SignUpForm({ site, invite }: { site: Site; invite?: string }) {
 
     const requestCode = async (): Promise<number | null> => {
         if (!(await form.trigger("email"))) return null;
+        const challenge = codeCaptcha.take();
+        if (!challenge) return null;
         try {
-            const result = await sendCode.mutateAsync(
-                form.getValues("email").trim(),
-            );
+            const result = await sendCode.mutateAsync({
+                email: form.getValues("email").trim(),
+                ...challenge,
+            });
             toast.success("验证码已发送，10 分钟内有效");
             return result.retryAfterSeconds;
         } catch {
@@ -159,7 +165,10 @@ function SignUpForm({ site, invite }: { site: Site; invite?: string }) {
     };
 
     const onSubmit = async (values: Values) => {
+        const challenge = captcha.take();
+        if (!challenge) return;
         await register.mutateAsync({
+            ...challenge,
             email: values.email,
             password: values.password,
             ...(site.emailCodeRequired && { emailCode: values.emailCode }),
@@ -195,6 +204,7 @@ function SignUpForm({ site, invite }: { site: Site; invite?: string }) {
                         </FormItem>
                     )}
                 />
+                {codeCaptcha.content}
                 {site.emailCodeRequired ? (
                     <FormField
                         control={form.control}
@@ -301,6 +311,7 @@ function SignUpForm({ site, invite }: { site: Site; invite?: string }) {
                         )}
                     />
                 ) : null}
+                {captcha.content}
                 <LoadingButton
                     icon={<UserPlus />}
                     className="w-full"

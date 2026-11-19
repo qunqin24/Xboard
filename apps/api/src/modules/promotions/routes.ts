@@ -189,9 +189,9 @@ async function redeem(
             });
         } else {
             const plan = await orderPlan(tx, found.planId!);
-            const purchase = purchaseType(user, plan.id, now);
+            const purchase = purchaseType(user, plan.id, now, reward.period);
             if (purchase === "switch")
-                throw conflict("请在当前套餐到期后兑换其他套餐。");
+                throw conflict("请在当前套餐到期后兑换该套餐。");
             const term = planSnapshot(plan, reward.period);
             const applied = await applyTerm(
                 tx,

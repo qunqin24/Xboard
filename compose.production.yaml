@@ -25,17 +25,9 @@ services:
     environment: &api-environment
       NODE_ENV: production
       API_HOST: 0.0.0.0
-      APP_ORIGIN: ${APP_ORIGIN:?Set APP_ORIGIN}
+      APP_ORIGIN: https://${APP_DOMAIN:?Set APP_DOMAIN}
       DATABASE_URL: postgresql://xboard:${POSTGRES_PASSWORD}@postgres:5432/xboard
       TRUSTED_PROXY: 172.30.56.2
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_SECURE: ${SMTP_SECURE:-false}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      MAIL_FROM: ${MAIL_FROM:-Xboard <noreply@example.com>}
-      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
-      TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -48,6 +40,8 @@ services:
       target: api
     restart: unless-stopped
     environment: *api-environment
+    volumes:
+      - application-data:/data
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -85,7 +79,9 @@ networks:
     ipam:
       config:
         - subnet: 172.30.56.0/24
+          ip_range: 172.30.56.128/25
 volumes:
+  application-data:
   database:
   caddy-data:
   caddy-config:

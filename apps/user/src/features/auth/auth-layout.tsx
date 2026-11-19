@@ -1,3 +1,4 @@
+import { LocaleControl } from "@/components/locale-control";
 import { useSite } from "@/api/panel";
 import { Logo } from "@/assets/logo";
 
@@ -15,6 +16,9 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
                     </h1>
                 </div>
                 {children}
+                <div className="mx-auto">
+                    <LocaleControl />
+                </div>
             </div>
         </div>
     );

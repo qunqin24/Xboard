@@ -18,6 +18,7 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import {
+    periodSchema,
     trafficResetModeSchema,
     type TrafficResetMode,
 } from "@xboard/contracts";
@@ -58,11 +59,13 @@ import { PUBLISH_TONE } from "./status";
 import type { PlanRow } from "./types";
 import { bytesToGiB, giBToBytes, minorToYuan, yuanToMinor } from "./units";
 
-const PERIODS = ["monthly", "quarterly", "yearly"] as const;
+const PERIODS = periodSchema.options;
 const RESET_MODES: Record<TrafficResetMode, string> = {
     none: "不重置",
     activation_day: "每月开通日",
     month_start: "每月 1 日",
+    year_start: "每年 1 月 1 日",
+    activation_anniversary: "每年开通日",
 };
 const money = z
     .string()
@@ -99,7 +102,11 @@ const schema = z
         deviceLimit: optionalInt(1000),
         monthly: money,
         quarterly: money,
+        half_yearly: money,
         yearly: money,
+        two_yearly: money,
+        three_yearly: money,
+        onetime: money,
         sort: z.string().regex(/^\d+$/, "请输入整数"),
         published: z.boolean(),
     })
@@ -155,7 +162,11 @@ function PlanSheet({
             deviceLimit: plan?.deviceLimit ? String(plan.deviceLimit) : "",
             monthly: price("monthly"),
             quarterly: price("quarterly"),
+            half_yearly: price("half_yearly"),
             yearly: price("yearly"),
+            two_yearly: price("two_yearly"),
+            three_yearly: price("three_yearly"),
+            onetime: price("onetime"),
             sort: String(plan?.sort ?? 0),
             published: plan?.published ?? false,
         },

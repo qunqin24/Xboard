@@ -1,3 +1,5 @@
+import { db } from "../../db";
+import { localeQuery } from "@xboard/contracts";
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { Router } from "express";
@@ -6,19 +8,24 @@ import {
     mailTemplateBody,
     mailTemplateKey,
 } from "@xboard/contracts";
-import { getSmtpConfig } from "../../config";
 import { badRequest, conflict } from "../../http/errors";
 import { parse } from "../../http/validate";
 import { audit } from "../admin/shared";
-import { readTemplates, validateTemplate } from "./templates";
+import {
+    readTemplates,
+    storedTemplateKey,
+    validateTemplate,
+} from "./templates";
 import { adminActorId, adminRead, adminWrite } from "../admin/operations";
+import { getSmtpConfig } from "../system/settings";
 
 export const adminMailRoutes = Router();
 
 adminMailRoutes.get(
     "/mail/templates",
-    adminRead(async (_req) => {
-        return await readTemplates(mailTemplateKey.options);
+    adminRead(async (req) => {
+        const { locale } = parse(localeQuery, req.query);
+        return await readTemplates(mailTemplateKey.options, db, locale);
     }),
 );
 
@@ -26,14 +33,16 @@ adminMailRoutes.put(
     "/mail/templates/:key",
     adminWrite(200, async (req, tx) => {
         const key = parse(mailTemplateKey, req.params.key);
+        const { locale = "zh-CN" } = parse(localeQuery, req.query);
+        const storageKey = storedTemplateKey(key, locale);
         const data = parse(mailTemplateBody, req.body);
         validateTemplate(key, data);
         await tx.mailTemplate.upsert({
-            where: { key },
-            create: { key, ...data },
+            where: { key: storageKey },
+            create: { key: storageKey, ...data },
             update: data,
         });
-        await audit(tx, adminActorId(req), "mail.template_save", key);
+        await audit(tx, adminActorId(req), "mail.template_save", storageKey);
         return { ok: true };
     }),
 );
@@ -67,7 +76,8 @@ adminMailRoutes.post(
                     throw conflict("请求编号已用于另一批邮件。");
                 return { recipients: prior.recipients };
             }
-            if (!getSmtpConfig()) throw badRequest("请先配置邮件服务。");
+            if (!(await getSmtpConfig(tx)))
+                throw badRequest("请先配置邮件服务。");
             const recipients = await tx.$executeRaw`
             INSERT INTO "Mail" ("to", subject, text)
             SELECT email, ${subject}, ${text} FROM "User"

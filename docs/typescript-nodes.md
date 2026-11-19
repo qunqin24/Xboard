@@ -163,9 +163,8 @@ UniProxy 上报增量字节：`{"1":[上传字节,下载字节]}`。
 
 ## 订阅
 
-用户在 `/subscription` 生成链接，选择 Mihomo 或 Sing-box 格式导入。
+用户在 `/subscription` 生成链接并按客户端导入。Surge 和 Surfboard 可以直接导入生成的配置，手动导入时可在链接加上 `?format=surge` 或 `?format=surfboard`。Stash 继续使用 Mihomo 输出，并按 Stash 的 WebSocket 早期数据参数生成配置。
 链接重置立即使旧链接无法再下载；已经导入的节点凭据不会因此轮换。
 订阅仅返回当前有效套餐中已启用且显示的节点；中转节点仅在父节点启用时出现。不包括管理密钥。
 
-当前输出 JSON，Mihomo 可将其作为 YAML 解析。尚未使用真实客户端二进制做配置验收，
-也没有进行节点连接测速。不能把接口响应成功当作代理连接成功。
+Surge 和 Surfboard 配置包含代理选择组和默认路由规则，支持常用 AEAD Shadowsocks、VMess、VLESS（含 TCP Reality）、Trojan、HTTP(S) 和 SOCKS5。ECH、Shadowsocks 插件和 WebSocket 早期数据可选用支持这些参数的其他客户端。配置样例和导入链接依据客户端官方文档，真机导入与连接待验收。[Surge](https://manual.nssurge.com/tools/url-scheme.html) · [Surfboard](https://getsurfboard.com/docs/deeplink)

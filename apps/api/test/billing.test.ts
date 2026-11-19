@@ -17,7 +17,7 @@ import {
 import { recordTraffic } from "../src/modules/nodes/service";
 import { DAY_MS } from "../src/modules/orders/credit";
 import { SETTING_DEFAULTS } from "../src/modules/site/service";
-import { startTestApp } from "./helpers";
+import { setTestSmtp, startTestApp } from "./helpers";
 
 const PASSWORD = "test-billing-password";
 const offset = (days: number, start = Date.now()) =>
@@ -34,6 +34,22 @@ it("uses Beijing midnight and restores the original day after a short month", ()
     assert.equal(
         trafficSchedule("month_start", start).nextTrafficResetAt?.toISOString(),
         "2028-01-31T16:00:00.000Z",
+    );
+});
+
+it("anchors annual schedules to Beijing New Year's Day or the purchase date", () => {
+    const start = new Date("2028-02-29T04:00:00Z");
+    const newYear = trafficSchedule("year_start", start);
+    assert.equal(
+        newYear.nextTrafficResetAt?.toISOString(),
+        "2028-12-31T16:00:00.000Z",
+    );
+    const anniversary = trafficSchedule("activation_anniversary", start);
+    assert.equal(anniversary.trafficResetMonth, 2);
+    assert.equal(anniversary.trafficResetDay, 29);
+    assert.equal(
+        anniversary.nextTrafficResetAt?.toISOString(),
+        "2029-02-27T16:00:00.000Z",
     );
 });
 
@@ -94,6 +110,102 @@ describe("billing", () => {
         );
         return orderSchema.parse(await result.json());
     }
+
+    it("sells all new terms and settles a one-time purchase exactly once", async () => {
+        const periods = [
+            ["half_yearly", 180],
+            ["two_yearly", 730],
+            ["three_yearly", 1095],
+            ["onetime", 0],
+        ] as const;
+        const response = await app.call("/admin/plans", {
+            cookie: admin,
+            body: {
+                name: "New billing terms",
+                content: "",
+                sort: 0,
+                published: true,
+                transferBytes: "1000",
+                trafficResetMode: "year_start",
+                prices: periods.map(([period]) => ({
+                    period,
+                    amountMinor: 1000,
+                })),
+            },
+        });
+        assert.equal(response.status, 201, await response.clone().text());
+        const plan = (await response.json()) as { id: number };
+        for (const [period, days] of periods) {
+            const email = `${period}@example.test`;
+            const user = await app.createUser(email, PASSWORD, {
+                balance: 1500,
+            });
+            const cookie = await app.cookieFor(email, PASSWORD);
+            const requestId = randomUUID();
+            const requests = await Promise.all(
+                [1, 2].map(() =>
+                    create(cookie, { requestId, planId: plan.id, period }),
+                ),
+            );
+            assert.equal(requests[0]!.id, requests[1]!.id);
+            assert.equal(requests[0]!.durationDays, days);
+            await Promise.all(requests.map(({ id }) => pay(cookie, id)));
+            const updated = await db.user.findUniqueOrThrow({
+                where: { id: user.id },
+            });
+            assert.equal(updated.balance, 500);
+            assert.equal(updated.expiredAt === null, period === "onetime");
+            assert.equal(
+                await db.balanceEntry.count({
+                    where: { orderId: requests[0]!.id },
+                }),
+                1,
+            );
+            if (period === "onetime") {
+                const duplicate = await app.call("/orders", {
+                    cookie,
+                    body: { requestId: randomUUID(), planId: plan.id, period },
+                });
+                assert.equal(duplicate.status, 409);
+            }
+        }
+    });
+
+    it("advances leap day anniversaries once and keeps the original day across years", async () => {
+        const user = await app.createUser(
+            "annual-reset@example.test",
+            PASSWORD,
+            {
+                planId: expensiveId,
+                expiredAt: null,
+                transferEnable: 1000n,
+                download: 345n,
+                ...trafficSchedule(
+                    "activation_anniversary",
+                    new Date("2028-02-29T04:00:00Z"),
+                ),
+            },
+        );
+        const now = new Date("2031-02-28T00:00:00Z");
+        await Promise.all([runMonthlyResets(now), runMonthlyResets(now)]);
+        const updated = await db.user.findUniqueOrThrow({
+            where: { id: user.id },
+        });
+        assert.equal(updated.download, 0n);
+        assert.equal(
+            updated.nextTrafficResetAt?.toISOString(),
+            "2032-02-28T16:00:00.000Z",
+        );
+        assert.equal(
+            await db.audit.count({
+                where: {
+                    target: String(user.id),
+                    action: "traffic.annual_reset",
+                },
+            }),
+            1,
+        );
+    });
 
     it("prorates a legacy paid term and makes concurrent downgrade retries refund once", async () => {
         const email = "downgrade@example.test";
@@ -335,8 +447,7 @@ describe("billing", () => {
     });
 
     it("queues one message for each expiry and traffic threshold with concurrent workers", async () => {
-        const previousSmtp = process.env.SMTP_HOST;
-        process.env.SMTP_HOST = "127.0.0.1";
+        await setTestSmtp("127.0.0.1");
         try {
             const email = "billing-notices@example.test";
             const now = new Date();
@@ -389,15 +500,13 @@ describe("billing", () => {
                 ],
             );
         } finally {
-            if (previousSmtp === undefined) delete process.env.SMTP_HOST;
-            else process.env.SMTP_HOST = previousSmtp;
+            await setTestSmtp();
         }
     });
 
     /** Run `body` with SMTP configured and both reminder kinds switched on. */
     async function withReminders(body: () => Promise<void>) {
-        const previousSmtp = process.env.SMTP_HOST;
-        process.env.SMTP_HOST = "127.0.0.1";
+        await setTestSmtp("127.0.0.1");
         try {
             assert.equal(
                 (
@@ -415,8 +524,7 @@ describe("billing", () => {
             );
             await body();
         } finally {
-            if (previousSmtp === undefined) delete process.env.SMTP_HOST;
-            else process.env.SMTP_HOST = previousSmtp;
+            await setTestSmtp();
         }
     }
 

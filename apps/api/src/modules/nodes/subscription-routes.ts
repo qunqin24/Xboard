@@ -6,6 +6,7 @@ import { currentUser, requireUser } from "../../http/session";
 import { canUseNodes } from "../account/entitlement";
 import { unixSeconds } from "../account/service";
 import { newToken, sessionDigest } from "../auth/service";
+import { iniProfile } from "./ini-profile";
 import { loon } from "./loon";
 import { quantumultx } from "./quantumultx";
 import { shadowrocket } from "./shadowrocket";
@@ -26,6 +27,8 @@ const FORMATS = [
     "shadowrocket",
     "quantumultx",
     "loon",
+    "surge",
+    "surfboard",
     // Rule/group configurations that pull the nodes from the formats above.
     "loon-config",
     "shadowrocket-rules",
@@ -35,7 +38,7 @@ type Format = (typeof FORMATS)[number];
 /**
  * The format a client expects, from its User-Agent: Shadowrocket gets base64
  * share links, Quantumult X and Loon their own node lines; sing-box based apps (sing-box, SFA/SFI/SFM, Hiddify, Karing)
- * get sing-box JSON; everything else, including Clash Verge Rev, FlClash,
+ * get sing-box JSON; Surge and Surfboard get INI profiles. All other apps, including Clash Verge Rev, FlClash,
  * Clash Meta and Stash, gets Mihomo.
  */
 export function formatForUserAgent(userAgent: string | undefined): Format {
@@ -43,6 +46,8 @@ export function formatForUserAgent(userAgent: string | undefined): Format {
     if (/shadowrocket/i.test(agent)) return "shadowrocket";
     if (/quantumult/i.test(agent)) return "quantumultx";
     if (/\bloon\b/i.test(agent)) return "loon";
+    if (/\bsurfboard\b/i.test(agent)) return "surfboard";
+    if (/\bsurge\b/i.test(agent)) return "surge";
     return /sing-box|\bSF[AIM]\b|hiddify|karing/i.test(agent)
         ? "singbox"
         : "mihomo";
@@ -212,6 +217,17 @@ subscriptionRoutes.get("/subscription/:token", async (req, res) => {
         if (!lines.length) throw empty();
         res.setHeader("subscription-userinfo", usage);
         res.type("text/plain").send(`${lines.join("\n")}\n`);
+        return;
+    }
+    if (format === "surge" || format === "surfboard") {
+        const config = iniProfile(entries, user.proxyUuid, format);
+        if (!config) throw empty();
+        res.setHeader("subscription-userinfo", usage);
+        res.setHeader(
+            "content-disposition",
+            'attachment; filename="xboard.conf"',
+        );
+        res.type("text/plain").send(config);
         return;
     }
     // Mihomo and sing-box: the admin's template with the nodes injected.

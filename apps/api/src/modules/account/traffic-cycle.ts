@@ -4,31 +4,57 @@ import { hasActivePlan } from "./entitlement";
 
 const SHANGHAI_OFFSET = 8 * 60 * 60_000;
 
+function localDate(date: Date) {
+    return new Date(date.getTime() + SHANGHAI_OFFSET);
+}
+
+function beijingMidnight(year: number, month: number, day: number) {
+    const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    return Date.UTC(year, month, Math.min(day, daysInMonth)) - SHANGHAI_OFFSET;
+}
+
 /** Next Beijing midnight on the original billing day, clamped in short months. */
 export function nextMonthlyReset(now: Date, day: number): Date {
-    const local = new Date(now.getTime() + SHANGHAI_OFFSET);
+    const local = localDate(now);
     const year = local.getUTCFullYear();
     const month = local.getUTCMonth();
-    const midnight = (m: number) =>
-        Date.UTC(
-            year,
-            m,
-            Math.min(day, new Date(Date.UTC(year, m + 1, 0)).getUTCDate()),
-        ) - SHANGHAI_OFFSET;
-    const current = midnight(month);
-    return new Date(current > now.getTime() ? current : midnight(month + 1));
+    const current = beijingMidnight(year, month, day);
+    return new Date(
+        current > now.getTime()
+            ? current
+            : beijingMidnight(year, month + 1, day),
+    );
+}
+
+function nextReset(now: Date, day: number, month: number | null) {
+    if (month === null) return nextMonthlyReset(now, day);
+    const year = localDate(now).getUTCFullYear();
+    const current = beijingMidnight(year, month - 1, day);
+    return new Date(
+        current > now.getTime()
+            ? current
+            : beijingMidnight(year + 1, month - 1, day),
+    );
 }
 
 export function trafficSchedule(mode: TrafficResetMode, start: Date) {
+    const local = localDate(start);
     const day =
-        mode === "month_start"
+        mode === "month_start" || mode === "year_start"
             ? 1
-            : new Date(start.getTime() + SHANGHAI_OFFSET).getUTCDate();
+            : local.getUTCDate();
+    const month =
+        mode === "year_start"
+            ? 1
+            : mode === "activation_anniversary"
+              ? local.getUTCMonth() + 1
+              : null;
     return {
         trafficResetMode: mode,
         trafficResetDay: mode === "none" ? null : day,
+        trafficResetMonth: month,
         nextTrafficResetAt:
-            mode === "none" ? null : nextMonthlyReset(start, day),
+            mode === "none" ? null : nextReset(start, day, month),
     };
 }
 
@@ -47,6 +73,7 @@ export type CycleUser = Pick<
     | "download"
     | "nextTrafficResetAt"
     | "trafficResetDay"
+    | "trafficResetMonth"
 >;
 
 /**
@@ -67,7 +94,11 @@ export async function resetDueTraffic(tx: Tx, users: CycleUser[], now: Date) {
             {
                 user,
                 scheduledAt,
-                next: nextMonthlyReset(now, user.trafficResetDay),
+                next: nextReset(
+                    now,
+                    user.trafficResetDay,
+                    user.trafficResetMonth,
+                ),
             },
         ];
     });
@@ -85,7 +116,10 @@ export async function resetDueTraffic(tx: Tx, users: CycleUser[], now: Date) {
     await tx.audit.createMany({
         data: due.map(({ user, scheduledAt, next }) => ({
             actorId: 0,
-            action: "traffic.monthly_reset",
+            action:
+                user.trafficResetMonth === null
+                    ? "traffic.monthly_reset"
+                    : "traffic.annual_reset",
             target: String(user.id),
             detail: {
                 scheduledAt: scheduledAt.toISOString(),

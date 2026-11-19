@@ -69,17 +69,3 @@ function parseTrustProxy(value: string | undefined): boolean | number | string {
     if (/^\d+$/.test(value)) return Number(value);
     return value;
 }
-
-/** SMTP settings are read per use, so tests and restarts pick up changes. */
-export function getSmtpConfig() {
-    const host = process.env.SMTP_HOST;
-    if (!host) return null;
-    return {
-        host,
-        port: Number(process.env.SMTP_PORT ?? 587),
-        secure: process.env.SMTP_SECURE === "true",
-        user: process.env.SMTP_USER,
-        password: process.env.SMTP_PASSWORD,
-        from: process.env.MAIL_FROM ?? "Xboard <noreply@example.test>",
-    };
-}

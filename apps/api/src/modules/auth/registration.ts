@@ -1,3 +1,4 @@
+import type { Locale } from "@xboard/contracts";
 import { createHash, randomInt, timingSafeEqual } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import type { Settings } from "@xboard/contracts";
@@ -88,13 +89,22 @@ async function mailboxTaken(tx: Tx, email: string, settings: Settings) {
     return found !== null;
 }
 
+/** Serialize public registration and administrator provisioning for the same mailbox. */
+export async function claimMailbox(tx: Tx, email: string, settings: Settings) {
+    await lockKey(tx, `register-mailbox:${mailboxKey(email)}`);
+    if (await mailboxTaken(tx, email, settings)) throw conflict(TAKEN);
+}
+
 /**
  * Mail a 6-digit sign-up code. A repeat within the cooldown sends nothing.
  * When the mailbox already has an account, a notice goes out instead of a
  * code, so the answer never reveals which addresses are registered.
  * Returns the seconds until another code may be requested.
  */
-export async function sendRegisterCode(email: string): Promise<number> {
+export async function sendRegisterCode(
+    email: string,
+    locale?: Locale,
+): Promise<number> {
     const settings = await readSettings();
     if (!settings.registrationOpen) throw forbidden("暂未开放注册。");
     if (!settings.emailCodeRequired)
@@ -132,6 +142,7 @@ export async function sendRegisterCode(email: string): Promise<number> {
             taken
                 ? { siteName: settings.siteName }
                 : { siteName: settings.siteName, code },
+            locale,
         );
         return CODE_COOLDOWN_MS / 1000;
     });
@@ -202,7 +213,11 @@ export type RegisterInput = {
  * run before the password is hashed; the per-IP cap, alias check, code
  * consumption and trial grant share one transaction.
  */
-export async function register(input: RegisterInput, ip: string | undefined) {
+export async function register(
+    input: RegisterInput,
+    ip: string | undefined,
+    locale?: Locale,
+) {
     const { email } = input;
     const settings = await readSettings();
     if (!settings.registrationOpen) throw forbidden("暂未开放注册。");
@@ -235,8 +250,7 @@ export async function register(input: RegisterInput, ip: string | undefined) {
                         "当前网络 24 小时内注册的账户已达上限，请稍后再试。",
                     );
             }
-            await lockKey(tx, `register-mailbox:${mailboxKey(email)}`);
-            if (await mailboxTaken(tx, email, settings)) throw conflict(TAKEN);
+            await claimMailbox(tx, email, settings);
             if (codeHash) {
                 const used = await tx.registerCode.deleteMany({
                     where: { email, codeHash, expiresAt: { gt: now } },
@@ -254,6 +268,7 @@ export async function register(input: RegisterInput, ip: string | undefined) {
                 data: {
                     email,
                     password,
+                    locale,
                     emailKey: mailboxKey(email),
                     registerIp: network,
                     invitedById: inviter?.id ?? null,

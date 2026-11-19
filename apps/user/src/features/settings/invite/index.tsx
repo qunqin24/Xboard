@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTime } from "@/lib/format";
+import { CommissionSection } from "./commission";
 import { ContentSection } from "../components/content-section";
 
 function CopyField({
@@ -135,7 +136,10 @@ export function SettingsInvite() {
             help="他人注册时填写你的邀请码或打开邀请链接，即记为你邀请的用户。列表显示最近 20 位。"
         >
             {invite.data ? (
-                <InviteDetails invite={invite.data} />
+                <>
+                    <InviteDetails invite={invite.data} />
+                    <CommissionSection />
+                </>
             ) : invite.isError ? (
                 <ErrorState
                     error={invite.error}

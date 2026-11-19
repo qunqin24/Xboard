@@ -3,9 +3,11 @@ import { getConfig } from "./config";
 import { closeDb } from "./db";
 import { startJobs } from "./jobs";
 import { errorFields, log } from "./logging";
+import { initializeInstallation } from "./modules/system/setup";
 
 async function main() {
     const config = getConfig();
+    await initializeInstallation();
     const app = createApp();
     await app.listen(config.port, config.host);
     log("info", "api.listening", { address: app.getUrl() });

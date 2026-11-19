@@ -17,7 +17,7 @@ Docker Engine + Compose v2，域名 DNS 指向服务器，开放 80/443。
 
 ```bash
 cp ops/.env.example ops/.env
-# 修改域名、HTTPS origin、数据库密码和可选 SMTP
+# 填写 APP_DOMAIN 和 POSTGRES_PASSWORD
 docker compose --env-file ops/.env -f compose.production.yaml config --quiet
 docker compose --env-file ops/.env -f compose.production.yaml build
 docker compose --env-file ops/.env -f compose.production.yaml up -d
@@ -26,64 +26,76 @@ docker compose --env-file ops/.env -f compose.production.yaml up -d
 数据库密码须为长随机 URL 安全字符串（例如 `openssl rand -hex 32`）。
 API 与数据库不映射宿主机端口。Caddy 以固定容器 IP 被 API 信任，避免任意请求伪造
 `X-Forwarded-For` 绕过限流。若修改网络子网，同步调整 `TRUSTED_PROXY`，不要配置为 `true`。
+Compose 将动态容器地址分配在独立范围，保留 Caddy 的固定地址。
 
 迁移由一次性 `migrate` 容器先执行，成功后启动 API，API 健康后启动 Web。
 后台邮件 worker 与过期清理在 API 进程内运行，支持多实例锁定领取。
 
-### 创建管理员
+### 首次安装
+
+`ops/.env` 填写 `APP_DOMAIN` 和 `POSTGRES_PASSWORD`。Compose 从域名生成 `APP_ORIGIN`，并将 API 的应用数据卷挂载到 `/data`。
+
+面板首次访问会进入 `/setup`。用 `docker compose --env-file ops/.env -f compose.production.yaml logs api` 查看 `setup.available` 事件里的安装码。用该码创建管理员后，安装接口关闭。
+
+应急恢复管理员账户时，执行 `docker compose --env-file ops/.env -f compose.production.yaml exec api node dist/admin.js`，按提示输入邮箱和新密码。已有账户会被提升为管理员、更新密码并撤销原会话。
+
+### 系统设置
+
+在「系统设置 → 邮件服务」填写 SMTP 服务器、端口、TLS、发件人及可选凭据。保存后邮件队列使用新配置。先向自己的地址发送测试邮件，再到「邮件队列」确认投递结果。
+
+在「系统设置 → 告警」保存 HTTPS webhook，点「发送测试告警」验证接收方。API 将 5xx、后台任务和备份失败摘要发送到这个地址。同类告警在每个实例内最多每分钟一次。用响应头 `X-Request-Id` 对照 JSON 请求日志定位问题。
+
+把面板的 `https://<域名>/api/health` 配到外部监控，定期确认 HTTPS 请求返回 200。该接口还会检查 PostgreSQL。可用性告警的通知渠道设在外部监控中，确保 API 进程停机时仍能收到通知。
+
+API 每分钟检查启用的后端节点。节点 5 分钟没有发起通过认证的请求时，发送 `node.offline`，字段包含节点 ID 和最后接触时间。启用的节点从创建起也有 5 分钟宽限期。中转条目由父节点处理。投递失败下次重试，节点恢复后再次离线会产生新通知。
+
+应用密钥首次启动时生成，保存在 `/data/secrets/app.key`。本地默认是 `apps/api/.data/secrets/app.key`。共享数据库的 API 实例须使用同一把密钥。管理后台的「导出应用密钥」要求密码和已启用的两步验证，导出会写审计。把密钥保存在独立安全的位置。丢失密钥后，已保存的配置密文和两步验证种子无法解密。
+
+对于已有两步验证数据的开发站，在启动新版本前把原密钥写到 `app.key`，文件权限设为 `0600`。
+
+### 加密备份
+
+1. 用 `age-keygen -o xboard-backup.key` 在独立设备创建密钥。把 `age1...` 公钥填进面板，私钥留在管理员设备。
+2. 在 Cloudflare 控制台的 **R2 object storage** 创建存储桶。创建只限该桶的 **Object Read & Write** API 令牌。
+3. 进入存储桶 **Settings → Bucket lock**，分别为 `daily/`、`weekly/`、`monthly/` 添加 7、28、180 天锁定规则。在 **Object lifecycle rules** 为相同前缀设对应删除周期。如果在面板配置自定义前缀，规则也要包含它。
+4. 为 `xboard-test/` 配置 1 天生命周期。测试对象要能自动清理，使用独立前缀。
+5. 在「系统设置 → 备份」填写 Cloudflare 账户 ID、存储桶、访问密钥、公钥与北京时间。欧盟桶选择「欧盟」管辖区。点「测试连接」上传并读回一个小文件，点「立即备份」试跑并查看状态。
+
+其他兼容 S3 的存储提供方可填写自定义 endpoint、region 及路径风格。AWS S3 可为上传身份仅授予备份路径的 `s3:PutObject`，并给测试路径另授予 `s3:GetObject`。配合支持的对象锁定、生命周期和管理员恢复凭据。面板不删除历史备份。
+
+备份是 PostgreSQL 17 的 `pg_dump -Fc` 与应用密钥的 age 加密归档。系统在北京时间到了开始时间后每天执行一次，周日额外保留周备份，每月 1 日额外保留月备份。对象名带 UTC 时间和运行 ID。使用备份记录的压缩归档大小估算容量。每天分别保存 7、4、6 份时，可用单次大小乘约 17 估算常态占用，再加流量数据增长余量。
+
+恢复时先停止目标 API，将对象下载到受控目录。在保有私钥的机器运行以下命令。把 `DATABASE_URL` 指向全新的目标库。
 
 ```bash
-docker compose --env-file ops/.env -f compose.production.yaml exec \
-  -e ADMIN_EMAIL=admin@example.com \
-  -e ADMIN_PASSWORD='替换为强密码' \
-  api node dist/admin.js
+umask 077
+mkdir xboard-restore
+age --decrypt --identity xboard-backup.key --output xboard-restore/bundle.tar backup.tar.age
+tar -C xboard-restore -xf xboard-restore/bundle.tar database.dump app.key
+pg_restore --exit-on-error --no-owner --no-privileges --dbname="$DATABASE_URL" xboard-restore/database.dump
 ```
 
-`ADMIN_EMAIL` 是已注册的账户时，命令会把它提升为管理员，同时把密码改为 `ADMIN_PASSWORD`、
-退出该账户的所有会话并标记邮箱已验证，所以两个变量都必须提供。访问 `/admin` 后配置套餐、节点、公告等。
+以目标 API 的运行用户把 `app.key` 放到持久化数据卷的 `secrets/app.key`，权限 `0600`。运行 `prisma migrate deploy`，然后启动服务。核对用户、订单、节点和余额流水的条数、用户余额与流水金额总和，并验证登录及订阅链接。恢复演练用隔离环境，限制访问生产邮件、告警、对象存储等外部服务，防止恢复的后台任务向生产发请求。
 
-### SMTP
+[R2 存储桶锁定](https://developers.cloudflare.com/r2/buckets/bucket-locks/) · [R2 对象生命周期](https://developers.cloudflare.com/r2/buckets/object-lifecycles/) · [R2 与 AWS SDK v3](https://developers.cloudflare.com/r2/examples/aws/aws-sdk-js-v3/)
 
-没有 SMTP 时邮件操作显示明确错误。配置 `SMTP_HOST/PORT/SECURE/USER/PASSWORD` 和
-`MAIL_FROM` 后重新创建 API 容器。通过后台“邮件队列”检查发送结果，
-并实际完成一次找回密码与邮箱验证。测试 SMTP 投递不代表真实域名的 SPF/DKIM 或收件率已验证。
+### 在线支付及佣金
 
-### 日志与告警
+在「系统设置 → 在线支付」新增网关，填写名称、手续费和排序。易支付填商户号、密钥与 HTTPS 网关地址，支持经典 MD5 协议。Stripe 填 API 密钥和 webhook 签名密钥。在 Stripe 后台登记面板显示的 HTTPS webhook，订阅 `checkout.session.completed` 和 `checkout.session.async_payment_succeeded`。发布前用供应方测试模式验证成功回执、金额和回跳。[易支付协议示例](https://www.z-pay.cn/doc.html) · [Stripe Webhook](https://docs.stripe.com/webhooks)
 
-API 以 JSON 输出请求与任务事件。用响应头 `X-Request-Id` 定位对应请求。日志使用路由模板，
-省略请求正文、Cookie、URL 参数和原始错误消息。
-在 `ops/.env` 设置 `ALERT_WEBHOOK_URL` 并重新创建 API 容器后，API 会将 5xx 和任务失败摘要 POST
-到对应 HTTPS 接收端。同类错误在每个 API 实例内最多每分钟通知一次。
+用户在待支付订单的结算弹窗选择网关，手续费由下单会话锁定。回调会校验金额与签名。若订单已取消、超时或无法完成结算，支付本金会入余额。后台「最近支付回执」显示已结算、已入余额或待人工处理。达到余额上限的回执待人工核对，可在供应方后台处理退款。
 
-### 两步验证
+在「佣金与提现」设置返佣比例、首单或每单及提现方式。用户在「邀请」查看佣金并申请提现。管理员查看加密保存的收款信息，完成线下打款后确认，或驳回并退回佣金。管理员仍可在线下核实收款后确认订单。
 
-`TOTP_ENCRYPTION_KEY` 是启用两步验证的前提：它加密保存用户的 TOTP 密钥。
-未配置（或格式不对）时，用户仍可用密码登录，但“启用两步验证”返回配置提示。
+### 人机验证
 
-生成方法：32 个随机字节的 Base64URL 编码，共 43 个字符。
+在「系统设置 → 人机验证」选择供应方，填站点公钥与验证密钥。所选供应方需允许面板域名。用 Turnstile 托管小组件、reCAPTCHA v2 复选框或 hCaptcha 小组件。注册保护同时覆盖发送注册验证码与提交注册，两次提交各用一个证明。[Turnstile](https://developers.cloudflare.com/turnstile/get-started/) · [reCAPTCHA](https://developers.google.com/recaptcha/docs/display) · [hCaptcha](https://docs.hcaptcha.com/)
 
-```bash
-node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("base64url"))'
-```
+### Telegram 及语言
 
-写入 `ops/.env`（本地为 `apps/api/.env`）的 `TOTP_ENCRYPTION_KEY`，并在密钥管理器中另存一份。
-所有 API 实例使用同一值，升级、重启及恢复数据库时保持不变。
+从 BotFather 获取机器人令牌，将令牌填入「系统设置 → Telegram 机器人」。面板校验并为公网 HTTPS 域名登记 webhook。用户在账户设置中生成一次性链接并在私聊点击开始。命令 `/status` 显示流量与到期时间。管理员绑定后可接收新工单、新订单和离线通知。 [Telegram Bot API](https://core.telegram.org/bots/api)
 
-更换或丢失密钥后，已启用两步验证的用户无法再通过动态验证码验证，因为旧密钥解不开已保存的 TOTP 密钥。
-未使用的恢复码仍可登录（恢复码只保存摘要，与此密钥无关）。登录后用户需关闭并重新设置两步验证。
-没有恢复码的用户由管理员在“用户详情 → 账户安全”点“重置两步验证”，该操作会移除其两步验证并使登录会话失效，写入审计。
-管理员账户不能通过该接口重置，请保管好管理员的恢复码。
-
-用户在账户设置的“安全”页扫描二维码（或手动输入密钥）启用。动态验证码错误会被限制：
-每个用户连续错 5 次锁定 15 分钟，一天内累计 15 次锁定 24 小时。关闭两步验证和重新生成恢复码适用同一限制，
-与密码错误计数分开。
-
-### 外部支付
-
-按当前产品决定不接外部支付，不需要支付密钥，没有支付回调接口。
-管理员核实线下收款后，可在「订单」中对仍有效的待支付订单选择「确认线下收款」。凭证号和备注可选填。
-余额入账仍可在用户详情中登记，供用户后续购买时使用。
-不要把示例账户余额或测试数据导入生产。
+「系统设置 → 语言」配置访客默认语言，账户设置可保存个人偏好。「邮件队列 → 邮件模板」按语言编辑系统邮件。已有模板继续作为简体中文版本。手工群发使用管理员提供的正文。
 
 ## 日常操作
 

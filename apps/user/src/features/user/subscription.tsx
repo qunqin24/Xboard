@@ -34,6 +34,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LoadAnnouncement } from "@/components/load-announcement";
 import { Tile } from "@/components/ui/tile";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { formatDate } from "@/lib/format";
@@ -66,6 +67,10 @@ export function Subscription() {
                     : undefined
             }
         >
+            <LoadAnnouncement
+                loading={account.isPending}
+                failed={account.isError}
+            />
             {account.isError ? (
                 <ErrorState
                     error={account.error}
@@ -96,8 +101,7 @@ export function Subscription() {
                             <CardTitle className="flex items-center gap-1">
                                 通用订阅链接
                                 <InfoTip>
-                                    同一个链接适用于所有客户端，导入时自动识别
-                                    Mihomo 或 sing-box 格式。
+                                    同一个链接适用于所有客户端，导入时自动识别客户端格式。
                                 </InfoTip>
                             </CardTitle>
                             <CardDescription>

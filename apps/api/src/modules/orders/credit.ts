@@ -46,6 +46,7 @@ export async function remainingPlanCredit(tx: Tx, user: User, now: Date) {
             userId: user.id,
             planId: user.planId!,
             kind: "subscription",
+            durationDays: { gt: 0 },
             status: "paid",
             paidAt: { not: null },
             OR: [

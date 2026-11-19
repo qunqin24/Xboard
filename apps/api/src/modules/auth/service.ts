@@ -1,3 +1,4 @@
+import { validLocale } from "../site/language";
 import { createHash, randomBytes } from "node:crypto";
 import type { User } from "@prisma/client";
 import { db, lockUser, type Tx } from "../../db";
@@ -111,7 +112,7 @@ export async function login(
         });
     });
     if (guessing) await releaseTwoFactorAttempt(user.id);
-    return { token, email: user.email };
+    return { token, email: user.email, locale: validLocale(user.locale) };
 }
 
 /** The signed-in user for a session cookie value; 401 otherwise. */

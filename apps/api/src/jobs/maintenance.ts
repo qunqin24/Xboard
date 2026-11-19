@@ -1,3 +1,4 @@
+import { OPS_IDEMPOTENCY_RETENTION_DAYS } from "@xboard/contracts";
 import { db } from "../db";
 import { reportJobFailure } from "../logging";
 import { queueBillingReminders, runMonthlyResets } from "./billing";
@@ -19,16 +20,27 @@ function tasks(now: Date) {
             db.$transaction((tx) => expirePendingOrders(tx, now)),
         "delete expired sessions": () =>
             db.session.deleteMany({ where: { expiresAt: { lte: now } } }),
-        "delete invalidated ops response replays": () =>
+        "delete expired ops response replays": () =>
             db.opsWriteRequest.deleteMany({
                 where: {
-                    token: {
-                        OR: [
-                            { expiresAt: { lte: now } },
-                            { revokedAt: { not: null } },
-                        ],
-                    },
+                    OR: [
+                        {
+                            createdAt: {
+                                lt: ago(OPS_IDEMPOTENCY_RETENTION_DAYS * DAY),
+                            },
+                        },
+                        { token: { expiresAt: { lte: now } } },
+                        { token: { revokedAt: { not: null } } },
+                    ],
                 },
+            }),
+        "delete expired Telegram bindings": () =>
+            db.telegramBinding.deleteMany({
+                where: { expiresAt: { lte: now } },
+            }),
+        "delete old Telegram notifications": () =>
+            db.telegramNotice.deleteMany({
+                where: { createdAt: { lt: ago(7 * DAY) } },
             }),
         "delete expired email links": () =>
             db.emailToken.deleteMany({ where: { expiresAt: { lte: now } } }),

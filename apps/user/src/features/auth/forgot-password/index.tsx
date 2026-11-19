@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { AuthLayout } from "../auth-layout";
+import { useCaptcha } from "../captcha";
 
 const formSchema = z.object({
     email: z.string().trim().min(1, "请输入邮箱").email("邮箱格式不正确"),
@@ -32,6 +33,7 @@ const formSchema = z.object({
 
 export function ForgotPassword() {
     const send = useCommand();
+    const captcha = useCaptcha("forgot");
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
         defaultValues: { email: "" },
@@ -57,12 +59,14 @@ export function ForgotPassword() {
                     ) : (
                         <Form {...form}>
                             <form
-                                onSubmit={form.handleSubmit((data) =>
-                                    send.mutate({
-                                        path: "/auth/forgot",
-                                        body: data,
-                                    }),
-                                )}
+                                onSubmit={form.handleSubmit((data) => {
+                                    const challenge = captcha.take();
+                                    if (challenge)
+                                        send.mutate({
+                                            path: "/auth/forgot",
+                                            body: { ...data, ...challenge },
+                                        });
+                                })}
                                 className="space-y-group"
                             >
                                 <FormField
@@ -82,6 +86,7 @@ export function ForgotPassword() {
                                         </FormItem>
                                     )}
                                 />
+                                {captcha.content}
                                 <LoadingButton
                                     icon={<Send />}
                                     className="w-full"

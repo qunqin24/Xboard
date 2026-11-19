@@ -8,31 +8,31 @@ datasource db {
 }
 
 model User {
-  id                  Int              @id @default(autoincrement())
-  email               String           @unique
+  id                  Int               @id @default(autoincrement())
+  email               String            @unique
   password            String
-  banned              Boolean          @default(false)
+  banned              Boolean           @default(false)
   planId              Int?
-  transferEnable      BigInt           @default(0)
-  upload              BigInt           @default(0)
-  download            BigInt           @default(0)
+  transferEnable      BigInt            @default(0)
+  upload              BigInt            @default(0)
+  download            BigInt            @default(0)
   expiredAt           DateTime?
-  balance             Int              @default(0)
-  createdAt           DateTime         @default(now())
-  updatedAt           DateTime         @updatedAt
+  balance             Int               @default(0)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
   lastLoginAt         DateTime?
-  plan                Plan?            @relation(fields: [planId], references: [id])
+  plan                Plan?             @relation(fields: [planId], references: [id])
   sessions            Session[]
   orders              Order[]
   ledger              BalanceEntry[]
   speedLimit          Int?
   deviceLimit         Int?
-  role                Role             @default(user)
+  role                Role              @default(user)
   verifiedAt          DateTime?
-  proxyUuid           String           @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  subscribeHash       String?          @unique
+  proxyUuid           String            @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subscribeHash       String?           @unique
   /// Current subscription link token. subscribeHash only matches links issued before it existed.
-  subscribeToken      String?          @unique
+  subscribeToken      String?           @unique
   emailTokens         EmailToken[]
   tickets             Ticket[]
   traffic             TrafficRecord[]
@@ -41,21 +41,27 @@ model User {
   /// Rate-limit subject (IPv4 address or IPv6 /64) the account was registered from.
   registerIp          String?
   /// This user's invite code, created on first view.
-  inviteCode          String?          @unique
+  inviteCode          String?           @unique
   invitedById         Int?
-  invitedBy           User?            @relation("Invites", fields: [invitedById], references: [id], onDelete: SetNull)
-  invitees            User[]           @relation("Invites")
+  invitedBy           User?             @relation("Invites", fields: [invitedById], references: [id], onDelete: SetNull)
+  invitees            User[]            @relation("Invites")
   termsAcceptedAt     DateTime?
-  entitlementVersion  Int              @default(0)
-  trafficResetMode    TrafficResetMode @default(none)
+  entitlementVersion  Int               @default(0)
+  trafficResetMode    TrafficResetMode  @default(none)
   trafficResetDay     Int?
+  trafficResetMonth   Int?
   nextTrafficResetAt  DateTime?
-  expiryReminderMask  Int              @default(0)
-  trafficReminderMask Int              @default(0)
+  expiryReminderMask  Int               @default(0)
+  trafficReminderMask Int               @default(0)
   giftRedemptions     GiftCode[]
   totpSecret          String?
   totpLastStep        BigInt?
-  totpRecoveryHashes  String[]         @default([])
+  totpRecoveryHashes  String[]          @default([])
+  locale              String?
+  telegramChatId      String?           @unique
+  telegramBinding     TelegramBinding?
+  commissionEntries   CommissionEntry[]
+  withdrawals         Withdrawal[]
   opsTokens           OpsToken[]
 
   @@index([planId, expiredAt])
@@ -78,13 +84,19 @@ model RegisterCode {
 enum BillingPeriod {
   monthly
   quarterly
+  half_yearly
   yearly
+  two_yearly
+  three_yearly
+  onetime
 }
 
 enum TrafficResetMode {
   none
   activation_day
   month_start
+  year_start
+  activation_anniversary
 }
 
 model Plan {
@@ -175,6 +187,9 @@ model Order {
   plan               Plan             @relation(fields: [planId], references: [id])
   entry              BalanceEntry?
   coupon             Coupon?          @relation(fields: [couponId], references: [id], onDelete: Restrict)
+
+  commissionEntry CommissionEntry?
+  paymentAttempts PaymentAttempt[]
 
   @@unique([userId, requestId])
   @@index([userId, createdAt])
@@ -286,11 +301,13 @@ model OpsWriteRequest {
   key         String   @db.Uuid
   fingerprint String
   status      Int
+  createdAt   DateTime @default(now())
   /// Encrypted with a key derived from the caller's Bearer token.
   response    Bytes
   token       OpsToken @relation(fields: [tokenId], references: [id], onDelete: Cascade)
 
   @@id([tokenId, key])
+  @@index([createdAt])
 }
 
 model OpsAuditChange {
@@ -342,45 +359,46 @@ enum NodeProtocol {
 }
 
 model Node {
-  id              Int              @id @default(autoincrement())
-  name            String
-  protocol        NodeProtocol
-  host            String
+  id               Int              @id @default(autoincrement())
+  name             String
+  protocol         NodeProtocol
+  host             String
   /// The port clients dial.
-  port            Int
+  port             Int
   /// The port the node software listens on.
-  serverPort      Int
+  serverPort       Int
   /// Protocol options, validated by NODE_SETTINGS[protocol] in @xboard/contracts.
-  settings        Json             @default("{}")
+  settings         Json             @default("{}")
   /// Secret behind the Shadowsocks 2022 server key; never shown.
-  serverSecret    String           @default(dbgenerated("md5((random())::text)"))
-  enabled         Boolean          @default(false)
+  serverSecret     String           @default(dbgenerated("md5((random())::text)"))
+  enabled          Boolean          @default(false)
   /// Listed in subscriptions; a hidden node still serves its users.
-  visible         Boolean          @default(true)
-  tags            String[]         @default([])
+  visible          Boolean          @default(true)
+  tags             String[]         @default([])
   /// Traffic multiplier applied when the node reports usage.
-  rate            Float            @default(1)
+  rate             Float            @default(1)
   /// [{ start: "HH:MM", end: "HH:MM", rate }] in Asia/Shanghai; first match wins.
-  rateRanges      Json             @default("[]")
+  rateRanges       Json             @default("[]")
   /// V2bX route rules, custom outbounds/routes and certificate settings sent to the node.
-  routes          Json             @default("[]")
-  customOutbounds Json             @default("[]")
-  customRoutes    Json             @default("[]")
-  certConfig      Json             @default("{}")
+  routes           Json             @default("[]")
+  customOutbounds  Json             @default("[]")
+  customRoutes     Json             @default("[]")
+  certConfig       Json             @default("{}")
   /// A relay entry: listed with its own address, served by the parent's backend.
-  parentId        Int?
-  parent          Node?            @relation("NodeRelay", fields: [parentId], references: [id], onDelete: Restrict)
-  children        Node[]           @relation("NodeRelay")
-  tokenHash       String
-  lastSeenAt      DateTime?
-  status          Json?
-  createdAt       DateTime         @default(now())
+  parentId         Int?
+  parent           Node?            @relation("NodeRelay", fields: [parentId], references: [id], onDelete: Restrict)
+  children         Node[]           @relation("NodeRelay")
+  tokenHash        String
+  lastSeenAt       DateTime?
+  offlineAlertedAt DateTime?
+  status           Json?
+  createdAt        DateTime         @default(now())
   // Soft delete keeps traffic history; deleted nodes are disabled and keyless.
-  deletedAt       DateTime?
-  plans           NodePlan[]
-  traffic         TrafficRecord[]
-  receipts        TrafficReceipt[]
-  online          OnlineDevice[]
+  deletedAt        DateTime?
+  plans            NodePlan[]
+  traffic          TrafficRecord[]
+  receipts         TrafficReceipt[]
+  online           OnlineDevice[]
 
   @@index([parentId])
 }
@@ -478,4 +496,138 @@ model SubscriptionTemplate {
   format    String   @id
   content   String
   updatedAt DateTime @updatedAt
+}
+
+model BackupRun {
+  id           String    @id @default(uuid()) @db.Uuid
+  scheduledDay String?   @unique
+  status       String    @default("pending")
+  createdAt    DateTime  @default(now())
+  finishedAt   DateTime?
+  bytes        BigInt?
+  objects      String[]  @default([])
+
+  @@index([createdAt])
+}
+
+enum PaymentKind {
+  epay
+  stripe
+}
+
+enum PaymentStatus {
+  pending
+  settled
+  credited
+  review
+}
+
+model PaymentGateway {
+  id                    Int              @id @default(autoincrement())
+  name                  String
+  kind                  PaymentKind
+  enabled               Boolean          @default(false)
+  sortOrder             Int              @default(0)
+  icon                  String?
+  feePercentBasisPoints Int              @default(0)
+  feeFixedMinor         Int              @default(0)
+  config                Json
+  secrets               String
+  attempts              PaymentAttempt[]
+}
+
+model PaymentAttempt {
+  id                String         @id @default(uuid()) @db.Uuid
+  orderId           String         @db.Uuid
+  gatewayId         Int
+  requestId         String         @db.Uuid
+  amountMinor       Int
+  feeMinor          Int
+  status            PaymentStatus  @default(pending)
+  config            Json
+  secrets           String
+  checkoutUrl       String?
+  providerReference String?        @unique
+  externalId        String?
+  receivedAt        DateTime?
+  createdAt         DateTime       @default(now())
+  order             Order          @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  gateway           PaymentGateway @relation(fields: [gatewayId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, requestId])
+  @@unique([gatewayId, externalId])
+  @@index([createdAt])
+}
+
+enum CommissionKind {
+  reward
+  transfer
+  withdrawal
+  reversal
+}
+
+enum WithdrawalStatus {
+  pending
+  paid
+  rejected
+}
+
+model CommissionEntry {
+  id           String         @id @default(uuid()) @db.Uuid
+  userId       Int
+  kind         CommissionKind
+  amountMinor  Int
+  orderId      String?        @unique @db.Uuid
+  requestId    String?        @db.Uuid
+  withdrawalId String?        @db.Uuid
+  createdAt    DateTime       @default(now())
+  user         User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  order        Order?         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  withdrawal   Withdrawal?    @relation(fields: [withdrawalId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, requestId])
+  @@unique([withdrawalId, kind])
+  @@index([userId, createdAt])
+}
+
+model Withdrawal {
+  id          String            @id @default(uuid()) @db.Uuid
+  userId      Int
+  requestId   String            @db.Uuid
+  amountMinor Int
+  method      String
+  recipient   String
+  status      WithdrawalStatus  @default(pending)
+  reason      String?
+  reviewedBy  Int?
+  reviewedAt  DateTime?
+  createdAt   DateTime          @default(now())
+  user        User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  entries     CommissionEntry[]
+
+  @@unique([userId, requestId])
+  @@index([status, createdAt])
+}
+
+model TelegramBinding {
+  userId    Int      @id
+  digest    String   @unique
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+}
+
+model TelegramNotice {
+  id        String    @id @default(uuid()) @db.Uuid
+  chatId    String
+  eventKey  String
+  message   String
+  attempts  Int       @default(0)
+  nextAt    DateTime  @default(now())
+  sentAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@unique([chatId, eventKey])
+  @@index([sentAt, nextAt])
 }

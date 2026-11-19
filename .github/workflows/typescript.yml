@@ -1,5 +1,6 @@
 name: TypeScript checks
 on:
+  workflow_call:
   push:
     paths: ["apps/**", "packages/**", "pnpm-lock.yaml", "pnpm-workspace.yaml", "package.json", ".github/workflows/typescript.yml"]
   pull_request:
@@ -24,6 +25,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Install PostgreSQL 17 client and age
+        run: |
+          sudo install -d -m 0755 /usr/share/postgresql-common/pgdg
+          sudo curl --fail --silent --show-error --location --max-time 20 \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            --output /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          . /etc/os-release
+          printf 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt %s-pgdg main\n' "$VERSION_CODENAME" \
+            | sudo tee /etc/apt/sources.list.d/xboard-pgdg.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends age postgresql-client-17
+          printf '/usr/lib/postgresql/17/bin\n' >> "$GITHUB_PATH"
       - run: npm install -g pnpm@11.0.3
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:setup

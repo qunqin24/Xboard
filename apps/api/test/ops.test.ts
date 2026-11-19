@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { after, before, describe, it } from "node:test";
 import {
+    adminCreatedUserSchema,
     buildOpsOpenApi,
     opsEndpoints,
     opsTokenSchema,
@@ -86,6 +87,120 @@ describe("Bearer operations API", () => {
         });
     }
 
+    it("provisions an ordinary user once and can restore balance, subscription and login access", async () => {
+        const { token, id } = await issue("Migration");
+        const key = randomUUID();
+        const credentials = { email: "Imported@example.test", verified: true };
+        const requests = await Promise.all([
+            call("/users", { token, key, body: credentials }),
+            call("/users", { token, key, body: credentials }),
+        ]);
+        assert.deepEqual(
+            requests.map((response) => response.status),
+            [201, 201],
+        );
+        const [created, replayed] = await Promise.all(
+            requests.map(async (response) =>
+                adminCreatedUserSchema.parse(await response.json()),
+            ),
+        );
+        assert.deepEqual(created, replayed);
+        assert.equal(
+            await db.user.count({ where: { email: "imported@example.test" } }),
+            1,
+        );
+        const row = await db.user.findUniqueOrThrow({
+            where: { id: created!.id },
+        });
+        assert.equal(row.role, "user");
+        assert.ok(row.verifiedAt);
+        assert.notEqual(row.password, created!.password);
+        await test.cookieFor(row.email, created!.password);
+
+        const requestId = randomUUID();
+        assert.equal(
+            (
+                await call(`/users/${row.id}/credit`, {
+                    token,
+                    key: requestId,
+                    body: { requestId, reason: "迁入余额", amountMinor: 1500 },
+                })
+            ).status,
+            201,
+        );
+        assert.equal(
+            (await db.user.findUniqueOrThrow({ where: { id: row.id } }))
+                .balance,
+            1500,
+        );
+        const plan = await db.plan.create({
+            data: { name: "Migrated plan", transferEnable: 1000n },
+        });
+        const imported = {
+            planId: plan.id,
+            expiredAt: null,
+            transferBytes: "1000",
+            uploadBytes: "100",
+            downloadBytes: "750",
+            speedLimit: null,
+            deviceLimit: null,
+        };
+        assert.equal(
+            (
+                await call(`/users/${row.id}`, {
+                    token,
+                    key: randomUUID(),
+                    method: "PUT",
+                    body: imported,
+                })
+            ).status,
+            200,
+        );
+        assert.equal(
+            (
+                await call(`/users/${row.id}`, {
+                    token,
+                    key: randomUUID(),
+                    method: "PUT",
+                    body: { ...imported, uploadBytes: "9223372036854775808" },
+                })
+            ).status,
+            400,
+        );
+        const migrated = await db.user.findUniqueOrThrow({
+            where: { id: row.id },
+        });
+        assert.equal(migrated.planId, plan.id);
+        assert.equal(migrated.upload, 100n);
+        assert.equal(migrated.download, 750n);
+        assert.equal(migrated.trafficReminderMask, 1);
+        assert.equal(
+            (
+                await call("/users", {
+                    token,
+                    key: randomUUID(),
+                    body: credentials,
+                })
+            ).status,
+            409,
+        );
+        assert.equal(
+            (
+                await call("/users", {
+                    token,
+                    key: randomUUID(),
+                    body: { ...credentials, role: "admin" },
+                })
+            ).status,
+            400,
+        );
+        assert.ok(
+            !(await calls(id)).some((entry) =>
+                JSON.stringify(entry.detail).includes(created!.password),
+            ),
+        );
+    });
+
     it("issues and revokes tokens through the admin session and keeps plaintext out of list and storage", async () => {
         assert.equal(
             (await test.call("/admin/ops-tokens", { cookie: userCookie }))
@@ -145,10 +260,99 @@ describe("Bearer operations API", () => {
                     item.actorId === admin && item.action === "ops.request",
             ),
         );
-        const unknown = await db.audit.findFirst({
-            where: { action: "ops.request", opsTokenId: null },
+        assert.equal(
+            await db.audit.count({
+                where: { action: "ops.request", opsTokenId: null },
+            }),
+            0,
+        );
+    });
+
+    it("logs missing, malformed and unknown credentials with the source and route template", async (t) => {
+        const warnings: Record<string, unknown>[] = [];
+        const write = process.stderr.write.bind(process.stderr);
+        t.mock.method(process.stderr, "write", (chunk: string | Uint8Array) => {
+            const line = String(chunk);
+            if (!line.includes('"event":"ops.auth_failed"'))
+                return write(chunk);
+            warnings.push(JSON.parse(line));
+            return true;
         });
-        assert.equal(unknown?.target, "GET /api/ops/v1/overview");
+        const sourceIp = "192.0.2.31";
+        const unknown = `xbo_${randomBytes(32).toString("base64url")}`;
+        const malformed = "fixture-invalid-token";
+        const before = await db.audit.count();
+        const cases = [
+            ["missing", undefined],
+            ["malformed", `Bearer ${malformed}`],
+            ["unknown", `Bearer ${unknown}`],
+        ] as const;
+        for (const [reason, authorization] of cases) {
+            const response = await call(
+                `/users/${user}?q=fixture-private-query`,
+                {
+                    headers: {
+                        "x-forwarded-for": sourceIp,
+                        ...(authorization && { authorization }),
+                    },
+                },
+            );
+            assert.equal(response.status, 401);
+            const { time, ...warning } = warnings.shift() ?? {};
+            assert.ok(typeof time === "string");
+            assert.ok(response.headers.get("x-request-id"));
+            assert.deepEqual(warning, {
+                level: "warn",
+                event: "ops.auth_failed",
+                requestId: response.headers.get("x-request-id"),
+                sourceIp,
+                method: "GET",
+                route: "/api/ops/v1/users/:id",
+                reason,
+            });
+            const logged = JSON.stringify(warning);
+            for (const secret of [
+                unknown.slice(4),
+                malformed,
+                "fixture-private-query",
+            ])
+                assert.ok(!logged.includes(secret));
+        }
+        assert.equal(warnings.length, 0);
+        assert.equal(await db.audit.count(), before);
+    });
+
+    it("limits a source before credential lookup and supplies Retry-After", async () => {
+        const sourceIp = "192.0.2.32";
+        const headers = { "x-forwarded-for": sourceIp };
+        const token = `xbo_${randomBytes(32).toString("base64url")}`;
+        const credential = await issue("Pre-auth limit");
+        await db.rateLimit.create({
+            data: {
+                key: `ops:ip:${sourceIp}`,
+                hits: 119,
+                expiresAt: new Date(Date.now() + 60_000),
+            },
+        });
+        assert.equal((await call("/overview", { token, headers })).status, 401);
+        const limited = await call("/nodes", { token, headers });
+        assert.equal(limited.status, 429);
+        assert.ok(Number(limited.headers.get("Retry-After")) > 0);
+        assert.equal(
+            (await call("/overview", { token: credential.token, headers }))
+                .status,
+            429,
+        );
+        assert.deepEqual(await calls(credential.id), []);
+        assert.equal(
+            (
+                await call("/overview", {
+                    token: credential.token,
+                    headers: { "x-forwarded-for": "192.0.2.33" },
+                })
+            ).status,
+            200,
+        );
     });
 
     it("rejects expired tokens, checks exact IPs, and enforces scopes", async () => {
@@ -160,6 +364,12 @@ describe("Bearer operations API", () => {
         assert.equal(
             (await call("/overview", { token: expired.token })).status,
             401,
+        );
+        assert.deepEqual(
+            (await calls(expired.id)).map(
+                ({ detail }) => (detail as { status: number }).status,
+            ),
+            [401],
         );
         const restricted = await issue("Restricted", {
             allowedIps: ["2001:db8::a", "192.0.2.10"],
@@ -201,6 +411,12 @@ describe("Bearer operations API", () => {
         assert.equal(
             (await db.user.findUniqueOrThrow({ where: { id: user } })).banned,
             false,
+        );
+        assert.deepEqual(
+            (await calls(restricted.id)).map(
+                ({ detail }) => (detail as { status: number }).status,
+            ),
+            [403, 200, 200, 403],
         );
     });
 
@@ -534,7 +750,11 @@ describe("Bearer operations API", () => {
                 ),
                 `${method} ${endpoint.path} in docs/ops-api.md`,
             );
-            const response = await call(path, { token, method });
+            const response = await call(path, {
+                token,
+                method,
+                headers: { "x-forwarded-for": "192.0.2.34" },
+            });
             assert.equal(
                 response.status,
                 method === "GET" ? 200 : 400,
@@ -556,5 +776,56 @@ describe("Bearer operations API", () => {
             );
         }
         assert.equal((await calls(id)).length, opsEndpoints.length);
+    });
+
+    it("replays recent keys, executes expired keys again and cleans up expired rows", async () => {
+        const { id, token } = await issue("Replay retention");
+        const day = 86_400_000;
+        const now = new Date();
+        const recent = randomUUID();
+        const expired = randomUUID();
+        const unused = randomUUID();
+        const body = {
+            title: "Retention test",
+            content: "Test notice",
+            published: false,
+        };
+        async function createNotice(key: string) {
+            const response = await call("/notices", { token, key, body });
+            assert.equal(response.status, 201, await response.clone().text());
+            return {
+                result: (await response.json()) as { id: number },
+                replayed: response.headers.get("Idempotency-Replayed"),
+            };
+        }
+
+        const originalRecent = await createNotice(recent);
+        const originalExpired = await createNotice(expired);
+        await createNotice(unused);
+        await db.opsWriteRequest.update({
+            where: { tokenId_key: { tokenId: id, key: recent } },
+            data: { createdAt: new Date(now.getTime() - 29 * day) },
+        });
+        await db.opsWriteRequest.updateMany({
+            where: { tokenId: id, key: { in: [expired, unused] } },
+            data: { createdAt: new Date(now.getTime() - 31 * day) },
+        });
+
+        const recentRetry = await createNotice(recent);
+        assert.equal(recentRetry.replayed, "true");
+        assert.deepEqual(recentRetry.result, originalRecent.result);
+        const expiredRetry = await createNotice(expired);
+        assert.equal(expiredRetry.replayed, null);
+        assert.notEqual(expiredRetry.result.id, originalExpired.result.id);
+
+        assert.deepEqual(await runMaintenance(now), []);
+        const remaining = await db.opsWriteRequest.findMany({
+            where: { tokenId: id },
+            select: { key: true },
+        });
+        assert.deepEqual(
+            new Set(remaining.map((row) => row.key)),
+            new Set([recent, expired]),
+        );
     });
 });

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { OpsToken, Prisma } from "@prisma/client";
 import {
     idParam,
@@ -15,7 +16,7 @@ export interface OpsCall {
     replayKey?: Buffer;
     clientIp?: string;
     endpoint?: string;
-    requestId?: string;
+    requestId: string;
     summary?: Prisma.InputJsonObject;
 }
 
@@ -39,10 +40,12 @@ export function startOpsCall(req: Request, res: Response): OpsCall {
     const endpoint = routes.find(
         (route) => route.method === method && route.matches.test(req.path),
     );
-    const requestId = res.getHeader("X-Request-Id");
+    const header = res.getHeader("X-Request-Id");
+    const requestId = typeof header === "string" ? header : randomUUID();
+    res.setHeader("X-Request-Id", requestId);
     return (req.ops = {
         endpoint: endpoint?.path,
-        requestId: typeof requestId === "string" ? requestId : undefined,
+        requestId,
     });
 }
 
@@ -110,7 +113,7 @@ export function opsAuditDetail(
         tokenName: context.token?.name ?? null,
         status,
         replayed,
-        ...(context.requestId && { requestId: context.requestId }),
+        requestId: context.requestId,
         params: context.summary ?? {},
     };
 }
