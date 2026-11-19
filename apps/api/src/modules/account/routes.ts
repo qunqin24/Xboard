@@ -1,3 +1,4 @@
+import { requireCaptcha } from "../auth/captcha";
 import { Router } from "express";
 import {
     forgotBody,
@@ -33,8 +34,9 @@ accountRoutes.post(
     "/auth/forgot",
     rateLimit({ limit: 3, windowMs: 60_000, scope: "forgot" }),
     async (req, res) => {
-        requireMail();
-        const { email } = parse(forgotBody, req.body);
+        await requireMail();
+        const { email, captchaToken } = parse(forgotBody, req.body);
+        await requireCaptcha("forgot", captchaToken, req.ip);
         // Per mailbox as well, so many IPs cannot flood one inbox.
         await enforce(`forgot:${email}`, 60 * 60_000, 5);
         const user = await db.user.findUnique({ where: { email } });
@@ -52,7 +54,7 @@ accountRoutes.post(
     rateLimit({ limit: 3, windowMs: 60_000, scope: "verify-email" }),
     requireUser,
     async (req, res) => {
-        requireMail();
+        await requireMail();
         const user = currentUser(req);
         if (!user.verifiedAt) await sendEmailLink(user, "verify");
         res.status(201).json({ ok: true });

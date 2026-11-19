@@ -1,5 +1,7 @@
 # Xboard TypeScript
 
+[English](README.en.md)
+
 独立的订阅管理系统，使用 React、Express、Prisma 和 PostgreSQL。
 当前工作区仅保留新项目，旧 PHP 实现可通过 Git 历史查阅。
 
@@ -10,7 +12,7 @@
 ```bash
 pnpm install
 docker compose -f compose.typescript.yaml up -d
-cp apps/api/.env.example apps/api/.env
+cp -n apps/api/.env.example apps/api/.env
 pnpm db:setup
 pnpm dev
 ```
@@ -28,7 +30,21 @@ pnpm dev
 
 账户与邮件验证、套餐订单、余额支付、订阅生成、节点用量上报、公告工单、
 管理员手动入账、套餐与节点管理、审计记录和邮件队列。
-外部支付当前关闭；节点支持 UniProxy 和 XrayR 旧 V2board 接口。
+在线支付可启用易支付或 Stripe。支持邀请佣金、提现审核、Telegram 通知、三种人机验证和中英双语。节点支持 UniProxy 和 XrayR 旧 V2board 接口。
+
+![管理后台仪表盘](docs/images/overview.png)
+
+## 部署与升级
+
+把面板域名指向服务器，按 [Docker 部署说明](docs/typescript-deployment.md) 填写 `ops/.env`，然后启动服务。
+
+```bash
+docker compose --env-file ops/.env -f compose.production.yaml up -d --build
+```
+
+首次启动后，从 API 日志获取安装码，在 `/setup` 创建管理员。SMTP、备份和告警可在后台配置。
+
+升级时先备份数据库和应用密钥，按 [发布与升级说明](docs/releases.md) 选择同一版本的 API 与 Web 镜像，执行前向迁移并核对业务数据。
 
 ## 目录与文档
 
@@ -41,6 +57,9 @@ pnpm dev
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 功能、业务规则、管理员初始化和开发说明 |
 | [节点接入](docs/typescript-nodes.md) | 支持范围、配置及验证边界 |
 | [部署说明](docs/typescript-deployment.md) | Docker、HTTPS、邮件与备份 |
+| [运维 API](docs/ops-api.md) | 接入自动化管理 |
+| [贡献指南](CONTRIBUTING.md) | 开发、测试与提交 |
+| [安全报告](SECURITY.md) | 私下报告漏洞 |
 
 ```bash
 pnpm typecheck
@@ -48,7 +67,7 @@ pnpm test
 pnpm build
 ```
 
-真实节点、生产 SMTP、容器启动和公网 HTTPS 仍需在目标环境验收。
+真实节点、生产 SMTP 和公网 HTTPS 仍需在目标环境验收。
 
 ## 来源与许可证
 
@@ -56,4 +75,4 @@ pnpm build
 前端界面改编自 [shadcn-admin](https://github.com/satnaing/shadcn-admin)（MIT，
 许可证见 `apps/user/LICENSE.shadcn-admin`）。
 保留原仓库 Git 历史及 [MIT 许可证](LICENSE)。
-新项目不依赖 PHP，不兼容旧数据库或旧插件；推送代码不会自动部署线上服务。
+TypeScript 版采用新的数据库结构。旧 PHP 站点的数据需要单独迁移，保留原数据库副本，并在切换时轮换节点密钥。

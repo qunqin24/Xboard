@@ -1,3 +1,4 @@
+import { validLocale } from "../site/language";
 import { randomUUID } from "node:crypto";
 import type { User } from "@prisma/client";
 import type {
@@ -6,7 +7,7 @@ import type {
     TrafficDay,
     TrafficItem,
 } from "@xboard/contracts";
-import { getConfig, getSmtpConfig } from "../../config";
+import { getConfig } from "../../config";
 import { db, lockUser } from "../../db";
 import { badRequest, HttpError } from "../../http/errors";
 import { hashPassword, verifyPassword } from "../auth/password";
@@ -14,6 +15,7 @@ import { newToken, revokeAccess, sessionDigest } from "../auth/service";
 import { toPlan } from "../plans/service";
 import { enqueueTemplate } from "../mail/templates";
 import { readSettings } from "../site/service";
+import { getSmtpConfig } from "../system/settings";
 
 export function unixSeconds(date: Date | null): number | null {
     return date === null ? null : Math.floor(date.getTime() / 1000);
@@ -46,8 +48,8 @@ export async function toAccount(user: User): Promise<Account> {
     };
 }
 
-export function requireMail() {
-    if (!getSmtpConfig())
+export async function requireMail() {
+    if (!(await getSmtpConfig()))
         throw new HttpError(503, "邮件服务尚未配置，请联系管理员。");
 }
 
@@ -113,6 +115,7 @@ export async function sendEmailLink(
             purpose === "verify" ? "verify_email" : "reset_password",
             user.email,
             { link, siteName },
+            validLocale(user.locale),
         );
         return true;
     });

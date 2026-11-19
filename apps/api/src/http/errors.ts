@@ -1,4 +1,5 @@
 import type { ErrorRequestHandler, RequestHandler } from "express";
+import { translateMessage } from "@xboard/contracts";
 import { Prisma } from "@prisma/client";
 import { errorFields } from "../logging";
 
@@ -25,7 +26,14 @@ export function errorBody(status: number, message: string, code?: string) {
 }
 
 export const notFoundHandler: RequestHandler = (_req, res) => {
-    res.status(404).json(errorBody(404, "接口不存在。"));
+    res.status(404).json(
+        errorBody(
+            404,
+            _req.get("X-Xboard-Locale") === "en-US"
+                ? "Endpoint not found."
+                : "接口不存在。",
+        ),
+    );
 };
 
 /** Every error leaves as `{ error: { status, message } }`; only 5xx are logged. */
@@ -44,7 +52,9 @@ export const errorHandler: ErrorRequestHandler = (
     res.status(status).json(
         errorBody(
             status,
-            message,
+            _req.get("X-Xboard-Locale") === "en-US"
+                ? translateMessage("en-US", message)
+                : message,
             error instanceof HttpError ? error.code : undefined,
         ),
     );

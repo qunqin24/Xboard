@@ -20,6 +20,7 @@ import {
     shadowrocketBuild,
     shadowrocketLinks,
 } from "../src/modules/nodes/shadowrocket";
+import { iniProfile } from "../src/modules/nodes/ini-profile";
 import { loon } from "../src/modules/nodes/loon";
 import { quantumultx } from "../src/modules/nodes/quantumultx";
 import { entryFor, mihomo, singbox } from "../src/modules/nodes/subscription";
@@ -2431,5 +2432,80 @@ describe("client format detection", () => {
             "loon",
         );
         assert.equal(formatForUserAgent("Balloon/1.0"), "mihomo");
+    });
+});
+
+describe("Surge and Surfboard subscription profiles", () => {
+    it("writes only public Reality parameters for a TCP VLESS node", () => {
+        const node = fakeNode("vless", {
+            security: "reality",
+            flow: "xtls-rprx-vision",
+            reality: {
+                serverName: "cover.example.test",
+                publicKey: PUBLIC_KEY,
+                privateKey: PRIVATE_KEY,
+                shortId: "abcd",
+            },
+        });
+        for (const client of ["surge", "surfboard"] as const) {
+            const profile = iniProfile([entryFor(node)], UUID, client);
+            assert.ok(profile);
+            assert.ok(profile.includes(`reality-public-key=${PUBLIC_KEY}`));
+            assert.match(
+                profile,
+                /reality-short-id=abcd, flow=xtls-rprx-vision/,
+            );
+            assert.ok(!profile.includes(PRIVATE_KEY));
+        }
+    });
+
+    it("writes safe INI with the relay address and backend TLS for both clients", () => {
+        const relay = fakeNode(
+            "vmess",
+            {},
+            {
+                name: "Relay,=\n[Rule]",
+                host: "relay.example.test",
+                port: 8443,
+            },
+        );
+        const parent = fakeNode("vmess", {
+            transport: {
+                network: "ws",
+                path: "/tunnel",
+                host: "cdn.example.test",
+            },
+        });
+        const ss = fakeNode("shadowsocks");
+        const reality = fakeNode("vless", { security: "reality" });
+        const entries = [
+            entryFor(relay, parent),
+            entryFor(ss),
+            entryFor(reality),
+        ];
+        for (const client of ["surge", "surfboard"] as const) {
+            const profile = iniProfile(entries, UUID, client);
+            assert.ok(profile);
+            assert.match(profile, /vmess, relay\.example\.test, 8443/);
+            assert.match(
+                profile,
+                /sni=node\.example\.test, skip-cert-verify=false, ws=true, ws-path=\/tunnel, ws-headers=Host:cdn\.example\.test/,
+            );
+            assert.match(
+                profile,
+                /ss, node\.example\.test, 443, encrypt-method=aes-128-gcm/,
+            );
+            assert.equal(profile.match(/\[Rule\]/g)?.length, 1);
+            assert.match(profile, /\[Proxy Group\]\nXboard = select/);
+            assert.match(profile, /FINAL, Xboard/);
+            assert.ok(!profile.includes("vless-node"));
+            assert.equal(iniProfile([entryFor(reality)], UUID, client), null);
+        }
+    });
+
+    it("keeps Stash on compatible Mihomo output and detects the new clients", () => {
+        assert.equal(formatForUserAgent("Surge/6.5"), "surge");
+        assert.equal(formatForUserAgent("Surfboard/2.9 Android"), "surfboard");
+        assert.equal(formatForUserAgent("Stash/3.2"), "mihomo");
     });
 });

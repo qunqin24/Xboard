@@ -1,7 +1,8 @@
 import nodemailer from "nodemailer";
-import { getConfig, getSmtpConfig } from "../config";
+import { getConfig } from "../config";
 import { db } from "../db";
 import { errorFields, log, reportJobFailure } from "../logging";
+import { getSmtpConfig } from "../modules/system/settings";
 
 export const MAX_MAIL_ATTEMPTS = 5;
 const BATCH = 5;
@@ -14,20 +15,24 @@ let busy = false;
  * link) is cleared.
  */
 export async function flushMail() {
-    const smtp = getSmtpConfig();
-    if (!smtp || busy) return;
+    if (busy) return;
     busy = true;
-    const transport = nodemailer.createTransport({
-        host: smtp.host,
-        port: smtp.port,
-        secure: smtp.secure,
-        // Production refuses to send links over an unencrypted connection.
-        requireTLS: getConfig().production && !smtp.secure,
-        auth: smtp.user ? { user: smtp.user, pass: smtp.password } : undefined,
-        connectionTimeout: 10_000,
-        socketTimeout: 15_000,
-    });
+    let transport: ReturnType<typeof nodemailer.createTransport> | undefined;
     try {
+        const smtp = await getSmtpConfig();
+        if (!smtp) return;
+        transport = nodemailer.createTransport({
+            host: smtp.host,
+            port: smtp.port,
+            secure: smtp.secure,
+            // Production refuses to send links over an unencrypted connection.
+            requireTLS: getConfig().production && !smtp.secure,
+            auth: smtp.user
+                ? { user: smtp.user, pass: smtp.password }
+                : undefined,
+            connectionTimeout: 10_000,
+            socketTimeout: 15_000,
+        });
         const now = new Date();
         const jobs = await db.$transaction(async (tx) => {
             // Compare against a UTC parameter, not NOW(): columns are UTC timestamps
@@ -101,7 +106,7 @@ export async function flushMail() {
     } catch (error) {
         reportJobFailure("mail queue", error);
     } finally {
-        transport.close();
+        transport?.close();
         busy = false;
     }
 }

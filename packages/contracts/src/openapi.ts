@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { endpoints, errorSchema, opsEndpoints } from "./endpoints";
-import { OPS_API_PREFIX, opsIdempotencyKey } from "./ops";
+import {
+    OPS_API_PREFIX,
+    OPS_IDEMPOTENCY_RETENTION_DAYS,
+    OPS_REQUESTS_PER_MINUTE,
+    opsIdempotencyKey,
+} from "./ops";
 
 const ERRORS: Record<number, string> = {
     400: "参数错误",
@@ -63,8 +68,7 @@ function buildDocument(ops: boolean) {
                 name: "Idempotency-Key",
                 in: "header",
                 required: true,
-                description:
-                    "同一令牌下每次写操作的 UUID。重试时保持请求内容及此键相同。",
+                description: `同一令牌下每次写操作的 UUID。${OPS_IDEMPOTENCY_RETENTION_DAYS} 天内重试时保持请求内容及此键相同。`,
                 schema: schema(opsIdempotencyKey, "input"),
             });
         const status = endpoint.status ?? 200;
@@ -91,8 +95,20 @@ function buildDocument(ops: boolean) {
               ? [400, 401, 403, 409, 429]
               : [400, 401, 403, 404, 409, 429])
             responses[code] = {
-                description: ERRORS[code],
+                description:
+                    ops && code === 429
+                        ? `来源 IP 或令牌超出每分钟 ${OPS_REQUESTS_PER_MINUTE} 次的请求上限`
+                        : ERRORS[code],
                 content: errorContent,
+                ...(ops &&
+                    code === 429 && {
+                        headers: {
+                            "Retry-After": {
+                                description: "再次请求前应等待的秒数",
+                                schema: { type: "integer" },
+                            },
+                        },
+                    }),
             };
         paths[path] ??= {};
         paths[path][endpoint.method] = {

@@ -3,7 +3,9 @@ import { loginBody, registerBody, registerCodeBody } from "@xboard/contracts";
 import { getConfig } from "../../config";
 import { parse } from "../../http/validate";
 import { enforce, rateLimit } from "../../http/rate-limit";
+import { defaultLocale, requestLocale } from "../site/language";
 import { requireMail } from "../account/service";
+import { requireCaptcha } from "./captcha";
 import { register, sendRegisterCode } from "./registration";
 import { login, logout, SESSION_COOKIE, SESSION_TTL_SECONDS } from "./service";
 
@@ -23,7 +25,14 @@ authRoutes.post(
     rateLimit({ limit: 3, windowMs: 60_000, scope: "register" }),
     async (req, res) => {
         const input = parse(registerBody, req.body);
-        res.status(201).json(await register(input, req.ip));
+        await requireCaptcha("register", input.captchaToken, req.ip);
+        res.status(201).json(
+            await register(
+                input,
+                req.ip,
+                requestLocale(req) ?? (await defaultLocale()),
+            ),
+        );
     },
 );
 
@@ -31,12 +40,16 @@ authRoutes.post(
     "/auth/register/code",
     rateLimit({ limit: 3, windowMs: 60_000, scope: "register-code" }),
     async (req, res) => {
-        requireMail();
-        const { email } = parse(registerCodeBody, req.body);
+        await requireMail();
+        const { email, captchaToken } = parse(registerCodeBody, req.body);
+        await requireCaptcha("register_code", captchaToken, req.ip);
         // Per mailbox as well, so many IPs cannot flood one inbox.
         await enforce(`register-code:${email}`, 60 * 60_000, 5);
         res.status(201).json({
-            retryAfterSeconds: await sendRegisterCode(email),
+            retryAfterSeconds: await sendRegisterCode(
+                email,
+                requestLocale(req) ?? (await defaultLocale()),
+            ),
         });
     },
 );
@@ -46,6 +59,7 @@ authRoutes.post(
     rateLimit({ limit: 5, windowMs: 60_000, scope: "login" }),
     async (req, res) => {
         const input = parse(loginBody, req.body);
+        await requireCaptcha("login", input.captchaToken, req.ip);
         const result = await login(input.email, input.password, {
             twoFactorCode: input.twoFactorCode,
             userAgent: req.get("User-Agent"),
@@ -54,7 +68,10 @@ authRoutes.post(
             ...cookieOptions(),
             maxAge: SESSION_TTL_SECONDS * 1000,
         });
-        res.json({ email: result.email });
+        res.json({
+            email: result.email,
+            ...(result.locale && { locale: result.locale }),
+        });
     },
 );
 

@@ -345,6 +345,7 @@ export const AUDIT_LABELS: Record<string, string> = {
     "admin.bootstrap": "初始化管理员",
     "traffic.reset": "流量清零",
     "traffic.monthly_reset": "月度流量重置",
+    "traffic.annual_reset": "年度流量重置",
     "traffic.paid_reset": "购买流量重置",
     "order.create": "管理员开单",
     "order.offline_payment": "确认线下收款",

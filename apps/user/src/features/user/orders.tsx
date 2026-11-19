@@ -35,6 +35,7 @@ import {
     formatTraffic,
     periodLabel,
 } from "@/lib/format";
+import { OnlinePayment } from "./online-payment";
 import { orderStatus } from "./status";
 
 /** Keyed by the labels orderStatus() returns. */
@@ -74,7 +75,7 @@ export function Orders() {
                         <p className="numeric text-xs text-muted-foreground">
                             {row.original.kind === "traffic_reset"
                                 ? "清零当前用量"
-                                : `${formatTraffic(row.original.transferBytes)} · ${row.original.durationDays} 天`}
+                                : `${formatTraffic(row.original.transferBytes)} · ${row.original.period === "onetime" ? "长期有效" : `${row.original.durationDays} 天`}`}
                         </p>
                     </div>
                 </div>
@@ -246,10 +247,11 @@ export function Orders() {
                             {short ? (
                                 <Alert variant="destructive">
                                     <AlertDescription>
-                                        余额不足。暂不支持在线充值，请联系管理员入账。
+                                        余额不足，可选择已启用的在线支付方式或联系管理员入账。
                                     </AlertDescription>
                                 </Alert>
                             ) : null}
+                            <OnlinePayment key={paying.id} order={paying} />
                         </div>
                     ) : (
                         ""

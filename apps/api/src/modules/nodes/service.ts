@@ -175,7 +175,7 @@ export async function recordTraffic(node: Node, input: unknown, key?: string) {
                 const ids = records.map((row) => row.userId);
                 const owned = await tx.$queryRaw<CycleUser[]>`
                     SELECT u.id, u."planId", u."expiredAt", u.upload, u.download,
-                           u."nextTrafficResetAt", u."trafficResetDay"
+                           u."nextTrafficResetAt", u."trafficResetDay", u."trafficResetMonth"
                     FROM "User" u
                     WHERE u.id = ANY(${ids}::int[])
                       AND EXISTS (SELECT 1 FROM "NodePlan" np WHERE np."nodeId" = ANY(${served}::int[]) AND np."planId" = u."planId")

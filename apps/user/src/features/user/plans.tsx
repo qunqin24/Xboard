@@ -24,6 +24,7 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LoadAnnouncement } from "@/components/load-announcement";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -87,6 +88,13 @@ function PlanCard({
     const price =
         plan.prices.find((p) => p.period === period) ?? plan.prices[0];
 
+    const quotaPeriod = {
+        none: price?.period === "onetime" ? "总计" : "每周期",
+        month_start: "每月",
+        activation_day: "每月",
+        year_start: "每年",
+        activation_anniversary: "每年",
+    }[plan.trafficResetMode];
     return (
         <Card className={current ? "border-primary" : undefined}>
             <CardHeader>
@@ -117,7 +125,7 @@ function PlanCard({
                             if (!value) return;
                             setPeriod(value as Period);
                         }}
-                        className="w-full"
+                        className="w-full flex-wrap justify-start"
                         aria-label="付款周期"
                     >
                         {plan.prices.map((p) => (
@@ -129,7 +137,7 @@ function PlanCard({
                 ) : null}
                 <ul className="space-y-field text-sm">
                     {[
-                        `${plan.trafficResetMode === "none" ? "每周期" : "每月"} ${formatTraffic(plan.transferBytes)} 流量`,
+                        `${quotaPeriod} ${formatTraffic(plan.transferBytes)} 流量`,
                         plan.speedLimitMbps
                             ? `峰值 ${plan.speedLimitMbps} Mbps`
                             : "不限速",
@@ -174,7 +182,9 @@ function PlanCard({
                           : switching
                             ? "更换套餐"
                             : current
-                              ? "续费"
+                              ? price?.period === "onetime"
+                                  ? "转为长期"
+                                  : "续费"
                               : "购买"}
                 </Button>
             </CardFooter>
@@ -201,11 +211,16 @@ export function Plans() {
             actions={<RedeemGift />}
             help={
                 <>
-                    月付 30 天、季付 90 天、年付 365 天。
+                    月付 30 天、季付 90 天、半年付 180 天、年付 365 天、两年付
+                    730 天、三年付 1095 天。一次性套餐长期有效。
                     更换套餐时，按剩余时间折算已购买的权益。抵扣后的差额将从余额扣除或退回余额。
                 </>
             }
         >
+            <LoadAnnouncement
+                loading={plans.isPending && !account.isError}
+                failed={account.isError || plans.isError}
+            />
             {hasActivePlan &&
                 (resetPrice !== null ||
                     (nextReset &&

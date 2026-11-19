@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -28,6 +31,9 @@ export async function startTestApp() {
         stdio: "pipe",
     });
     assert.equal(migrate.status, 0, migrate.stderr?.toString());
+    const previousDataDir = process.env.APP_DATA_DIR;
+    const dataDir = await mkdtemp(join(tmpdir(), "xboard-test-"));
+    process.env.APP_DATA_DIR = dataDir;
     const app: App = createApp({ logging: false });
     await app.listen(0, "127.0.0.1");
     const baseUrl = app.getUrl();
@@ -78,7 +84,23 @@ export async function startTestApp() {
         await app.close();
         await db.$executeRawUnsafe(`DROP SCHEMA "${schema}" CASCADE`);
         await closeDb();
+        await rm(dataDir, { recursive: true, force: true });
+        if (previousDataDir === undefined) delete process.env.APP_DATA_DIR;
+        else process.env.APP_DATA_DIR = previousDataDir;
     }
 
     return { app, baseUrl, call, createUser, cookieFor, stop };
+}
+
+export async function setTestSmtp(host = "", port = 587) {
+    for (const [key, value] of Object.entries({
+        smtpHost: host,
+        smtpPort: port,
+        mailFrom: "Xboard <noreply@example.test>",
+    }))
+        await db.setting.upsert({
+            where: { key },
+            create: { key, value },
+            update: { value },
+        });
 }

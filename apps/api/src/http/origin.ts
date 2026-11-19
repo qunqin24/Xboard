@@ -1,3 +1,4 @@
+import { translateMessage } from "@xboard/contracts";
 import type { RequestHandler } from "express";
 import type { Config } from "../config";
 import { errorBody } from "./errors";
@@ -33,7 +34,15 @@ export function originCheck(config: Config): RequestHandler {
                 req.headers["sec-fetch-site"] === "cross-site")
         ) {
             res.status(403).json(
-                errorBody(403, "请求来源不受信任，请从用户端操作。"),
+                errorBody(
+                    403,
+                    translateMessage(
+                        req.get("X-Xboard-Locale") === "en-US"
+                            ? "en-US"
+                            : "zh-CN",
+                        "请求来源不受信任，请从用户端操作。",
+                    ),
+                ),
             );
             return;
         }

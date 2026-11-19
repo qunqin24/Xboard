@@ -1,3 +1,4 @@
+import { enqueueTelegram } from "../telegram/service";
 import type { Prisma } from "@prisma/client";
 import type { Notice, Ticket } from "@xboard/contracts";
 import { db, type Tx } from "../../db";
@@ -72,15 +73,20 @@ export async function openTicket(
     subject: string,
     content: string,
 ): Promise<Ticket> {
-    const row = await db.ticket.create({
-        data: {
-            subject,
-            userId,
-            messages: { create: { content, authorId: userId, isStaff: false } },
-        },
-        include: ticketInclude,
+    return db.$transaction(async (tx) => {
+        const row = await tx.ticket.create({
+            data: {
+                subject,
+                userId,
+                messages: {
+                    create: { content, authorId: userId, isStaff: false },
+                },
+            },
+            include: ticketInclude,
+        });
+        await enqueueTelegram(tx, `ticket:${row.id}`, `新工单 #${row.id}`);
+        return toTicket(row);
     });
-    return toTicket(row);
 }
 
 export async function replyToTicket(

@@ -13,7 +13,7 @@ import {
     mailboxKey,
 } from "../src/modules/auth/registration";
 import { SETTING_DEFAULTS } from "../src/modules/site/service";
-import { startTestApp } from "./helpers";
+import { setTestSmtp, startTestApp } from "./helpers";
 
 type Harness = Awaited<ReturnType<typeof startTestApp>>;
 const PASSWORD = "registration-pass-1";
@@ -71,16 +71,15 @@ describe("registration", () => {
         planId = plan.id;
     });
     after(async () => {
-        delete process.env.SMTP_HOST;
         await t?.stop();
     });
     beforeEach(async () => {
-        process.env.SMTP_HOST = "127.0.0.1";
+        await setTestSmtp("127.0.0.1");
         assert.equal((await configure({})).status, 200);
     });
 
     it("refuses to require email codes without a mail service", async () => {
-        delete process.env.SMTP_HOST;
+        await setTestSmtp();
         const response = await configure({ emailCodeRequired: true });
         assert.equal(response.status, 400);
         assert.match(JSON.stringify(await response.json()), /邮件服务/);

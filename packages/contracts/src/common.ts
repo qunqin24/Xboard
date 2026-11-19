@@ -24,7 +24,15 @@ export const uuidParam = z.uuid("编号格式不正确");
 /** Byte counts travel as decimal strings so BigInt precision survives JSON. */
 export const bytesSchema = z.string().regex(/^\d+$/, "流量需为非负整数字节数");
 
-export const periodSchema = z.enum(["monthly", "quarterly", "yearly"]);
+export const periodSchema = z.enum([
+    "monthly",
+    "quarterly",
+    "half_yearly",
+    "yearly",
+    "two_yearly",
+    "three_yearly",
+    "onetime",
+]);
 export type Period = z.infer<typeof periodSchema>;
 
 export const okSchema = z.object({ ok: z.literal(true) });

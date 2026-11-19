@@ -1,3 +1,4 @@
+import { setTestSmtp } from "./helpers";
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { parse as parseYaml } from "yaml";
@@ -554,6 +555,24 @@ describe("development API slice", () => {
             assert.ok(format === "mihomo" ? body.proxies : body.outbounds);
             assert.ok(!JSON.stringify(body).includes(nodeToken));
         }
+        for (const format of ["surge", "surfboard"]) {
+            const response = await fetch(
+                `${baseUrl}/api/subscription/${subscriptionToken}?format=${format}`,
+            );
+            assert.equal(response.status, 200);
+            assert.equal(
+                response.headers.get("content-disposition"),
+                'attachment; filename="xboard.conf"',
+            );
+            assert.match(
+                response.headers.get("subscription-userinfo") ?? "",
+                /total=\d+/,
+            );
+            const profile = await response.text();
+            assert.match(profile, /^\[Proxy\]/);
+            assert.match(profile, /vless, /);
+            assert.ok(!profile.includes(nodeToken));
+        }
         assert.equal(
             (
                 await fetch(
@@ -744,7 +763,7 @@ describe("development API slice", () => {
     });
 
     it("queues private email links, consumes them once and revokes sessions on reset", async () => {
-        process.env.SMTP_HOST = "localhost";
+        await setTestSmtp("localhost");
         const verification = await platform(
             "/account/verify-email",
             "POST",
@@ -846,7 +865,7 @@ describe("development API slice", () => {
             (await platform("/account", "GET", undefined, normalCookie)).status,
             401,
         );
-        delete process.env.SMTP_HOST;
+        await setTestSmtp();
     });
 
     it("adapts legacy XrayR Deepbwork users and traffic envelopes", async () => {
@@ -946,10 +965,7 @@ describe("development API slice", () => {
             server.listen(0, "127.0.0.1", resolve),
         );
         const address = server.address() as { port: number };
-        const oldHost = process.env.SMTP_HOST,
-            oldPort = process.env.SMTP_PORT;
-        process.env.SMTP_HOST = "127.0.0.1";
-        process.env.SMTP_PORT = String(address.port);
+        await setTestSmtp("127.0.0.1", address.port);
         try {
             const job = await prisma.mail.create({
                 data: {
@@ -970,10 +986,7 @@ describe("development API slice", () => {
                 ),
             );
         } finally {
-            if (oldHost === undefined) delete process.env.SMTP_HOST;
-            else process.env.SMTP_HOST = oldHost;
-            if (oldPort === undefined) delete process.env.SMTP_PORT;
-            else process.env.SMTP_PORT = oldPort;
+            await setTestSmtp();
             await new Promise<void>((resolve) => server.close(() => resolve()));
         }
     });

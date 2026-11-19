@@ -1,3 +1,4 @@
+import { chosenLocale, currentLocale } from "@/i18n";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ApiError } from "@/api/client";
@@ -29,6 +30,7 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/password-input";
 import { handleServerError } from "@/lib/handle-server-error";
 import { AuthLayout } from "../auth-layout";
+import { useCaptcha } from "../captcha";
 import { safeRedirect } from "../redirect";
 
 const formSchema = z.object({
@@ -48,6 +50,7 @@ export function SignIn() {
     const login = useLogin();
     const [needsFactor, setNeedsFactor] = useState(false);
     const site = useSite();
+    const captcha = useCaptcha("login");
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
         defaultValues: { email: "", password: "", twoFactorCode: "" },
@@ -64,12 +67,24 @@ export function SignIn() {
             });
             return;
         }
+        const challenge = captcha.take();
+        if (!challenge) return;
         try {
-            await login.mutateAsync({
+            const result = await login.mutateAsync({
                 ...credentials,
+                ...challenge,
                 ...(proof?.success && { twoFactorCode: proof.data }),
             });
-            await navigate({ to: safeRedirect(redirect), replace: true });
+            const target = safeRedirect(redirect);
+            if (
+                !chosenLocale() &&
+                result.locale &&
+                result.locale !== currentLocale()
+            ) {
+                window.location.replace(target);
+                return;
+            }
+            await navigate({ to: target, replace: true });
         } catch (error) {
             // A wrong password is a form error, not a toast.
             if (
@@ -170,6 +185,7 @@ export function SignIn() {
                                     )}
                                 />
                             )}
+                            {captcha.content}
                             <LoadingButton
                                 icon={<LogIn />}
                                 className="w-full"

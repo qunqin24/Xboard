@@ -23,12 +23,17 @@ import { nodeRoutes } from "./modules/nodes/routes";
 import { subscriptionRoutes } from "./modules/nodes/subscription-routes";
 import { ruleListRoutes } from "./modules/templates/public-routes";
 import { orderRoutes } from "./modules/orders/routes";
+import { paymentsRoutes, paymentWebhooks } from "./modules/payments/routes";
 import { planRoutes } from "./modules/plans/routes";
+import { localeRoutes } from "./modules/site/locale";
 import { siteRoutes } from "./modules/site/routes";
 import { supportRoutes } from "./modules/support/routes";
 import { helpRoutes } from "./modules/help/routes";
 import { redemptionRoutes } from "./modules/promotions/routes";
 import { opsRoutes } from "./modules/ops/routes";
+import { commissionRoutes } from "./modules/commission/routes";
+import { telegramRoutes, telegramWebhook } from "./modules/telegram/routes";
+import { setupRoutes } from "./modules/system/setup";
 
 /**
  * Build the HTTP app. Tests call this directly; server.ts adds listening,
@@ -52,6 +57,8 @@ export function createApp(options: { logging?: boolean } = {}) {
         next();
     });
     app.use(OPS_API_PREFIX, opsRoutes);
+    app.use("/api/payments/webhooks", paymentWebhooks);
+    app.use("/api/telegram", telegramWebhook);
     app.use(originCheck(config));
     app.use(cookieParser());
     app.use(express.json({ limit: "1mb" }));
@@ -83,13 +90,18 @@ export function createApp(options: { logging?: boolean } = {}) {
         );
     }
     api.use(
+        setupRoutes,
         authRoutes,
         accountRoutes,
+        commissionRoutes,
+        telegramRoutes,
         securityRoutes,
         planRoutes,
         orderRoutes,
+        paymentsRoutes,
         supportRoutes,
         siteRoutes,
+        localeRoutes,
         helpRoutes,
         redemptionRoutes,
     );

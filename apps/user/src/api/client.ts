@@ -1,3 +1,4 @@
+import { currentLocale } from "@/i18n";
 /** A failed API call; `message` is the server's Chinese error text. */
 export class ApiError extends Error {
     constructor(
@@ -28,10 +29,12 @@ export async function request<T>(
     const response = await fetch(`/api${path}`, {
         method,
         credentials: "same-origin",
-        headers:
-            body === undefined
-                ? undefined
-                : { "content-type": "application/json" },
+        headers: {
+            "X-Xboard-Locale": currentLocale(),
+            ...(body === undefined
+                ? {}
+                : { "content-type": "application/json" }),
+        },
         body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (response.status === 204) return undefined as T;

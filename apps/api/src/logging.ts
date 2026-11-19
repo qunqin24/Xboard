@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { RequestHandler } from "express";
+import { getSettingSecret } from "./modules/system/settings";
 
 type LogLevel = "info" | "warn" | "error";
 type LogFields = Record<string, unknown>;
@@ -56,37 +57,37 @@ type Alert =
           job: string;
       };
 
+export async function sendAlertWebhook(value: string, payload: LogFields) {
+    const url = new URL(value);
+    if (
+        url.protocol !== "https:" &&
+        !(
+            url.protocol === "http:" &&
+            ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
+        )
+    )
+        throw new Error("Invalid webhook protocol");
+    const response = await fetch(url, {
+        method: "POST",
+        redirect: "error",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...payload, time: new Date().toISOString() }),
+        signal: AbortSignal.timeout(5_000),
+    });
+    await response.body?.cancel();
+    if (!response.ok)
+        throw new Error(`Alert webhook returned ${response.status}.`);
+}
+
 const lastAlert = new Map<string, number>();
 export async function alertFailure(alert: Alert) {
-    const value = process.env.ALERT_WEBHOOK_URL;
-    if (!value) return;
     const key = alert.event === "job.failed" ? alert.job : alert.event;
     const now = Date.now();
     if (now - (lastAlert.get(key) ?? 0) < 60_000) return;
     lastAlert.set(key, now);
     try {
-        const url = new URL(value);
-        if (
-            url.protocol !== "https:" &&
-            !(
-                url.protocol === "http:" &&
-                ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
-            )
-        )
-            throw new Error("Invalid webhook protocol");
-        const response = await fetch(url, {
-            method: "POST",
-            redirect: "error",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-                ...alert,
-                time: new Date(now).toISOString(),
-            }),
-            signal: AbortSignal.timeout(5_000),
-        });
-        await response.body?.cancel();
-        if (!response.ok)
-            log("warn", "alert.delivery_failed", { status: response.status });
+        const url = await getSettingSecret("alertWebhookUrl");
+        if (url) await sendAlertWebhook(url, alert);
     } catch (error) {
         log("warn", "alert.delivery_failed", { error: errorFields(error) });
     }

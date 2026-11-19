@@ -1,5 +1,6 @@
+import { defaultLocale, validLocale } from "../modules/site/language";
 import { Prisma, type User } from "@prisma/client";
-import { getConfig, getSmtpConfig } from "../config";
+import { getConfig } from "../config";
 import { db } from "../db";
 import {
     resetDueTraffic,
@@ -8,6 +9,7 @@ import {
 import { DAY_MS } from "../modules/orders/credit";
 import { readSettings } from "../modules/site/service";
 import { readTemplates, renderTemplate } from "../modules/mail/templates";
+import { getSmtpConfig } from "../modules/system/settings";
 
 const BATCH_SIZE = 100;
 
@@ -16,7 +18,7 @@ export async function runMonthlyResets(now: Date) {
     for (;;) {
         const count = await db.$transaction(async (tx) => {
             const users = await tx.$queryRaw<CycleUser[]>`
-                SELECT id, "planId", "expiredAt", upload, download, "nextTrafficResetAt", "trafficResetDay"
+                SELECT id, "planId", "expiredAt", upload, download, "nextTrafficResetAt", "trafficResetDay", "trafficResetMonth"
                 FROM "User"
                 WHERE "nextTrafficResetAt" <= ${stamp}::timestamp(3) AND "planId" IS NOT NULL
                   AND ("expiredAt" IS NULL OR "expiredAt" > ${stamp}::timestamp(3))
@@ -30,17 +32,19 @@ export async function runMonthlyResets(now: Date) {
 
 type ReminderUser = Pick<
     User,
-    "id" | "email" | "expiryReminderMask" | "trafficReminderMask"
+    "id" | "email" | "locale" | "expiryReminderMask" | "trafficReminderMask"
 > & { expiredAt: Date; expiryStage: number; trafficStages: number };
 
 export async function queueBillingReminders(now: Date) {
-    if (!getSmtpConfig()) return;
+    if (!(await getSmtpConfig())) return;
     const { expiryReminders, trafficReminders, siteName } =
         await readSettings();
     if (!expiryReminders && !trafficReminders) return;
-    const [expiryTemplate, trafficTemplate] = await readTemplates([
-        "expiry_reminder",
-        "traffic_reminder",
+    const keys = ["expiry_reminder", "traffic_reminder"] as const;
+    const [siteLocale, chinese, english] = await Promise.all([
+        defaultLocale(),
+        readTemplates(keys),
+        readTemplates(keys, db, "en-US"),
     ]);
     const stamp = now.toISOString();
     const oneDay = new Date(now.getTime() + DAY_MS).toISOString();
@@ -62,7 +66,7 @@ export async function queueBillingReminders(now: Date) {
         const count = await db.$transaction(
             async (tx) => {
                 const users = await tx.$queryRaw<ReminderUser[]>`
-                SELECT id, email, "expiredAt", "expiryReminderMask", "trafficReminderMask",
+                SELECT id, email, locale, "expiredAt", "expiryReminderMask", "trafficReminderMask",
                        ${expiryStage} AS "expiryStage", ${trafficStages} AS "trafficStages"
                 FROM "User"
                 WHERE NOT banned AND "planId" IS NOT NULL
@@ -71,6 +75,10 @@ export async function queueBillingReminders(now: Date) {
                     OR (${trafficStages} & ~"trafficReminderMask") <> 0)
                 ORDER BY id LIMIT ${BATCH_SIZE} FOR UPDATE SKIP LOCKED`;
                 for (const user of users) {
+                    const [expiryTemplate, trafficTemplate] =
+                        (validLocale(user.locale) ?? siteLocale) === "en-US"
+                            ? english
+                            : chinese;
                     const expiry = user.expiryStage & ~user.expiryReminderMask;
                     const traffic =
                         user.trafficStages & ~user.trafficReminderMask;

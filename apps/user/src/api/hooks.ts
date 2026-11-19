@@ -58,10 +58,8 @@ export function useRegister() {
 
 export function useRegisterCode() {
     return useMutation({
-        mutationFn: (email: string) =>
-            request<RegisterCodeResult>("/auth/register/code", "POST", {
-                email,
-            }),
+        mutationFn: (input: { email: string; captchaToken?: string }) =>
+            request<RegisterCodeResult>("/auth/register/code", "POST", input),
     });
 }
 

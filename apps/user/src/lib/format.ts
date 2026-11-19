@@ -1,3 +1,4 @@
+import { currentLocale } from "@/i18n";
 // Data uses decimal byte strings end to end; this module is the only place
 // that turns them into display units, so rounding rules stay consistent.
 
@@ -59,7 +60,7 @@ export function periodLabel(period: string | null): string {
 
 export function formatDate(unixSeconds: number | null): string {
     if (unixSeconds === null) return "长期有效";
-    return new Intl.DateTimeFormat("zh-CN", {
+    return new Intl.DateTimeFormat(currentLocale(), {
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
@@ -71,7 +72,7 @@ export function formatDateTime(value: string | null | undefined): string {
     if (!value) return "—";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "—";
-    return new Intl.DateTimeFormat("zh-CN", {
+    return new Intl.DateTimeFormat(currentLocale(), {
         month: "2-digit",
         day: "2-digit",
         hour: "2-digit",

@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { Router } from "express";
 import type { Prisma, User } from "@prisma/client";
 import {
+    adminCreateUserBody,
     banBody,
     bulkBanBody,
     bulkResetTrafficBody,
@@ -20,10 +21,13 @@ import { hasActivePlan } from "../account/entitlement";
 import { unixSeconds } from "../account/service";
 import { clearUsage, trafficSchedule } from "../account/traffic-cycle";
 import { hashPassword } from "../auth/password";
-import { revokeAccess } from "../auth/service";
+import { claimMailbox, mailboxKey } from "../auth/registration";
+import { newToken, revokeAccess } from "../auth/service";
 import { clearTwoFactorAttempts } from "../auth/two-factor-limit";
 import { MAX_BALANCE_MINOR } from "../orders/credit";
 import { createOrder } from "../orders/service";
+import { trafficReminderMask } from "../orders/terms";
+import { readSettings } from "../site/service";
 import { audit, numericTerm, pageArgs, paged, isoOrNull, iso } from "./shared";
 import { adminActorId, adminRead, adminWrite } from "./operations";
 
@@ -123,6 +127,29 @@ userRoutes.get(
 );
 
 userRoutes.post(
+    "/users",
+    adminWrite(201, async (req, tx) => {
+        const { email, verified } = parse(adminCreateUserBody, req.body);
+        const password = newToken();
+        const encoded = await hashPassword(password);
+        await claimMailbox(tx, email, await readSettings(tx));
+        const user = await tx.user.create({
+            data: {
+                email,
+                emailKey: mailboxKey(email),
+                password: encoded,
+                verifiedAt: verified ? new Date() : null,
+            },
+            select: { id: true, email: true },
+        });
+        await audit(tx, adminActorId(req), "user.create", user.id, {
+            verified,
+        });
+        return { ...user, password };
+    }),
+);
+
+userRoutes.post(
     "/users/:id/orders",
     adminWrite(201, async (req, tx) => {
         const id = parse(idParam, req.params.id);
@@ -164,17 +191,34 @@ userRoutes.put(
             before.planId !== input.planId ||
             (!hasActivePlan(before, now) &&
                 hasActivePlan({ planId: input.planId, expiredAt }, now));
+        const updatesUsage =
+            input.uploadBytes !== undefined ||
+            input.downloadBytes !== undefined;
         const data = {
             planId: input.planId,
             expiredAt,
             transferEnable: BigInt(input.transferBytes),
             speedLimit: input.speedLimit,
             deviceLimit: input.deviceLimit,
+            upload:
+                input.uploadBytes === undefined
+                    ? before.upload
+                    : BigInt(input.uploadBytes),
+            download:
+                input.downloadBytes === undefined
+                    ? before.download
+                    : BigInt(input.downloadBytes),
         };
         await tx.user.update({
             where: { id },
             data: {
                 ...data,
+                ...(updatesUsage && {
+                    trafficReminderMask: trafficReminderMask(
+                        data.upload + data.download,
+                        data.transferEnable,
+                    ),
+                }),
                 ...(newTerm && {
                     ...trafficSchedule(plan?.trafficResetMode ?? "none", now),
                     entitlementVersion: { increment: 1 },
@@ -188,6 +232,10 @@ userRoutes.put(
             planId: user.planId,
             expiredAt: unixSeconds(user.expiredAt),
             transferBytes: user.transferEnable.toString(),
+            ...(updatesUsage && {
+                uploadBytes: user.upload.toString(),
+                downloadBytes: user.download.toString(),
+            }),
             speedLimit: user.speedLimit,
             deviceLimit: user.deviceLimit,
         });

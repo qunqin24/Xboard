@@ -13,7 +13,11 @@ import { DAY_MS } from "./credit";
 const DURATION_DAYS: Record<Period, number> = {
     monthly: 30,
     quarterly: 90,
+    half_yearly: 180,
     yearly: 365,
+    two_yearly: 730,
+    three_yearly: 1095,
+    onetime: 0,
 };
 
 export async function lockBuyer(tx: Tx, userId: number) {
@@ -24,7 +28,12 @@ export async function lockBuyer(tx: Tx, userId: number) {
     return user;
 }
 
-export function purchaseType(user: User, planId: number, now: Date) {
+export function purchaseType(
+    user: User,
+    planId: number,
+    now: Date,
+    period: Period,
+) {
     if (!hasActivePlan(user, now)) return "new";
     if (user.planId !== planId) return "switch";
     // A permanent plan has nothing to extend; other plans can still be chosen.
@@ -32,7 +41,7 @@ export function purchaseType(user: User, planId: number, now: Date) {
         throw conflict(
             "当前套餐长期有效，无需续费。如需调整，可更换为其他套餐。",
         );
-    return "renewal";
+    return period === "onetime" ? "switch" : "renewal";
 }
 
 /** Reminder bits already passed: 1 for 80% of the quota, 2 for 95%. */
@@ -73,6 +82,7 @@ type Term = Pick<
     Order,
     | "planId"
     | "durationDays"
+    | "period"
     | "trafficResetMode"
     | "transferBytes"
     | "speedLimit"
@@ -90,7 +100,10 @@ export async function applyTerm(
 ) {
     await resetDueTraffic(tx, [user], now);
     const start = renewal ? user.expiredAt!.getTime() : now.getTime();
-    const serviceUntil = new Date(start + term.durationDays * DAY_MS);
+    const serviceUntil =
+        term.period === "onetime"
+            ? null
+            : new Date(start + term.durationDays * DAY_MS);
     const entitlementVersion = user.entitlementVersion + (renewal ? 0 : 1);
     const transferEnable =
         renewal &&

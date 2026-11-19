@@ -11,6 +11,8 @@ import { hasActivePlan } from "../account/entitlement";
 import { clearUsage, resetDueTraffic } from "../account/traffic-cycle";
 import { audit } from "../admin/shared";
 import { availableCoupon } from "../promotions/coupon";
+import { enqueueTelegram } from "../telegram/service";
+import { awardCommission } from "../commission/service";
 import { MAX_BALANCE_MINOR, remainingPlanCredit } from "./credit";
 import {
     applyTerm,
@@ -133,10 +135,16 @@ export async function createOrder(
                     userId,
                     planId: plan.id,
                 });
+            await enqueueTelegram(
+                tx,
+                `order:${order.id}`,
+                `新订单 ${order.id} · ${order.planName}`,
+            );
             return toOrder(order);
         }
         const amountMinor = priceOnSale(plan, input.period);
-        const switching = purchaseType(user, plan.id, now) === "switch";
+        const switching =
+            purchaseType(user, plan.id, now, input.period) === "switch";
         // A permanent plan (no expiry) has no remaining time to value, so
         // switching away from it earns no credit.
         const creditMinor =
@@ -173,6 +181,11 @@ export async function createOrder(
                 userId,
                 planId: plan.id,
             });
+        await enqueueTelegram(
+            tx,
+            `order:${order.id}`,
+            `新订单 ${order.id} · ${order.planName}`,
+        );
         return toOrder(order);
     };
     return transaction ? create(transaction) : db.$transaction(create);
@@ -258,7 +271,7 @@ export async function confirmOfflinePayment(
 }
 
 /** Settle against the original quote under the same locks for both payment methods. */
-async function settleOrder(
+export async function settleOrder(
     tx: Tx,
     userId: number,
     id: string,
@@ -307,7 +320,7 @@ async function settleOrder(
         throw conflict("实收金额须与订单应付金额一致，且大于 0 元。");
     const balanceDebit = receipt ? 0 : payableMinor;
     if (user.balance < balanceDebit)
-        throw badRequest("余额不足，暂未开放在线充值。");
+        throw badRequest("余额不足，请选择其他可用的支付方式。");
     if (balanceDebit < 0 && user.balance - balanceDebit > MAX_BALANCE_MINOR)
         throw conflict("退回差额后余额将超过上限，请联系管理员。");
     let paidSnapshot: Pick<OrderRow, "serviceUntil" | "entitlementVersion">;
@@ -315,7 +328,7 @@ async function settleOrder(
         resetPrice(user, plan, now);
         if (order.entitlementVersion !== user.entitlementVersion)
             throw conflict("当前套餐已变更，请取消后重新下单。");
-        // A due monthly reset below zeroes `user` in place; record what the
+        // A due automatic reset below zeroes `user` in place; record what the
         // account had used before either reset.
         const usedBefore = {
             upload: user.upload.toString(),
@@ -345,7 +358,7 @@ async function settleOrder(
         priceOnSale(plan, order.period!);
         if (order.couponId !== null)
             await availableCoupon(tx, userId, { id: order.couponId });
-        const purchase = purchaseType(user, plan.id, now);
+        const purchase = purchaseType(user, plan.id, now, order.period!);
         if (
             (purchase === "switch") !== order.replacesPlan ||
             (order.replacesPlan &&
@@ -397,10 +410,10 @@ async function settleOrder(
             paymentEntryId: payment.id,
         });
     }
-    return toOrder(
-        await tx.order.update({
-            where: { id },
-            data: { status: "paid", paidAt: now, ...paidSnapshot },
-        }),
-    );
+    const settled = await tx.order.update({
+        where: { id },
+        data: { status: "paid", paidAt: now, ...paidSnapshot },
+    });
+    await awardCommission(tx, user, settled, payableMinor);
+    return toOrder(settled);
 }

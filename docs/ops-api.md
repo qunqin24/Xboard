@@ -20,6 +20,12 @@ curl --fail-with-body --max-time 20 \
 
 后台也负责吊销令牌。过期、吊销和签发账户失去管理员权限都会使令牌失效。来源限制使用明确的 IPv4 或 IPv6 地址，比较 `TRUSTED_PROXY` 配置下的客户端地址。反向代理配置见 [部署指南](typescript-deployment.md)。
 
+## 迁移旧站账户
+
+先建套餐和节点，保存旧编号与新编号的映射。再用 `POST /users` 创建普通账户，用 `PUT /users/{id}` 迁入套餐、到期时间和累计用量。余额单独调用 `POST /users/{id}/credit`，沿用同一业务请求号以便断线后重试。用 `GET /users/{id}` 对账，切换节点时在节点软件中配置新密钥。
+
+创建接口返回临时密码。迁移时按需保管该值，也可以配置 SMTP 后引导用户通过找回密码流程设置新密码。用户从新站重新获取订阅链接。
+
 ## 权限、重试与错误
 
 | 权限 | 可执行操作 |
@@ -28,9 +34,11 @@ curl --fail-with-body --max-time 20 \
 | `admin:read` | 下方读接口 |
 | `admin:write` | 下方写接口 |
 
-写请求须带 UUID 格式的 `Idempotency-Key`。有请求体时发送 `Content-Type: application/json`。为每次逻辑操作生成一个新键，超时、断线或遇到 `5xx` 时用原令牌、原键和原请求重试。请求方法、路径参数、查询参数及 JSON 内容共同确定请求。JSON 对象各字段的顺序可以调整。重复键只重放首次成功响应或业务 `4xx` 响应，响应状态码和 JSON 相同，并带 `Idempotency-Replayed: true`。同一令牌下用相同键发送不同请求会得到 `409`。
+写请求须带 UUID 格式的 `Idempotency-Key`。有请求体时发送 `Content-Type: application/json`。为每次逻辑操作生成一个新键，超时、断线或遇到 `5xx` 时用原令牌、原键和原请求重试。请求方法、路径参数、查询参数及 JSON 内容共同确定请求。JSON 对象各字段的顺序可以调整。
 
-入账、建单和群发邮件另外沿用本文示例中的业务 `requestId`，它必须是 v4 UUID。同一次操作可以在两处使用相同的 UUID。返回临时密码、节点密钥或兑换码的同一次请求也支持重放。响应副本加密保存在数据库中，只能用原令牌重放。令牌失效后无法重放。
+同一有效令牌在 **30 天内**重试会重放首次成功响应或业务 `4xx` 响应，响应状态码和 JSON 相同，并带 `Idempotency-Replayed: true`。这段时间内，用同一个键发送不同请求会得到 `409`。超过 30 天后，同一个键会按新的运维请求处理。
+
+入账、建单和群发邮件各自用业务 `requestId` 去重，它必须是 v4 UUID。重试时保留原业务 `requestId`，也可以在两处使用相同的 UUID。返回临时密码、节点密钥或兑换码的同一次请求也支持重放。响应副本加密保存在数据库中，只能用原令牌重放。定时维护清理超过 30 天的副本，以及过期或吊销令牌的副本。
 
 ```bash
 ops_request_id="$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"
@@ -53,12 +61,14 @@ curl --fail-with-body --max-time 20 \
 | `404` | 路由或业务对象不存在。 |
 | `409` | 幂等键用于不同请求、记录重复或当前状态冲突。 |
 | `413` / `415` | JSON 请求体超过 1 MiB，或请求编码不支持。 |
-| `429` | 同一令牌每分钟最多 120 次请求。等待 `Retry-After` 指定的秒数。 |
+| `429` | 查令牌前按来源 IP 限制每分钟 120 次（IPv6 按 `/64`）。校验通过后另按令牌限制每分钟 120 次。超出任一上限后，等待 `Retry-After` 指定的秒数。 |
 | `500` | 服务错误。重试写操作时沿用原幂等键。 |
 
 ## 审计
 
-在「系统 → 审计日志」的「运维令牌」筛选器中选择令牌，也可调用 `GET /audit?opsTokenId=<UUID>`。成功、失败、只读请求和重放都记录为 `ops.request`。调用记录包含令牌名称、方法、接口模板、安全的参数摘要、HTTP 状态和重放标记。无法识别令牌的请求同样有记录，令牌字段为空。
+在「系统 → 审计日志」的「运维令牌」筛选器中选择令牌，也可调用 `GET /audit?opsTokenId=<UUID>`。能识别令牌的调用记录为 `ops.request`，包括过期、吊销和来源 IP 不匹配导致的失败。调用记录包含令牌名称、方法、接口模板、安全的参数摘要、HTTP 状态和重放标记。
+
+查令牌前触发 IP 限流的请求留在应用请求日志。鉴权时遇到缺失、格式错误或未知的令牌，只在应用侧写 `warn` 级别的 `ops.auth_failed`。这条日志包含请求 ID、来源 IP、方法、匹配到的接口模板和失败原因。令牌内容和片段均不记录。
 
 每项写入与其 `changes` 在同一事务提交。每条变更有 `resource`、`record` 和 `before`、`after`，只包含发生变化的安全字段。密码、密钥、敏感配置和长文本的变化只标字段名 `privateFields`。例如给用户 7 入账后的变更如下。
 
@@ -92,6 +102,12 @@ curl --fail-with-body --max-time 20 \
 | `GET /mail/templates` | 邮件模板及各模板的占位符 | `200 [{"key":"verify_email","subject":"验证邮箱","text":"打开 {{link}}","variables":["siteName","link"],"required":["link"]}, ...]` |
 | `GET /tickets` | 最近更新的 200 个工单及消息 | `200 [Ticket]` |
 | `GET /settings` | 查看站点设置 | `200 Settings` |
+| `GET /settings/site` | 查看站点设置 | `200 Settings` |
+| `GET /settings/mail` | 查看 SMTP 设置和密码状态 | `200 {"smtpHost":"","smtpPort":587,"smtpSecure":false,"smtpUser":"","mailFrom":"","smtpPasswordSet":false}` |
+| `GET /settings/alerts` | 查看 webhook 配置状态 | `200 {"alertWebhookUrlSet":false}` |
+| `GET /settings/captcha` | 查看人机验证配置与密钥状态 | `200 CaptchaSettings` |
+| `GET /settings/backup` | 查看备份设置及密钥状态 | `200 BackupSettings` |
+| `GET /settings/backup/runs` | 查看最近 20 次备份 | `200 []` |
 | `GET /help` | 查看帮助文档及草稿 | `200 [Help]` |
 | `GET /coupons` | 优惠券和使用次数 | `200 [{"id":3,"code":"DEMO10","amountMinor":1000,"maxUses":10,"expiresAt":null,"enabled":true,"used":0}]` |
 | `GET /gift-codes` | 兑换码状态和奖励 | `200 [{"id":4,"label":"活动赠送","kind":"balance","amountMinor":1000,"planName":null,"period":null,"expiresAt":null,"enabled":true,"redeemedAt":null}]` |
@@ -100,7 +116,8 @@ curl --fail-with-body --max-time 20 \
 
 | 请求示例 | 用途和常见业务错误 | 请求体示例 | 响应示例 | 金额与撤销 |
 | --- | --- | --- | --- | --- |
-| `PUT /users/7` | 修改用户订阅，套餐无效 `400`，用户不存在 `404` | `{"planId":3,"expiredAt":null,"transferBytes":"107374182400","speedLimit":null,"deviceLimit":null}` | `200 OK` | 无扣款。可重设之前的订阅参数，已经改变的用量周期需单独核对。 |
+| `POST /users` | 创建普通用户并生成临时密码，邮箱已存在 `409` | `{"email":"customer@example.com","verified":true}` | `201 {"id":7,"email":"customer@example.com","password":"<临时密码>"}` | 初始余额为零。可封禁此账户。 |
+| `PUT /users/7` | 修改用户订阅，套餐无效 `400`，用户不存在 `404` | `{"planId":3,"expiredAt":null,"transferBytes":"107374182400","speedLimit":null,"deviceLimit":null,"uploadBytes":"0","downloadBytes":"102400"}` | `200 OK` | 无扣款。省略 `uploadBytes` 或 `downloadBytes` 会保留对应的用量。 |
 | `POST /users/7/credit` | 手动入账，超上限 `400`，业务请求号冲突 `409` | `{"amountMinor":2500,"requestId":"00000000-0000-4000-8000-000000000001","reason":"收款凭证"}` | `201 {"id":"00000000-0000-4000-8000-000000000002"}` | 增加余额并写流水。无撤销接口。 |
 | `POST /users/7/ban` | 封禁或解封，目标是管理员 `400` | `{"banned":true}` | `201 OK` | 无金额。可解封，已退出的会话需重新登录。 |
 | `POST /users/ban` | 批量封禁或解封，跳过管理员及缺失对象 | `{"ids":[7,8],"banned":true}` | `201 {"updated":2,"skipped":0}` | 无金额。可反向操作，已退出的会话需重新登录。 |
@@ -128,6 +145,13 @@ curl --fail-with-body --max-time 20 \
 | `POST /tickets/7/reply` | 以客服身份回复工单，工单关闭 `400` | `{"content":"已核对订单，请刷新后查看。"}` | `201 Ticket` | 无金额。无法撤回回复。 |
 | `POST /tickets/7/status` | 关闭或重新打开工单 | `{"closed":true}` | `201 OK` | 无金额。可反向操作。 |
 | `PUT /settings` | 更新全部站点设置，依赖邮件配置或试用套餐无效 `400` | `Settings` | `200 Settings` | 可改变注册及试用权益。可提交旧设置，已授予的权益另行处理。 |
+| `PUT /settings/site` | 保存站点设置 | `Settings` | `200 Settings` | 无金额。可恢复旧设置。 |
+| `PUT /settings/mail` | 保存邮件服务设置 | `{"smtpHost":"smtp.example.com","smtpPort":587,"smtpSecure":false,"smtpUser":"","mailFrom":"Xboard <noreply@example.com>"}` | `200 {"smtpHost":"smtp.example.com","smtpPort":587,"smtpSecure":false,"smtpUser":"","mailFrom":"Xboard <noreply@example.com>","smtpPasswordSet":false}` | 无金额。可重新配置。 |
+| `PUT /settings/alerts` | 保存 HTTPS 告警地址 | `{"alertWebhookUrl":"https://alerts.example.com/hook"}` | `200 {"alertWebhookUrlSet":true}` | 无金额。可重新配置。 |
+| `PUT /settings/captcha` | 保存人机验证配置 | `{"captchaProvider":"off"}` | `200 CaptchaSettings` | 无金额。可停用或更换配置。 |
+| `PUT /settings/backup` | 保存备份设置 | `{"backupEnabled":false,"backupStorage":"r2"}` | `200 BackupSettings` | 无金额。可重新配置。 |
+| `POST /settings/mail/test` | 测试邮件加入队列 | `{"to":"admin@example.com"}` | `201 OK` | 无金额。邮件按队列投递。 |
+| `POST /settings/backup/runs` | 加入一项手动备份 | 无 | `201 BackupRun` | 无金额。对象留存由存储桶规则管理。 |
 | `POST /help` | 新建帮助文档 | `{"title":"使用指南","body":"打开订阅页。","sort":0,"published":false}` | `201 Help` | 无金额。可删除或下架。 |
 | `PUT /help/4` | 修改帮助文档 | `{"title":"使用指南","body":"选择客户端。","sort":0,"published":true}` | `200 Help` | 无金额。可提交旧内容。 |
 | `DELETE /help/4` | 删除帮助文档 | 无 | `200 OK` | 无金额。可重新创建内容，原编号无法恢复。 |
@@ -149,6 +173,8 @@ curl --fail-with-body --max-time 20 \
 ```json
 {"id":3,"name":"月度套餐","content":"每月 100 GiB","transferEnable":"107374182400","speedLimit":null,"deviceLimit":null,"published":true,"sort":0,"trafficResetMode":"none","trafficResetPriceMinor":null,"prices":[{"period":"monthly","amountMinor":2500}]}
 ```
+
+套餐价格和订阅订单支持 `monthly`、`quarterly`、`half_yearly`、`yearly`、`two_yearly`、`three_yearly` 和 `onetime`。一次性订单结算后长期有效，订单的 `durationDays` 为 `0`。`trafficResetMode` 可设置为 `year_start` 或 `activation_anniversary`，分别按北京时间每年 1 月 1 日和开通日重置用量。
 
 `NodeBody`（其他协议的选项见 OpenAPI）
 
@@ -198,6 +224,20 @@ curl --fail-with-body --max-time 20 \
 {"id":7,"subject":"订单查询","closed":false,"createdAt":"2026-11-18T08:00:00.000Z","updatedAt":"2026-11-18T08:05:00.000Z","user":{"email":"customer@example.com"},"messages":[{"id":1,"isStaff":true,"content":"已核对订单，请刷新后查看。","createdAt":"2026-11-18T08:05:00.000Z"}]}
 ```
 
+`BackupSettings` 和 `BackupRun`
+
+```json
+{"backupEnabled":false,"backupTime":"04:00","backupStorage":"r2","backupR2AccountId":"","backupR2Jurisdiction":"default","backupS3Endpoint":"","backupS3Region":"","backupS3ForcePathStyle":false,"backupBucket":"","backupPrefix":"","backupAccessKeyId":"","backupAgeRecipient":"","backupSecretAccessKeySet":false}
+```
+
+```json
+{"id":"00000000-0000-4000-8000-000000000006","status":"pending","createdAt":"2026-11-18T08:00:00.000Z","finishedAt":null,"bytes":null,"objects":[]}
+```
+
+SMTP 密码、告警 webhook、备份 Secret Access Key 及人机验证密钥的明文只在保存请求中出现。保存时传 `null` 清空，省略则保留。应用密钥导出、告警测试和存储连接测试在管理员网页后台完成。
+
 ## OpenAPI
 
 仓库根目录执行 `pnpm api:generate` 生成 `packages/contracts/ops-openapi.json`。开发环境也可从 `/api/docs/ops-openapi.json` 读取。生成器与浏览器接口共用 Zod 契约。新增或变更运维接口时同步更新本页。
+
+邮件模板读写支持查询参数 `locale=en-US`。省略时使用原简体中文模板。网关、提现审核、Telegram 及访客语言设置使用管理员网页后台。

@@ -2,8 +2,8 @@ import type { SubscriptionLinks } from "@xboard/contracts";
 
 // Proxy clients the subscription link can be imported into. The link is the
 // same for all of them: the API picks Mihomo, sing-box, Shadowrocket share
-// links or Quantumult X / Loon node lines from the client's User-Agent. `importUrl` builds the app's own "add
-// subscription" link; `name` is what the app shows for the subscription.
+// links, node lists or INI profiles from the client's User-Agent.
+// `importUrl` builds the client's link for adding a subscription.
 
 export type Platform = "ios" | "android" | "windows" | "mac" | "linux";
 
@@ -30,6 +30,11 @@ const enc = encodeURIComponent;
 /** UTF-8 safe base64 (btoa alone rejects non-Latin-1 text). */
 const base64 = (text: string) =>
     btoa(String.fromCharCode(...new TextEncoder().encode(text)));
+const profileUrl = (url: string, format: "surge" | "surfboard") => {
+    const profile = new URL(url);
+    profile.searchParams.set("format", format);
+    return `${format}:///install-config?url=${enc(profile.toString())}`;
+};
 const clash = ({ url }: SubscriptionLinks) =>
     `clash://install-config?url=${enc(url)}`;
 
@@ -107,6 +112,20 @@ export const CLIENTS: Client[] = [
         // subscription and the panel's filter_remote rules, keeping the user's
         // other resources; the API builds it from the rule template.
         importUrl: (links) => links.imports.quantumultx,
+    },
+    {
+        id: "surge",
+        name: "Surge",
+        core: "配置文件",
+        platforms: ["ios", "mac"],
+        importUrl: ({ url }) => profileUrl(url, "surge"),
+    },
+    {
+        id: "surfboard",
+        name: "Surfboard",
+        core: "配置文件",
+        platforms: ["android"],
+        importUrl: ({ url }) => profileUrl(url, "surfboard"),
     },
     {
         id: "loon",

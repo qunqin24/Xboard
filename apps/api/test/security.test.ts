@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 import {
     deviceSessionSchema,
@@ -53,14 +53,10 @@ async function statusOf(email: string, twoFactorCode: string) {
 
 describe("account security", () => {
     let app: Awaited<ReturnType<typeof startTestApp>>;
-    const priorKey = process.env.TOTP_ENCRYPTION_KEY;
     before(async () => {
         app = await startTestApp();
-        process.env.TOTP_ENCRYPTION_KEY = randomBytes(32).toString("base64url");
     });
     after(async () => {
-        if (priorKey) process.env.TOTP_ENCRYPTION_KEY = priorKey;
-        else delete process.env.TOTP_ENCRYPTION_KEY;
         await app?.stop();
     });
 

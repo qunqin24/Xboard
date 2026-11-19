@@ -8,7 +8,7 @@ import {
     rankingsSchema,
 } from "@xboard/contracts";
 import { db } from "../src/db";
-import { startTestApp } from "./helpers";
+import { setTestSmtp, startTestApp } from "./helpers";
 
 const PASSWORD = "ops-test-password";
 
@@ -17,11 +17,10 @@ describe("promotions and operations", () => {
     let admin: string;
     let planId: number;
     let alternatePlanId: number;
-    const smtp = process.env.SMTP_HOST;
 
     before(async () => {
         app = await startTestApp();
-        process.env.SMTP_HOST = "127.0.0.1";
+        await setTestSmtp("127.0.0.1");
         await app.createUser("admin-operations@example.test", PASSWORD, {
             role: "admin",
         });
@@ -46,8 +45,6 @@ describe("promotions and operations", () => {
         alternatePlanId = alternate.id;
     });
     after(async () => {
-        if (smtp === undefined) delete process.env.SMTP_HOST;
-        else process.env.SMTP_HOST = smtp;
         await app?.stop();
     });
 

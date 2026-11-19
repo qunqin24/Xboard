@@ -1,3 +1,4 @@
+import { xboardLocales } from "./i18n-transform";
 import path from "node:path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
@@ -6,6 +7,7 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 
 export default defineConfig({
     plugins: [
+        xboardLocales(),
         // File-based routes under src/routes; regenerates src/routeTree.gen.ts.
         tanstackRouter({ target: "react", autoCodeSplitting: true }),
         react(),

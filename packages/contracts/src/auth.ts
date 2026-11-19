@@ -1,11 +1,14 @@
 import { z } from "zod";
 import { emailSchema, loginEmailSchema, tokenSchema } from "./common";
+import { localeSchema } from "./locale";
 import { twoFactorCodeSchema } from "./security";
 
+const captchaToken = z.string().min(1).max(4096).optional();
 export const loginBody = z.strictObject({
     email: loginEmailSchema,
     password: z.string().min(1, "请输入密码").max(256, "密码最多 256 个字符"),
     twoFactorCode: twoFactorCodeSchema.optional(),
+    captchaToken,
 });
 /** Invite codes: 8 characters from an alphabet without 0/O/1/I/L. */
 export const inviteCodeSchema = z
@@ -34,15 +37,22 @@ export const registerBody = z.strictObject({
     ),
     /** Must be true when the site lists terms or a privacy policy. */
     acceptTerms: z.boolean().optional(),
+    captchaToken,
 });
-export const registerCodeBody = z.strictObject({ email: emailSchema });
+export const registerCodeBody = z.strictObject({
+    email: emailSchema,
+    captchaToken,
+});
 export const registerCodeResult = z.object({
     /** Seconds before another code can be requested. */
     retryAfterSeconds: z.number().int(),
 });
-export const authResult = z.object({ email: z.string() });
+export const authResult = z.object({
+    email: z.string(),
+    locale: localeSchema.optional(),
+});
 
-export const forgotBody = z.strictObject({ email: emailSchema });
+export const forgotBody = z.strictObject({ email: emailSchema, captchaToken });
 export const forgotResult = z.object({
     ok: z.literal(true),
     message: z.string(),

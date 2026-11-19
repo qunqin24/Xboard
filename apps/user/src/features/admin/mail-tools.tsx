@@ -160,7 +160,10 @@ export function BroadcastEditor({
 }
 
 function TemplateEditor({ close }: { close: () => void }) {
-    const list = usePanel<MailTemplate[]>("/admin/mail/templates");
+    const [locale, setLocale] = useState<"zh-CN" | "en-US">("zh-CN");
+    const list = usePanel<MailTemplate[]>(
+        `/admin/mail/templates?locale=${locale}`,
+    );
     const save = useCommand({ inline: true });
     const [key, setKey] = useState<MailTemplateKey>("verify_email");
     const template = list.data?.find((item) => item.key === key);
@@ -169,7 +172,8 @@ function TemplateEditor({ close }: { close: () => void }) {
         const fields = new FormData(event.currentTarget);
         save.mutate(
             {
-                path: `/admin/mail/templates/${key}`,
+                path: `/admin/mail/templates/${key}?locale=${locale}`,
+                related: ["/admin/mail/templates"],
                 method: "PUT",
                 body: {
                     subject: fields.get("subject"),
@@ -197,6 +201,22 @@ function TemplateEditor({ close }: { close: () => void }) {
             ) : (
                 <div className="grid gap-group">
                     <div className="grid gap-field">
+                        <Label htmlFor="template-language">邮件语言</Label>
+                        <select
+                            id="template-language"
+                            className="h-9 rounded-control border bg-background px-field"
+                            value={locale}
+                            onChange={(event) =>
+                                setLocale(
+                                    event.target.value as "zh-CN" | "en-US",
+                                )
+                            }
+                        >
+                            <option value="zh-CN">简体中文</option>
+                            <option value="en-US">English</option>
+                        </select>
+                    </div>
+                    <div className="grid gap-field">
                         <Label htmlFor="template-kind">模板</Label>
                         <Select
                             value={key}
@@ -219,7 +239,7 @@ function TemplateEditor({ close }: { close: () => void }) {
                     {template && (
                         <form
                             id="mail-template"
-                            key={template.key}
+                            key={`${locale}:${template.key}`}
                             className="flex flex-col gap-group"
                             onSubmit={submit}
                         >

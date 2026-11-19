@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 export const OPS_API_PREFIX = "/api/ops/v1";
+export const OPS_REQUESTS_PER_MINUTE = 120;
+export const OPS_IDEMPOTENCY_RETENTION_DAYS = 30;
 export const OPS_SCOPES = ["*", "admin:read", "admin:write"] as const;
 
 export const opsTokenBody = z.object({

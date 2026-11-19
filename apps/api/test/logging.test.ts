@@ -4,6 +4,9 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { it } from "node:test";
 import express from "express";
+import { db } from "../src/db";
+import { sealApplicationSecret } from "../src/modules/system/secrets";
+import { startTestApp } from "./helpers";
 import { errorHandler } from "../src/http/errors";
 import { errorFields, reportJobFailure, requestLogging } from "../src/logging";
 
@@ -38,9 +41,18 @@ it("correlates 5xx and failed job alerts without sending request credentials", a
     });
     app.use(errorHandler);
     const server = createServer(app);
-    const prior = process.env.ALERT_WEBHOOK_URL;
+    const database = await startTestApp();
     try {
-        process.env.ALERT_WEBHOOK_URL = await listen(webhook);
+        const url = await listen(webhook);
+        await db.setting.create({
+            data: {
+                key: "alertWebhookUrl",
+                value: sealApplicationSecret(
+                    "setting:alertWebhookUrl",
+                    Buffer.from(url),
+                ),
+            },
+        });
         const origin = await listen(server);
         const response = await fetch(
             origin + "/check/fixture-secret?token=query-secret",
@@ -73,7 +85,6 @@ it("correlates 5xx and failed job alerts without sending request credentials", a
     } finally {
         server.close();
         webhook.close();
-        if (prior === undefined) delete process.env.ALERT_WEBHOOK_URL;
-        else process.env.ALERT_WEBHOOK_URL = prior;
+        await database.stop();
     }
 });

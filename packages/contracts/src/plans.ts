@@ -10,6 +10,8 @@ export const trafficResetModeSchema = z.enum([
     "none",
     "activation_day",
     "month_start",
+    "year_start",
+    "activation_anniversary",
 ]);
 export type TrafficResetMode = z.infer<typeof trafficResetModeSchema>;
 

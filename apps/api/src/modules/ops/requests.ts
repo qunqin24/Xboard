@@ -4,7 +4,10 @@ import {
     createHmac,
     randomBytes,
 } from "node:crypto";
-import { opsIdempotencyKey } from "@xboard/contracts";
+import {
+    OPS_IDEMPOTENCY_RETENTION_DAYS,
+    opsIdempotencyKey,
+} from "@xboard/contracts";
 import type { Request } from "express";
 import { db, type Tx } from "../../db";
 import {
@@ -103,10 +106,13 @@ export async function executeOpsWrite(
                 context.clientIp,
                 "admin:write",
             );
+            const cutoff = new Date(
+                Date.now() - OPS_IDEMPOTENCY_RETENTION_DAYS * 86_400_000,
+            );
             const prior = await tx.opsWriteRequest.findUnique({
                 where: { tokenId_key: { tokenId, key } },
             });
-            if (prior) {
+            if (prior && prior.createdAt >= cutoff) {
                 if (prior.fingerprint !== fingerprint)
                     throw conflict("此幂等键已用于另一项请求。");
                 const body = decode(
@@ -117,6 +123,11 @@ export async function executeOpsWrite(
                 await recordOpsCall(tx, req, prior.status, true);
                 return { status: prior.status, body, replayed: true };
             }
+            // Cleanup can delete the old row while this request holds the per-key lock.
+            if (prior)
+                await tx.opsWriteRequest.deleteMany({
+                    where: { tokenId, key, createdAt: { lt: cutoff } },
+                });
 
             const call = await recordOpsCall(tx, req, successStatus);
             await tx.$executeRaw`SAVEPOINT ops_write`;

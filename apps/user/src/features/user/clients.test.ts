@@ -92,3 +92,15 @@ describe("client catalogue", () => {
         expect(recommendedClient("ios").id).toBe("hiddify");
     });
 });
+
+it("pins the profile format in Surge and Surfboard import links", () => {
+    for (const id of ["surge", "surfboard"]) {
+        const client = CLIENTS.find((entry) => entry.id === id)!;
+        const link = new URL(client.importUrl(links, "Xboard"));
+        expect(link.protocol).toBe(`${id}:`);
+        expect(link.pathname).toBe("/install-config");
+        expect(
+            new URL(link.searchParams.get("url")!).searchParams.get("format"),
+        ).toBe(id);
+    }
+});

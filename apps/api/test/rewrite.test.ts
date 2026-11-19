@@ -28,7 +28,7 @@ import { runMaintenance } from "../src/jobs/maintenance";
 import { clientKey } from "../src/http/rate-limit";
 import { sessionDigest } from "../src/modules/auth/service";
 import { formatForUserAgent } from "../src/modules/nodes/subscription-routes";
-import { startTestApp } from "./helpers";
+import { setTestSmtp, startTestApp } from "./helpers";
 
 type Harness = Awaited<ReturnType<typeof startTestApp>>;
 
@@ -473,7 +473,7 @@ describe("Express rewrite regressions", () => {
     });
 
     it("sends at most one reset mail a minute and keeps earlier links valid", async () => {
-        process.env.SMTP_HOST = "127.0.0.1";
+        await setTestSmtp("127.0.0.1");
         try {
             await t.createUser("forgot@example.test", "forgot-password-1");
             for (let i = 0; i < 2; i++)
@@ -515,7 +515,7 @@ describe("Express rewrite regressions", () => {
                 0,
             );
         } finally {
-            delete process.env.SMTP_HOST;
+            await setTestSmtp();
             await db.rateLimit.deleteMany();
         }
     });
@@ -527,8 +527,7 @@ describe("Express rewrite regressions", () => {
         );
         const port = (blocker.address() as { port: number }).port;
         await new Promise<void>((resolve) => blocker.close(() => resolve()));
-        process.env.SMTP_HOST = "127.0.0.1";
-        process.env.SMTP_PORT = String(port);
+        await setTestSmtp("127.0.0.1", port);
         try {
             await db.mail.updateMany({ data: { sentAt: new Date() } });
             const job = await db.mail.create({
@@ -554,8 +553,7 @@ describe("Express rewrite regressions", () => {
                 failed.lastError,
             );
         } finally {
-            delete process.env.SMTP_HOST;
-            delete process.env.SMTP_PORT;
+            await setTestSmtp();
         }
     });
 

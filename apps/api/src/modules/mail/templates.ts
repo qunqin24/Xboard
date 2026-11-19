@@ -1,5 +1,6 @@
-import type { MailTemplate, MailTemplateKey } from "@xboard/contracts";
+import type { Locale, MailTemplate, MailTemplateKey } from "@xboard/contracts";
 import { db, type Tx } from "../../db";
+import { defaultLocale } from "../site/language";
 import { badRequest } from "../../http/errors";
 
 const DEFAULTS: Record<MailTemplateKey, Omit<MailTemplate, "key">> = {
@@ -41,6 +42,37 @@ const DEFAULTS: Record<MailTemplateKey, Omit<MailTemplate, "key">> = {
     },
 };
 
+const ENGLISH: Record<MailTemplateKey, { subject: string; text: string }> = {
+    verify_email: {
+        subject: "Verify your email address",
+        text: "Open this link within 30 minutes:\n{{link}}\nIf you did not request this, ignore this email.",
+    },
+    reset_password: {
+        subject: "Reset your account password",
+        text: "Open this link within 30 minutes:\n{{link}}\nIf you did not request this, ignore this email.",
+    },
+    registration_code: {
+        subject: "{{siteName}} registration code",
+        text: "Your code is {{code}}. It expires in 10 minutes. Keep it private.\nIf you did not request this, ignore this email.",
+    },
+    registration_taken: {
+        subject: "{{siteName}} registration notice",
+        text: "An account already uses this address. To recover your account, choose Forgot password on the sign-in page.\nIf you did not request this, ignore this email.",
+    },
+    expiry_reminder: {
+        subject: "Your {{siteName}} plan expires within {{days}} day(s)",
+        text: "Your current plan expires within {{days}} day(s). View or renew your plan:\n{{link}}",
+    },
+    traffic_reminder: {
+        subject: "You have used {{percent}}% of your {{siteName}} data",
+        text: "You have used {{percent}}% of your current data allowance. View your plan:\n{{link}}",
+    },
+};
+
+export function storedTemplateKey(key: MailTemplateKey, locale: Locale) {
+    return locale === "en-US" ? `${key}.en-US` : key;
+}
+
 const placeholder = /\{\{([A-Za-z]+)\}\}/g;
 
 export function validateTemplate(
@@ -72,9 +104,12 @@ export function validateTemplate(
 export async function readTemplates(
     keys: readonly MailTemplateKey[],
     client: Tx = db,
+    locale: Locale = "zh-CN",
 ): Promise<MailTemplate[]> {
     const records = await client.mailTemplate.findMany({
-        where: { key: { in: [...keys] } },
+        where: {
+            key: { in: keys.map((key) => storedTemplateKey(key, locale)) },
+        },
     });
     const overrides = new Map(
         records.map((row) => [
@@ -85,7 +120,8 @@ export async function readTemplates(
     return keys.map((key) => ({
         key,
         ...DEFAULTS[key],
-        ...overrides.get(key),
+        ...(locale === "en-US" ? ENGLISH[key] : {}),
+        ...overrides.get(storedTemplateKey(key, locale)),
     }));
 }
 
@@ -108,8 +144,13 @@ export async function enqueueTemplate(
     key: MailTemplateKey,
     to: string,
     values: Record<string, string | number>,
+    locale?: Locale,
 ) {
-    const [template] = await readTemplates([key], tx);
+    const [template] = await readTemplates(
+        [key],
+        tx,
+        locale ?? (await defaultLocale(tx)),
+    );
     await tx.mail.create({
         data: { to, ...renderTemplate(template!, values) },
     });

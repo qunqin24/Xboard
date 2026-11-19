@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
     bytesSchema,
+    emailSchema,
     idSchema,
     INT4_MAX,
     pageQuerySchema,
@@ -72,6 +73,16 @@ export const adminUserSchema = z.object({
     invitedBy: z.string().nullable(),
 });
 export type AdminUser = z.infer<typeof adminUserSchema>;
+
+export const adminCreateUserBody = z.strictObject({
+    email: emailSchema,
+    verified: z.boolean().default(false),
+});
+export const adminCreatedUserSchema = z.object({
+    id: idSchema,
+    email: z.string(),
+    password: z.string(),
+});
 
 export const adminNoticeSchema = z.object({
     id: z.number().int(),
@@ -248,7 +259,7 @@ export const planBody = z.strictObject({
                 amountMinor: z.number().int().min(1).max(MAX_AMOUNT_MINOR),
             }),
         )
-        .max(3),
+        .max(periodSchema.options.length),
 });
 export type PlanBody = z.infer<typeof planBody>;
 
@@ -289,12 +300,25 @@ export const noticeBody = z.strictObject({
     published: z.boolean(),
 });
 /** Admin edit of a subscription. `expiredAt` is Unix seconds; at most 2100-01-01. */
+const importedUsage = z
+    .string()
+    .regex(/^\d{1,19}$/, "用量需为非负整数字节数")
+    .pipe(
+        z
+            .string()
+            .refine(
+                (value) => BigInt(value) <= 9_223_372_036_854_775_807n,
+                "用量超过上限",
+            ),
+    );
 export const updateUserBody = z.strictObject({
     planId: idSchema.nullable(),
     expiredAt: z.number().int().min(0).max(4_102_444_800).nullable(),
     transferBytes: z
         .string()
         .regex(/^\d{1,15}$/, "流量需为不超过 15 位的整数字节数"),
+    uploadBytes: importedUsage.optional(),
+    downloadBytes: importedUsage.optional(),
     speedLimit: nullableInt(1, 100_000),
     deviceLimit: nullableInt(1, 1000),
 });
