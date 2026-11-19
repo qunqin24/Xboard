@@ -8,6 +8,7 @@ import { DataTable, DataTableColumnHeader } from "@/components/data-table";
 import { Page } from "@/components/layout/page";
 import { LongText } from "@/components/long-text";
 import { SecretDialog } from "@/components/secret-dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,6 +80,12 @@ function TokenEditor({
                 onSubmit={submit}
                 className="flex flex-col gap-group"
             >
+                <Alert>
+                    <AlertDescription>
+                        持有写权限令牌等于完全控制面板：除了入账、封禁、删除，还能修改备份的上传地址和加密公钥并触发备份，从而拿到整个数据库和应用密钥。只发给完全信任的
+                        Agent，设置较短的过期时间，并尽量限制来源 IP。
+                    </AlertDescription>
+                </Alert>
                 <div className="grid gap-field">
                     <Label htmlFor="ops-token-name">名称</Label>
                     <Input

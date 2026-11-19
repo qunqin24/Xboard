@@ -1611,5 +1611,6 @@
     "支付回执不存在。": "Payment receipt not found.",
     "此回执不在待人工处理状态，请刷新。": "This receipt is no longer awaiting review. Refresh.",
     "入账后余额将超过上限。": "Crediting this would exceed the balance limit.",
-    "处理待人工处理的支付回执：入账或记为已线下退款": "Resolve a payment receipt held for review: credit it or record an offline refund"
+    "处理待人工处理的支付回执：入账或记为已线下退款": "Resolve a payment receipt held for review: credit it or record an offline refund",
+    "持有写权限令牌等于完全控制面板：除了入账、封禁、删除，还能修改备份的上传地址和加密公钥并触发备份，从而拿到整个数据库和应用密钥。只发给完全信任的 Agent，设置较短的过期时间，并尽量限制来源 IP。": "A token with write access has full control of the panel: besides credits, bans and deletions, it can change where backups are uploaded and the encryption key they use, then trigger a backup and obtain the whole database and the application key. Only issue it to agents you fully trust, give it a short expiry, and restrict source IPs where possible."
 }
