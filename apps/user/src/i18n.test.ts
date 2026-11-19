@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { translate, translateMessage } from "@xboard/contracts";
 import { localizeSource } from "../i18n-transform";
+import english from "../../../packages/contracts/src/messages.en.json";
 
 describe("interface language", () => {
     it("keeps Chinese text and interpolates as expected in English", () => {
@@ -24,5 +25,22 @@ describe("interface language", () => {
         expect(result).toContain('aria-label={__xboardText("订单")}');
         expect(result).toContain('__xboardText("订单 {0}", [name])');
         expect(result).toContain("{description}");
+    });
+
+    it("keeps every placeholder and contains no machine-translation debris", () => {
+        const placeholders = (text: string) =>
+            [...text.matchAll(/\{\{\w+\}\}|\{\d+\}/g)]
+                .map(([match]) => match)
+                .sort();
+        // Language names stay in their own script.
+        const native = new Set(["简体中文"]);
+        for (const [source, target] of Object.entries(english)) {
+            expect(placeholders(target), source).toEqual(placeholders(source));
+            if (!source.includes("%"))
+                expect(target, source).not.toMatch(/%(?:[sSdD]|\d)/);
+            expect(target, source).not.toMatch(/folder/i);
+            if (!native.has(source))
+                expect(target, source).not.toMatch(/[\u4e00-\u9fff]/);
+        }
     });
 });
