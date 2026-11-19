@@ -526,6 +526,124 @@ describe("P1 integrations", () => {
         );
     });
 
+    it("claws back commission when a plan switch credits the order's value back", async () => {
+        await adminPut("/admin/settings/commission", {
+            commissionEnabled: true,
+            commissionRateBasisPoints: 1000,
+            commissionFirstOrderOnly: false,
+            withdrawEnabled: true,
+            withdrawMinMinor: 20,
+            withdrawMethods: ["Bank"],
+        });
+        const cheap = (
+            await db.plan.create({
+                data: {
+                    name: "Cheap fixture",
+                    published: true,
+                    transferEnable: 100_000n,
+                    prices: {
+                        create: { period: "monthly", amountMinor: 10 },
+                    },
+                },
+            })
+        ).id;
+        const inviter = await buyer("clawback-inviter");
+        const customer = await buyer("clawback-referral", {
+            invitedById: inviter.row.id,
+            balance: 10_000,
+        });
+        const net = async () =>
+            (
+                await db.commissionEntry.aggregate({
+                    where: { userId: inviter.row.id },
+                    _sum: { amountMinor: true },
+                })
+            )._sum.amountMinor ?? 0;
+        async function buy(plan: number) {
+            const created = await test.call("/orders", {
+                cookie: customer.cookie,
+                body: {
+                    requestId: nextRequest(),
+                    planId: plan,
+                    period: "monthly",
+                },
+            });
+            assert.equal(created.status, 201, await created.clone().text());
+            const { id } = (await created.json()) as { id: string };
+            const pay = () =>
+                test.call(`/orders/${id}/pay`, {
+                    cookie: customer.cookie,
+                    method: "POST",
+                });
+            // Concurrent payment settles, and claws back, only once.
+            const responses = await Promise.all([pay(), pay()]);
+            for (const response of responses)
+                assert.equal(
+                    response.status,
+                    200,
+                    await response.clone().text(),
+                );
+        }
+        await buy(planId);
+        assert.equal(await net(), 200);
+        // The inviter spends the reward before the switch takes it back.
+        assert.equal(
+            (
+                await test.call("/account/commission/transfer", {
+                    cookie: inviter.cookie,
+                    body: { requestId: nextRequest(), amountMinor: 200 },
+                })
+            ).status,
+            200,
+        );
+        for (let round = 0; round < 3; round++) {
+            await buy(cheap);
+            await buy(planId);
+        }
+        await buy(cheap);
+        const spent =
+            10_000 -
+            (
+                await db.user.findUniqueOrThrow({
+                    where: { id: customer.row.id },
+                })
+            ).balance;
+        // Net commission tracks what the customer really paid, give or take
+        // one fen of rounding per switch.
+        const earned = (await net()) + 200;
+        assert.ok(
+            earned <= Math.floor(spent / 10) + 7,
+            `${earned} vs ${spent}`,
+        );
+        assert.ok(earned >= 0);
+        assert.equal(
+            await db.commissionEntry.count({
+                where: { userId: inviter.row.id, kind: "clawback" },
+            }),
+            4,
+        );
+        // The inviter's commission is now negative: nothing can be paid out.
+        assert.ok((await net()) < 0);
+        for (const path of [
+            "/account/commission/transfer",
+            "/account/commission/withdrawals",
+        ])
+            assert.equal(
+                (
+                    await test.call(path, {
+                        cookie: inviter.cookie,
+                        body: {
+                            requestId: nextRequest(),
+                            amountMinor: 20,
+                            method: "Bank",
+                            recipient: "fixture",
+                        },
+                    })
+                ).status,
+                400,
+            );
+    });
+
     it("binds a private Telegram chat using a one-time token and queues all three notifications", async (t) => {
         const fetchReal = globalThis.fetch;
         let signature = "";

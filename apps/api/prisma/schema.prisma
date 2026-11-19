@@ -188,8 +188,9 @@ model Order {
   entry              BalanceEntry?
   coupon             Coupon?          @relation(fields: [couponId], references: [id], onDelete: Restrict)
 
-  commissionEntry CommissionEntry?
-  paymentAttempts PaymentAttempt[]
+  commissionEntry     CommissionEntry?
+  commissionClawbacks CommissionEntry[] @relation("CommissionClawback")
+  paymentAttempts     PaymentAttempt[]
 
   @@unique([userId, requestId])
   @@index([userId, createdAt])
@@ -566,6 +567,8 @@ enum CommissionKind {
   transfer
   withdrawal
   reversal
+  /// Part of an order's reward taken back when a plan switch credited its value.
+  clawback
 }
 
 enum WithdrawalStatus {
@@ -575,21 +578,25 @@ enum WithdrawalStatus {
 }
 
 model CommissionEntry {
-  id           String         @id @default(uuid()) @db.Uuid
-  userId       Int
-  kind         CommissionKind
-  amountMinor  Int
-  orderId      String?        @unique @db.Uuid
-  requestId    String?        @db.Uuid
-  withdrawalId String?        @db.Uuid
-  createdAt    DateTime       @default(now())
-  user         User           @relation(fields: [userId], references: [id], onDelete: Restrict)
-  order        Order?         @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  withdrawal   Withdrawal?    @relation(fields: [withdrawalId], references: [id], onDelete: Restrict)
+  id            String         @id @default(uuid()) @db.Uuid
+  userId        Int
+  kind          CommissionKind
+  amountMinor   Int
+  orderId       String?        @unique @db.Uuid
+  requestId     String?        @db.Uuid
+  withdrawalId  String?        @db.Uuid
+  /// For clawbacks: the rewarded order whose value was credited back.
+  sourceOrderId String?        @db.Uuid
+  createdAt     DateTime       @default(now())
+  user          User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  order         Order?         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  sourceOrder   Order?         @relation("CommissionClawback", fields: [sourceOrderId], references: [id], onDelete: Restrict)
+  withdrawal    Withdrawal?    @relation(fields: [withdrawalId], references: [id], onDelete: Restrict)
 
   @@unique([userId, requestId])
   @@unique([withdrawalId, kind])
   @@index([userId, createdAt])
+  @@index([sourceOrderId])
 }
 
 model Withdrawal {

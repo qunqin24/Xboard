@@ -34,7 +34,13 @@ export const commissionSchema = z.object({
     entries: z.array(
         z.object({
             id: z.uuid(),
-            kind: z.enum(["reward", "transfer", "withdrawal", "reversal"]),
+            kind: z.enum([
+                "reward",
+                "transfer",
+                "withdrawal",
+                "reversal",
+                "clawback",
+            ]),
             amountMinor: z.number().int(),
             createdAt: z.iso.datetime(),
         }),

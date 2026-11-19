@@ -1602,5 +1602,6 @@
     "，跳过 {0} 位": ", skipped {0}",
     "修改服务器地址时，请重新填写密码。": "Re-enter the password when changing the server address",
     "进行中": "In progress",
-    "第 {0} / {1} 页": "Page {0} of {1}"
+    "第 {0} / {1} 页": "Page {0} of {1}",
+    "换套餐追回": "Clawed back after a plan switch"
 }

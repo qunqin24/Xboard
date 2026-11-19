@@ -8,8 +8,21 @@ export const MAX_BALANCE_MINOR = 2_000_000_000;
 
 type Term = Pick<
     Order,
-    "durationDays" | "amountMinor" | "discountMinor" | "serviceUntil" | "paidAt"
+    | "id"
+    | "durationDays"
+    | "amountMinor"
+    | "discountMinor"
+    | "serviceUntil"
+    | "paidAt"
 >;
+
+/** The unused value of one paid order, credited back on a plan switch. */
+export type OrderCredit = {
+    orderId: string;
+    /** What the order's term was worth: price less discount. */
+    valueMinor: number;
+    creditMinor: number;
+};
 
 /**
  * Legacy renewals extended the expiry by the full order duration. Rebuild that
@@ -39,8 +52,24 @@ function legacyTerms(orders: Term[], endsAt: number): Term[] {
 }
 
 export async function remainingPlanCredit(tx: Tx, user: User, now: Date) {
+    const credits = await remainingCreditByOrder(tx, user, now);
+    const total = credits.reduce(
+        (sum, { creditMinor }) => sum + BigInt(creditMinor),
+        0n,
+    );
+    if (total > BigInt(INT4_MAX))
+        throw badRequest("套餐剩余价值超出订单上限，请联系管理员。");
+    return Number(total);
+}
+
+/** remainingPlanCredit split by the orders it comes from. */
+export async function remainingCreditByOrder(
+    tx: Tx,
+    user: User,
+    now: Date,
+): Promise<OrderCredit[]> {
     const expiry = user.expiredAt;
-    if (!expiry || expiry <= now) return 0;
+    if (!expiry || expiry <= now) return [];
     const orders = await tx.order.findMany({
         where: {
             userId: user.id,
@@ -61,6 +90,7 @@ export async function remainingPlanCredit(tx: Tx, user: User, now: Date) {
         },
         orderBy: [{ paidAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
         select: {
+            id: true,
             amountMinor: true,
             discountMinor: true,
             durationDays: true,
@@ -79,20 +109,22 @@ export async function remainingPlanCredit(tx: Tx, user: User, now: Date) {
         ),
         ...tracked,
     ];
-    let credit = 0n;
+    const credits: OrderCredit[] = [];
     for (const term of terms) {
         const end = term.serviceUntil!.getTime();
         const duration = term.durationDays * DAY_MS;
         const remaining =
             Math.min(end, expiry.getTime()) -
             Math.max(end - duration, now.getTime());
-        if (remaining > 0)
-            credit +=
-                (BigInt(term.amountMinor - term.discountMinor) *
-                    BigInt(remaining)) /
-                BigInt(duration);
+        if (remaining <= 0) continue;
+        const valueMinor = term.amountMinor - term.discountMinor;
+        credits.push({
+            orderId: term.id,
+            valueMinor,
+            creditMinor: Number(
+                (BigInt(valueMinor) * BigInt(remaining)) / BigInt(duration),
+            ),
+        });
     }
-    if (credit > BigInt(INT4_MAX))
-        throw badRequest("套餐剩余价值超出订单上限，请联系管理员。");
-    return Number(credit);
+    return credits;
 }

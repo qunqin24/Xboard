@@ -9,7 +9,7 @@ import {
 import { db, lockUser, type Tx } from "../../db";
 import { badRequest, conflict, notFound } from "../../http/errors";
 import { audit } from "../admin/shared";
-import { MAX_BALANCE_MINOR } from "../orders/credit";
+import { MAX_BALANCE_MINOR, type OrderCredit } from "../orders/credit";
 import {
     openApplicationSecret,
     sealApplicationSecret,
@@ -92,6 +92,50 @@ export async function awardCommission(
         userId: inviter,
         amountMinor,
     });
+}
+
+/**
+ * A plan switch credits the unused value of earlier orders back to the buyer.
+ * Take back the same share of each order's reward, so switching back and forth
+ * cannot mint commission. Rounded down per switch and capped at the reward.
+ * The inviter's commission may go negative; withdrawals and transfers check
+ * the summed ledger, so a negative total blocks them until new rewards cover it.
+ * No inviter lock is needed: this only appends to the ledger.
+ */
+export async function clawBackCommission(tx: Tx, credits: OrderCredit[]) {
+    for (const { orderId, valueMinor, creditMinor } of credits) {
+        if (creditMinor <= 0 || valueMinor <= 0) continue;
+        const reward = await tx.commissionEntry.findUnique({
+            where: { orderId },
+        });
+        if (reward?.kind !== "reward") continue;
+        const [taken] = await tx.$queryRaw<{ total: bigint }[]>`
+            SELECT COALESCE(-sum("amountMinor"), 0) AS total FROM "CommissionEntry"
+            WHERE "sourceOrderId" = ${orderId}::uuid AND kind = 'clawback'
+        `;
+        const amountMinor = Math.min(
+            reward.amountMinor - Number(taken?.total ?? 0n),
+            Number(
+                (BigInt(reward.amountMinor) *
+                    BigInt(Math.min(creditMinor, valueMinor))) /
+                    BigInt(valueMinor),
+            ),
+        );
+        if (amountMinor <= 0) continue;
+        await tx.commissionEntry.create({
+            data: {
+                userId: reward.userId,
+                sourceOrderId: orderId,
+                kind: "clawback",
+                amountMinor: -amountMinor,
+            },
+        });
+        await audit(tx, 0, "commission.clawback", orderId, {
+            userId: reward.userId,
+            amountMinor,
+            creditMinor,
+        });
+    }
 }
 
 async function available(tx: Tx, userId: number) {

@@ -12,8 +12,13 @@ import { clearUsage, resetDueTraffic } from "../account/traffic-cycle";
 import { audit } from "../admin/shared";
 import { availableCoupon } from "../promotions/coupon";
 import { enqueueTelegram } from "../telegram/service";
-import { awardCommission } from "../commission/service";
-import { MAX_BALANCE_MINOR, remainingPlanCredit } from "./credit";
+import { awardCommission, clawBackCommission } from "../commission/service";
+import {
+    MAX_BALANCE_MINOR,
+    remainingCreditByOrder,
+    remainingPlanCredit,
+    type OrderCredit,
+} from "./credit";
 import {
     applyTerm,
     lockBuyer,
@@ -324,6 +329,7 @@ export async function settleOrder(
     if (balanceDebit < 0 && user.balance - balanceDebit > MAX_BALANCE_MINOR)
         throw conflict("退回差额后余额将超过上限，请联系管理员。");
     let paidSnapshot: Pick<OrderRow, "serviceUntil" | "entitlementVersion">;
+    let switchCredits: OrderCredit[] = [];
     if (order.kind === "traffic_reset") {
         resetPrice(user, plan, now);
         if (order.entitlementVersion !== user.entitlementVersion)
@@ -367,6 +373,10 @@ export async function settleOrder(
                         (user.expiredAt?.getTime() ?? null)))
         )
             throw conflict("当前套餐已变更，请取消后重新下单。");
+        // Read before applyTerm replaces the entitlement: these are the
+        // orders whose unused value this switch credits back.
+        if (order.replacesPlan && order.creditMinor > 0)
+            switchCredits = await remainingCreditByOrder(tx, user, now);
         paidSnapshot = await applyTerm(
             tx,
             user,
@@ -414,6 +424,7 @@ export async function settleOrder(
         where: { id },
         data: { status: "paid", paidAt: now, ...paidSnapshot },
     });
+    await clawBackCommission(tx, switchCredits);
     await awardCommission(tx, user, settled, payableMinor);
     return toOrder(settled);
 }

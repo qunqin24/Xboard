@@ -14,6 +14,7 @@ const entryLabels = {
     transfer: "转入余额",
     withdrawal: "提现预留",
     reversal: "提现退回",
+    clawback: "换套餐追回",
 };
 
 function CommissionAction({
