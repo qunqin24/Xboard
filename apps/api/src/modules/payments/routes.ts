@@ -13,10 +13,12 @@ import { parse } from "../../http/validate";
 import { adminActorId, adminRead, adminWrite } from "../admin/operations";
 import {
     checkEpay,
-    checkStripe,
     epayReceipt,
     stripeEnvelope,
+    stripeMatches,
     stripeReceipt,
+    stripeWebhookSecret,
+    verifyStripeSignature,
 } from "./gateways";
 import {
     acceptPayment,
@@ -105,22 +107,27 @@ export const paymentWebhooks = Router();
 paymentWebhooks.use(
     rateLimit({ limit: 240, windowMs: 60_000, scope: "payment-webhook" }),
 );
-async function loadAttempt(
-    id: string,
+async function loadGateway(gatewayId: number, kind: "epay" | "stripe") {
+    // A disabled gateway still accepts callbacks for money already received.
+    const gateway = await db.paymentGateway.findFirst({
+        where: { id: gatewayId, kind },
+    });
+    if (!gateway?.secrets) throw unauthorized("支付回执无效。");
+    return gateway;
+}
+
+function findAttempt(
+    where: { id: string } | { providerReference: string },
     gatewayId: number,
-    kind: "epay" | "stripe",
 ) {
-    const attempt = await db.paymentAttempt.findFirst({
-        where: {
-            ...(kind === "epay" ? { providerReference: id } : { id }),
-            gatewayId,
-            gateway: { kind },
-        },
+    return db.paymentAttempt.findFirst({
+        where: { ...where, gatewayId },
         include: { order: { select: { userId: true } } },
     });
-    if (!attempt) throw unauthorized("支付回执无效。");
-    return attempt;
 }
+
+/** Stripe events the account sends for other integrations are acknowledged and ignored. */
+const ignoredStripeEvent = stripeReceipt.pick({ mode: true, metadata: true });
 
 paymentWebhooks.post(
     "/stripe/:gatewayId",
@@ -128,6 +135,18 @@ paymentWebhooks.post(
     async (req, res) => {
         if (!Buffer.isBuffer(req.body)) throw badRequest("支付回执格式无效。");
         const raw = req.body as Buffer;
+        const gateway = await loadGateway(
+            parse(idParam, req.params.gatewayId),
+            "stripe",
+        );
+        if (
+            !verifyStripeSignature(
+                raw,
+                req.get("Stripe-Signature") ?? "",
+                stripeWebhookSecret(gateway),
+            )
+        )
+            throw unauthorized("支付回执验签失败。");
         let body: unknown;
         try {
             body = JSON.parse(raw.toString("utf8"));
@@ -136,8 +155,9 @@ paymentWebhooks.post(
         }
         const event = parse(stripeEnvelope, body);
         if (
-            event.type !== "checkout.session.completed" &&
-            event.type !== "checkout.session.async_payment_succeeded"
+            (event.type !== "checkout.session.completed" &&
+                event.type !== "checkout.session.async_payment_succeeded") ||
+            !ignoredStripeEvent.safeParse(event.data.object).success
         ) {
             res.sendStatus(204);
             return;
@@ -147,13 +167,13 @@ paymentWebhooks.post(
             res.sendStatus(204);
             return;
         }
-        const attempt = await loadAttempt(
-            data.metadata.xboard_payment,
-            parse(idParam, req.params.gatewayId),
-            "stripe",
+        const attempt = await findAttempt(
+            { id: data.metadata.xboard_payment },
+            gateway.id,
         );
-        if (!checkStripe(attempt, raw, req.get("Stripe-Signature") ?? "", data))
-            throw unauthorized("支付回执验签失败。");
+        if (!attempt) throw unauthorized("支付回执无效。");
+        if (!stripeMatches(attempt, data))
+            throw unauthorized("支付回执与订单不符。");
         await acceptPayment(attempt, data.id);
         res.sendStatus(204);
     },
@@ -168,12 +188,17 @@ async function receiveEpay(req: express.Request, res: express.Response) {
         epayReceipt,
         req.method === "GET" ? req.query : req.body,
     );
-    const attempt = await loadAttempt(
-        data.out_trade_no,
+    const gateway = await loadGateway(
         parse(idParam, req.params.gatewayId),
         "epay",
     );
-    if (!checkEpay(attempt, data)) throw unauthorized("支付回执验签失败。");
+    const attempt = await findAttempt(
+        { providerReference: data.out_trade_no },
+        gateway.id,
+    );
+    if (!attempt) throw unauthorized("支付回执无效。");
+    if (!checkEpay(gateway, attempt, data))
+        throw unauthorized("支付回执验签失败。");
     await acceptPayment(attempt, data.trade_no);
     res.type("text/plain").send("success");
 }

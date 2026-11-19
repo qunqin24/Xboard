@@ -66,6 +66,14 @@ describe("P1 integrations", () => {
         assert.equal(response.status, 200, await response.clone().text());
         return (await response.json()) as Record<string, unknown>;
     }
+    async function adminPutGateway(id: number, body: unknown) {
+        const response = await test.call(`/admin/payment-gateways/${id}`, {
+            cookie: admin,
+            method: "PUT",
+            body,
+        });
+        assert.equal(response.status, 200, await response.clone().text());
+    }
     async function gateway(body: unknown) {
         const response = await test.call("/admin/payment-gateways", {
             cookie: admin,
@@ -317,12 +325,13 @@ describe("P1 integrations", () => {
         const callback = (
             fields: Record<string, unknown>,
             time = Math.floor(Date.now() / 1000),
+            secret = "whsec_fixture",
         ) => {
             const body = JSON.stringify({
                 type: "checkout.session.completed",
                 data: { object: fields },
             });
-            const signature = createHmac("sha256", "whsec_fixture")
+            const signature = createHmac("sha256", secret)
                 .update(`${time}.${body}`)
                 .digest("hex");
             return fetchReal(
@@ -342,6 +351,35 @@ describe("P1 integrations", () => {
             401,
         );
         assert.equal((await callback(receipt, 1)).status, 401);
+        // Sessions created by other integrations on the same Stripe account
+        // are acknowledged so Stripe keeps the endpoint enabled.
+        const foreign = {
+            id: "cs_other_integration",
+            currency: "usd",
+            amount_total: 999,
+            payment_status: "paid",
+            mode: "payment",
+            metadata: {},
+        };
+        assert.equal((await callback(foreign)).status, 204);
+        assert.equal(
+            (await callback({ ...receipt, mode: "subscription" })).status,
+            204,
+        );
+        assert.equal(
+            (
+                await callback(
+                    foreign,
+                    Math.floor(Date.now() / 1000),
+                    "whsec_other",
+                )
+            ).status,
+            401,
+        );
+        assert.equal(
+            await db.balanceEntry.count({ where: { userId: customer.row.id } }),
+            0,
+        );
         const responses = await Promise.all([
             callback(receipt),
             callback(receipt),
@@ -354,6 +392,32 @@ describe("P1 integrations", () => {
             (await db.order.findUniqueOrThrow({ where: { id: pending.id } }))
                 .status,
             "paid",
+        );
+        assert.equal(
+            await db.balanceEntry.count({ where: { userId: customer.row.id } }),
+            2,
+        );
+        // Rotating the webhook secret retires receipts signed with the old one.
+        await adminPutGateway(id, {
+            ...gatewayBase,
+            kind: "stripe",
+            name: "Stripe",
+            config: {},
+            secrets: {
+                secretKey: "sk_test_fixture",
+                webhookSecret: "whsec_rotated",
+            },
+        });
+        assert.equal((await callback(receipt)).status, 401);
+        assert.equal(
+            (
+                await callback(
+                    receipt,
+                    Math.floor(Date.now() / 1000),
+                    "whsec_rotated",
+                )
+            ).status,
+            204,
         );
         assert.equal(
             await db.balanceEntry.count({ where: { userId: customer.row.id } }),

@@ -545,7 +545,8 @@ model PaymentAttempt {
   feeMinor          Int
   status            PaymentStatus  @default(pending)
   config            Json
-  secrets           String
+  /// Retired: callbacks use the gateway's current secrets. Old copies are cleared.
+  secrets           String?
   checkoutUrl       String?
   providerReference String?        @unique
   externalId        String?

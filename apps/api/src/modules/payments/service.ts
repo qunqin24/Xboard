@@ -6,10 +6,7 @@ import { badRequest, conflict, HttpError, notFound } from "../../http/errors";
 import { audit } from "../admin/shared";
 import { MAX_BALANCE_MINOR } from "../orders/credit";
 import { payableAmount, settleOrder } from "../orders/service";
-import {
-    openApplicationSecret,
-    sealApplicationSecret,
-} from "../system/secrets";
+import { sealApplicationSecret } from "../system/secrets";
 import { checkoutFor } from "./gateways";
 
 export function gatewayView(row: PaymentGateway) {
@@ -108,10 +105,6 @@ export async function startCheckout(
                 amountMinor: amount + feeMinor,
                 feeMinor,
                 config: active.config as object,
-                secrets: sealApplicationSecret(
-                    `payment-attempt:${id}`,
-                    openApplicationSecret("payment-gateway", active.secrets),
-                ),
             },
             include,
         });

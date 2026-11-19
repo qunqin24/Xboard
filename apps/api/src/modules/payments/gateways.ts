@@ -1,13 +1,13 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
-import type { PaymentAttempt, PaymentKind } from "@prisma/client";
+import type { Order, PaymentAttempt, PaymentGateway } from "@prisma/client";
 import { getConfig } from "../../config";
 import { HttpError, badRequest } from "../../http/errors";
 import { openApplicationSecret } from "../system/secrets";
 
 type Attempt = PaymentAttempt & {
-    gateway: { kind: PaymentKind };
-    order: { planName: string };
+    gateway: PaymentGateway;
+    order: Pick<Order, "planName" | "expiresAt">;
 };
 const epayConfig = z.object({
     apiUrl: z.string(),
@@ -103,21 +103,29 @@ export function verifyStripeSignature(
     );
 }
 
-function credentials(attempt: PaymentAttempt) {
+/**
+ * Callbacks are verified with the gateway's current credentials, so rotating a
+ * leaked key also invalidates receipts forged with the old one.
+ */
+function credentials(gateway: PaymentGateway) {
     return JSON.parse(
-        openApplicationSecret(
-            `payment-attempt:${attempt.id}`,
-            attempt.secrets,
-        ).toString("utf8"),
+        openApplicationSecret("payment-gateway", gateway.secrets).toString(
+            "utf8",
+        ),
     ) as unknown;
 }
 
+export function stripeWebhookSecret(gateway: PaymentGateway) {
+    return stripeSecrets.parse(credentials(gateway)).webhookSecret;
+}
+
 export function checkEpay(
+    gateway: PaymentGateway,
     attempt: PaymentAttempt,
     data: z.infer<typeof epayReceipt>,
 ) {
-    const { pid } = epayConfig.parse(attempt.config);
-    const { key } = epaySecrets.parse(credentials(attempt));
+    const { pid } = epayConfig.parse(gateway.config);
+    const { key } = epaySecrets.parse(credentials(gateway));
     const [units, cents = ""] = data.money.split(".");
     return (
         data.pid === pid &&
@@ -127,18 +135,15 @@ export function checkEpay(
     );
 }
 
-export function checkStripe(
+/** The signature was checked before this; the session must match the attempt. */
+export function stripeMatches(
     attempt: PaymentAttempt,
-    raw: Buffer,
-    signature: string,
     data: z.infer<typeof stripeReceipt>,
 ) {
-    const { webhookSecret } = stripeSecrets.parse(credentials(attempt));
     return (
         data.currency === "cny" &&
         data.payment_status === "paid" &&
-        data.amount_total === attempt.amountMinor &&
-        verifyStripeSignature(raw, signature, webhookSecret)
+        data.amount_total === attempt.amountMinor
     );
 }
 
@@ -147,8 +152,10 @@ export async function checkoutFor(
 ): Promise<{ url: string; externalId?: string }> {
     const origin = getConfig().origin;
     if (attempt.gateway.kind === "epay") {
-        const { apiUrl, pid, payType } = epayConfig.parse(attempt.config);
-        const { key } = epaySecrets.parse(credentials(attempt));
+        const { apiUrl, pid, payType } = epayConfig.parse(
+            attempt.gateway.config,
+        );
+        const { key } = epaySecrets.parse(credentials(attempt.gateway));
         const fields = {
             pid,
             out_trade_no: z.string().parse(attempt.providerReference),
@@ -171,7 +178,7 @@ export async function checkoutFor(
         }).toString();
         return { url: url.toString() };
     }
-    const { secretKey } = stripeSecrets.parse(credentials(attempt));
+    const { secretKey } = stripeSecrets.parse(credentials(attempt.gateway));
     try {
         const response = await fetch(
             "https://api.stripe.com/v1/checkout/sessions",
