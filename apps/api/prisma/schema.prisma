@@ -522,6 +522,8 @@ enum PaymentStatus {
   settled
   credited
   review
+  /// An administrator refunded a reviewed receipt outside the panel.
+  refunded
 }
 
 model PaymentGateway {

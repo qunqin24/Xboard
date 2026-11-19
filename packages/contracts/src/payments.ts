@@ -63,10 +63,16 @@ export const paymentReceiptSchema = z.object({
     gatewayId: idSchema,
     amountMinor: z.number().int(),
     feeMinor: z.number().int(),
-    status: z.enum(["pending", "settled", "credited", "review"]),
+    status: z.enum(["pending", "settled", "credited", "review", "refunded"]),
     externalId: z.string().nullable(),
     receivedAt: z.string().nullable(),
 });
+/** Settle a receipt held for review: credit it now, or record an offline refund. */
+export const receiptResolutionBody = z.strictObject({
+    action: z.enum(["credit", "refunded"]),
+    note: z.string().trim().min(1, "请填写处理说明").max(200),
+});
+export type ReceiptResolution = z.infer<typeof receiptResolutionBody>;
 export type PaymentGateway = z.infer<typeof paymentGatewaySchema>;
 export type AdminGateway = z.infer<typeof adminGatewaySchema>;
 export type Checkout = z.infer<typeof checkoutSchema>;

@@ -3,6 +3,7 @@ import {
     checkoutBody,
     gatewayBody,
     idParam,
+    receiptResolutionBody,
     uuidParam,
 } from "@xboard/contracts";
 import { db } from "../../db";
@@ -24,6 +25,7 @@ import {
     acceptPayment,
     gatewayView,
     publicGateway,
+    resolveReceipt,
     saveGateway,
     startCheckout,
 } from "./service";
@@ -74,6 +76,17 @@ paymentAdminRoutes.put(
             adminActorId(req),
             parse(gatewayBody, req.body),
             parse(idParam, req.params.id),
+        ),
+    ),
+);
+paymentAdminRoutes.post(
+    "/payment-receipts/:id/resolve",
+    adminWrite(200, (req, tx) =>
+        resolveReceipt(
+            tx,
+            adminActorId(req),
+            parse(uuidParam, req.params.id),
+            parse(receiptResolutionBody, req.body),
         ),
     ),
 );

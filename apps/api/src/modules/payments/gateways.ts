@@ -193,6 +193,17 @@ export async function checkoutFor(
                     success_url: `${origin}/orders`,
                     cancel_url: `${origin}/orders`,
                     client_reference_id: attempt.id,
+                    // Close the session with the order (Stripe allows 30 minutes
+                    // to 24 hours); a payment after the order lapses is credited
+                    // to the balance instead.
+                    expires_at: String(
+                        Math.ceil(
+                            Math.max(
+                                attempt.order.expiresAt.getTime(),
+                                Date.now() + 31 * 60_000,
+                            ) / 1000,
+                        ),
+                    ),
                     "metadata[xboard_payment]": attempt.id,
                     "line_items[0][quantity]": "1",
                     "line_items[0][price_data][currency]": "cny",

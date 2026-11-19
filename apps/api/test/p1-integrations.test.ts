@@ -265,6 +265,149 @@ describe("P1 integrations", () => {
         );
     });
 
+    it("rejects mismatched Epay receipts, credits late and duplicate payments once, and resolves held receipts", async () => {
+        const customer = await buyer("epay-edges", { balance: 0 });
+        const id = await gateway({
+            ...gatewayBase,
+            kind: "epay",
+            name: "Epay edges",
+            config: {
+                apiUrl: "https://payments.example.test",
+                pid: "456",
+                payType: "",
+            },
+            secrets: { key: "epay-edge-key" },
+        });
+        async function checkout(orderId: string) {
+            const response = await test.call(`/orders/${orderId}/checkout`, {
+                cookie: customer.cookie,
+                body: { gatewayId: id, requestId: nextRequest() },
+            });
+            assert.equal(response.status, 200, await response.clone().text());
+            const { url } = (await response.json()) as { url: string };
+            return new URL(url).searchParams.get("out_trade_no")!;
+        }
+        const notify = (
+            reference: string,
+            tradeNo: string,
+            fields: Record<string, string> = {},
+            key = "epay-edge-key",
+        ) => {
+            const receipt = {
+                pid: "456",
+                out_trade_no: reference,
+                trade_no: tradeNo,
+                money: "20.57",
+                trade_status: "TRADE_SUCCESS",
+                sign_type: "MD5",
+                ...fields,
+            };
+            return fetch(
+                `${test.baseUrl}/api/payments/webhooks/epay/${id}?${new URLSearchParams({ ...receipt, sign: epaySign(receipt, key) })}`,
+            );
+        };
+        const balance = async () =>
+            (
+                await db.user.findUniqueOrThrow({
+                    where: { id: customer.row.id },
+                })
+            ).balance;
+
+        // Correctly signed but for another amount or merchant: refused.
+        const first = await order(customer.cookie);
+        const reference = await checkout(first.id);
+        assert.equal(
+            (await notify(reference, "t-amount", { money: "1.00" })).status,
+            401,
+        );
+        assert.equal(
+            (await notify(reference, "t-pid", { pid: "999" })).status,
+            401,
+        );
+        assert.equal(
+            (await notify(reference, "t-key", {}, "other-key")).status,
+            401,
+        );
+        assert.equal(await balance(), 0);
+
+        // Two attempts on one order paid at the same moment: one settles the
+        // order, the other is credited to the balance.
+        const second = await checkout(first.id);
+        const both = await Promise.all([
+            notify(reference, "t-first"),
+            notify(second, "t-second"),
+        ]);
+        for (const response of both)
+            assert.equal(await response.text(), "success");
+        const statuses = (
+            await db.paymentAttempt.findMany({
+                where: { orderId: first.id, status: { not: "pending" } },
+            })
+        )
+            .map((row) => row.status)
+            .sort();
+        assert.deepEqual(statuses, ["credited", "settled"]);
+        assert.equal(await balance(), 2000);
+
+        // One provider receipt cannot pay a second attempt.
+        const reused = await order(customer.cookie);
+        const reusedReference = await checkout(reused.id);
+        assert.equal((await notify(reusedReference, "t-first")).status, 409);
+
+        // A payment arriving after the order expired is credited, not settled.
+        await db.order.update({
+            where: { id: reused.id },
+            data: { expiresAt: new Date(Date.now() - 1000) },
+        });
+        assert.equal(
+            await (await notify(reusedReference, "t-late")).text(),
+            "success",
+        );
+        assert.equal(
+            (await db.order.findUniqueOrThrow({ where: { id: reused.id } }))
+                .status,
+            "pending",
+        );
+        assert.equal(await balance(), 4000);
+
+        // Near the balance cap a receipt is held for review, then resolved.
+        await db.user.update({
+            where: { id: customer.row.id },
+            data: { balance: 1_999_999_000 },
+        });
+        const held = await order(customer.cookie);
+        const heldReference = await checkout(held.id);
+        assert.equal(
+            await (await notify(heldReference, "t-held")).text(),
+            "success",
+        );
+        const attempt = await db.paymentAttempt.findFirstOrThrow({
+            where: { orderId: held.id, status: "review" },
+        });
+        const resolve = (action: string) =>
+            test.call(`/admin/payment-receipts/${attempt.id}/resolve`, {
+                cookie: admin,
+                body: { action, note: "Fixture resolution" },
+            });
+        assert.equal((await resolve("credit")).status, 409);
+        await db.user.update({
+            where: { id: customer.row.id },
+            data: { balance: 0 },
+        });
+        const [credited, again] = await Promise.all([
+            resolve("credit"),
+            resolve("credit"),
+        ]);
+        assert.deepEqual([credited.status, again.status].sort(), [200, 409]);
+        assert.equal(await balance(), 2000);
+        assert.equal(
+            await db.audit.count({
+                where: { action: "payment.review_resolved" },
+            }),
+            1,
+        );
+    });
+
     it("uses Stripe checkout idempotency and verifies the signed raw session, amount and currency", async (t) => {
         const customer = await buyer("stripe");
         const id = await gateway({
@@ -298,6 +441,10 @@ describe("P1 integrations", () => {
                     form.get("line_items[0][price_data][currency]"),
                     "cny",
                 );
+                // Stripe requires 30 minutes to 24 hours.
+                const expires = Number(form.get("expires_at")) * 1000;
+                assert.ok(expires >= Date.now() + 30 * 60_000);
+                assert.ok(expires <= Date.now() + 24 * 3_600_000);
                 return Response.json({
                     id: "cs_test_fixture",
                     url: "https://checkout.stripe.com/fixture",

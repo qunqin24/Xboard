@@ -1,6 +1,10 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { PaymentAttempt, PaymentGateway } from "@prisma/client";
-import type { CheckoutBody, GatewayBody } from "@xboard/contracts";
+import type {
+    CheckoutBody,
+    GatewayBody,
+    ReceiptResolution,
+} from "@xboard/contracts";
 import { db, lockUser, type Tx } from "../../db";
 import { badRequest, conflict, HttpError, notFound } from "../../http/errors";
 import { audit } from "../admin/shared";
@@ -126,6 +130,75 @@ export async function startCheckout(
         amountMinor: attempt.amountMinor,
         feeMinor: attempt.feeMinor,
     };
+}
+
+export function receiptView(row: PaymentAttempt) {
+    return {
+        id: row.id,
+        orderId: row.orderId,
+        gatewayId: row.gatewayId,
+        amountMinor: row.amountMinor,
+        feeMinor: row.feeMinor,
+        status: row.status,
+        externalId: row.externalId,
+        receivedAt: row.receivedAt?.toISOString() ?? null,
+    };
+}
+
+/**
+ * A receipt lands in review when crediting it would push the balance past
+ * the cap. The money was received, so an administrator either credits it
+ * once the balance allows, or records that it was refunded outside the panel.
+ */
+export async function resolveReceipt(
+    tx: Tx,
+    actorId: number,
+    id: string,
+    input: ReceiptResolution,
+) {
+    const attempt = await tx.paymentAttempt.findUnique({
+        where: { id },
+        include: { order: { select: { userId: true } } },
+    });
+    if (!attempt) throw notFound("支付回执不存在。");
+    const userId = attempt.order.userId;
+    await lockUser(tx, userId);
+    const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
+    const current = await tx.paymentAttempt.findUniqueOrThrow({
+        where: { id },
+    });
+    if (current.status !== "review")
+        throw conflict("此回执不在待人工处理状态，请刷新。");
+    const principal = current.amountMinor - current.feeMinor;
+    let status: "credited" | "refunded" = "refunded";
+    if (input.action === "credit") {
+        if (user.balance + principal > MAX_BALANCE_MINOR)
+            throw conflict("入账后余额将超过上限。");
+        await tx.user.update({
+            where: { id: userId },
+            data: { balance: { increment: principal } },
+        });
+        await tx.balanceEntry.create({
+            data: {
+                userId,
+                actorId,
+                amountMinor: principal,
+                reason: `在线支付人工入账（${current.id}）`,
+            },
+        });
+        status = "credited";
+    }
+    const updated = await tx.paymentAttempt.update({
+        where: { id },
+        data: { status },
+    });
+    await audit(tx, actorId, "payment.review_resolved", id, {
+        userId,
+        action: input.action,
+        principal,
+        note: input.note,
+    });
+    return receiptView(updated);
 }
 
 export async function acceptPayment(

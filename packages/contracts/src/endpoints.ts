@@ -323,6 +323,16 @@ export const endpoints: Endpoint[] = [
     },
     {
         method: "post",
+        path: "/admin/payment-receipts/:id/resolve",
+        tag: "admin",
+        auth: "admin",
+        browserOnly: true,
+        summary: "处理待人工处理的支付回执：入账或记为已线下退款",
+        body: payments.receiptResolutionBody,
+        response: payments.paymentReceiptSchema,
+    },
+    {
+        method: "post",
         path: "/auth/login",
         summary: "登录。启用两步验证时，提交动态验证码或恢复码。",
         tag: "auth",

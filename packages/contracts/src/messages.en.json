@@ -1603,5 +1603,13 @@
     "修改服务器地址时，请重新填写密码。": "Re-enter the password when changing the server address",
     "进行中": "In progress",
     "第 {0} / {1} 页": "Page {0} of {1}",
-    "换套餐追回": "Clawed back after a plan switch"
+    "换套餐追回": "Clawed back after a plan switch",
+    "已线下退款": "Refunded offline",
+    "处理说明": "Resolution note",
+    "入账到余额": "Credit to balance",
+    "请填写处理说明": "Enter a resolution note",
+    "支付回执不存在。": "Payment receipt not found.",
+    "此回执不在待人工处理状态，请刷新。": "This receipt is no longer awaiting review. Refresh.",
+    "入账后余额将超过上限。": "Crediting this would exceed the balance limit.",
+    "处理待人工处理的支付回执：入账或记为已线下退款": "Resolve a payment receipt held for review: credit it or record an offline refund"
 }

@@ -207,8 +207,58 @@ const receiptStates = {
     settled: "已结算",
     credited: "已入余额",
     review: "待人工处理",
+    refunded: "已线下退款",
     pending: "待支付",
 };
+
+/** Held because crediting would exceed the balance cap: credit now or record a refund. */
+function ReceiptReview({ receipt }: { receipt: PaymentReceipt }) {
+    const [note, setNote] = useState("");
+    const resolve = useCommand<PaymentReceipt>({ inline: true });
+    const send = (action: "credit" | "refunded") =>
+        resolve.mutate({
+            path: `/admin/payment-receipts/${receipt.id}/resolve`,
+            body: { action, note },
+            related: ["/admin/payment-receipts"],
+        });
+    const id = `receipt-note-${receipt.id}`;
+    return (
+        <div className="mt-field space-y-field">
+            <Label htmlFor={id}>处理说明</Label>
+            <Input
+                id={id}
+                value={note}
+                maxLength={200}
+                onChange={(event) => setNote(event.target.value)}
+            />
+            <div className="flex flex-wrap gap-field">
+                <LoadingButton
+                    type="button"
+                    size="sm"
+                    disabled={!note.trim()}
+                    loading={resolve.isPending}
+                    onClick={() => send("credit")}
+                >
+                    入账到余额
+                </LoadingButton>
+                <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!note.trim() || resolve.isPending}
+                    onClick={() => send("refunded")}
+                >
+                    已线下退款
+                </Button>
+            </div>
+            {resolve.error ? (
+                <p role="alert" className="text-sm text-destructive">
+                    {serverErrorMessage(resolve.error)}
+                </p>
+            ) : null}
+        </div>
+    );
+}
 export function PaymentSettings() {
     const gateways = usePanel<AdminGateway[]>("/admin/payment-gateways");
     const receipts = usePanel<PaymentReceipt[]>("/admin/payment-receipts");
@@ -280,6 +330,9 @@ export function PaymentSettings() {
                                 <div className="text-muted-foreground">
                                     {receipt.externalId}
                                 </div>
+                                {receipt.status === "review" ? (
+                                    <ReceiptReview receipt={receipt} />
+                                ) : null}
                             </li>
                         ))}
                     </ul>
