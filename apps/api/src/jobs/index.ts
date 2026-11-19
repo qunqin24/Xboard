@@ -1,7 +1,7 @@
 import { flushTelegram } from "../modules/telegram/service";
 import { refreshAlertWebhook, reportJobFailure } from "../logging";
 import { getConfig } from "../config";
-import { runBackup } from "./backup";
+import { removeLeftoverBackupFolders, runBackup } from "./backup";
 import { flushMail } from "./mail-queue";
 import { runMaintenance } from "./maintenance";
 import { checkOfflineNodes } from "./node-monitor";
@@ -15,6 +15,9 @@ export function startJobs(): () => void {
             reportJobFailure("alert settings refresh", error),
         );
     refreshAlerts();
+    void removeLeftoverBackupFolders().catch((error) =>
+        reportJobFailure("backup cleanup", error),
+    );
     const timers = [
         setInterval(() => void runMaintenance(), 60_000),
         setInterval(refreshAlerts, 60_000),

@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { createReadStream } from "node:fs";
-import { copyFile, mkdtemp, rm, stat } from "node:fs/promises";
+import { copyFile, mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -149,7 +149,7 @@ async function writeBackup(connection: Storage, now: Date, runId: string) {
     const recipient = connection.settings.backupAgeRecipient;
     if (!/^age1[023456789ac-hj-np-z]{58}$/.test(recipient))
         throw badRequest("请填写有效的 age 公钥。");
-    const folder = await mkdtemp(join(tmpdir(), "xboard-backup-"));
+    const folder = await mkdtemp(join(tmpdir(), FOLDER_PREFIX));
     try {
         const target = dumpTarget();
         await run(
@@ -231,6 +231,23 @@ async function writeBackup(connection: Storage, now: Date, runId: string) {
 
 /** A run still "running" after this long died with its process (OOM, restart). */
 const STALE_RUN_MS = 90 * 60_000;
+const FOLDER_PREFIX = "xboard-backup-";
+
+/**
+ * A process killed mid-backup leaves the plaintext dump and app.key in its
+ * temporary folder. Remove such folders at startup; only old ones, in case
+ * another process on the same host is backing up right now.
+ */
+export async function removeLeftoverBackupFolders(now = Date.now()) {
+    const root = tmpdir();
+    for (const name of await readdir(root)) {
+        if (!name.startsWith(FOLDER_PREFIX)) continue;
+        const path = join(root, name);
+        const info = await stat(path).catch(() => null);
+        if (info?.isDirectory() && now - info.mtimeMs > STALE_RUN_MS)
+            await rm(path, { recursive: true, force: true });
+    }
+}
 
 /**
  * Claim at most one run in a short transaction: the oldest manual request,
