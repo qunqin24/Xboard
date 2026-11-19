@@ -555,7 +555,17 @@ describe("development API slice", () => {
             assert.ok(format === "mihomo" ? body.proxies : body.outbounds);
             assert.ok(!JSON.stringify(body).includes(nodeToken));
         }
-        for (const format of ["surge", "surfboard"]) {
+        // Surfboard has no VLESS proxy type, so this VLESS-only account gets no
+        // Surfboard profile; Surge supports VLESS.
+        assert.equal(
+            (
+                await fetch(
+                    `${baseUrl}/api/subscription/${subscriptionToken}?format=surfboard`,
+                )
+            ).status,
+            400,
+        );
+        for (const format of ["surge"]) {
             const response = await fetch(
                 `${baseUrl}/api/subscription/${subscriptionToken}?format=${format}`,
             );
