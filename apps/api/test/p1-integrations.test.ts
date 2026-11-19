@@ -530,6 +530,7 @@ describe("P1 integrations", () => {
         const fetchReal = globalThis.fetch;
         let signature = "";
         const sent: string[] = [];
+        const failing = new Set<string>();
         t.mock.method(
             globalThis,
             "fetch",
@@ -538,6 +539,11 @@ describe("P1 integrations", () => {
                     return fetchReal(input, init);
                 const method = String(input).split("/").at(-1);
                 const payload = JSON.parse(String(init?.body));
+                if (failing.has(method!))
+                    return Response.json(
+                        { ok: false, description: "Forbidden" },
+                        { status: 403 },
+                    );
                 if (method === "setWebhook") signature = payload.secret_token;
                 if (method === "sendMessage") sent.push(payload.text);
                 return Response.json({
@@ -628,6 +634,16 @@ describe("P1 integrations", () => {
             sent.filter((text) => text.startsWith("节点 #")).length,
             1,
         );
+        // A user who blocked the bot still gets a 200 so Telegram stops retrying.
+        failing.add("sendMessage");
+        assert.equal((await update("/status")).status, 200);
+        // A token revoked in BotFather cannot delete its webhook, but switching
+        // Telegram off still succeeds.
+        failing.add("deleteWebhook");
+        const disabled = await adminPut("/admin/settings/telegram", {
+            telegramBotToken: null,
+        });
+        assert.equal(disabled.tokenSet, false);
     });
 
     it("persists visitor and account language and keeps English and Chinese mail overrides separate", async () => {

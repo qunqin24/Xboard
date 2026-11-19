@@ -3,6 +3,7 @@ import { defaultLocale, validLocale } from "../site/language";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { getConfig } from "../../config";
+import { log } from "../../logging";
 import { db, lockUser, type Tx } from "../../db";
 import {
     badRequest,
@@ -89,7 +90,12 @@ export async function configureTelegram(actorId: number, token: string | null) {
             await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('settings:telegram'))::text`;
             const prior = await readSecret(tx, tokenKey);
             if (!token) {
-                if (prior) await bot(prior, "deleteWebhook");
+                // A token revoked in BotFather can no longer delete its webhook;
+                // switching Telegram off must still work.
+                if (prior)
+                    await bot(prior, "deleteWebhook").catch(() =>
+                        log("warn", "telegram.delete_webhook_failed"),
+                    );
                 await tx.setting.deleteMany({
                     where: { key: { in: [tokenKey, webhookKey] } },
                 });
@@ -287,7 +293,12 @@ export async function processTelegramUpdate(signature: string, raw: unknown) {
     else if (command === "/start" || command === "/help")
         text =
             "在面板的账户设置中绑定 Telegram，使用 /status 查看流量和到期时间。";
-    if (text) await bot(token, "sendMessage", { chat_id: chatId, text });
+    // A failed reply (the user blocked the bot, say) must not fail the update,
+    // or Telegram redelivers it over and over.
+    if (text)
+        await bot(token, "sendMessage", { chat_id: chatId, text }).catch(() =>
+            log("warn", "telegram.reply_failed"),
+        );
 }
 
 export async function enqueueTelegram(
