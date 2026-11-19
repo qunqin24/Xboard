@@ -34,6 +34,30 @@ export async function getSettingSecret(key: SettingSecret, tx: Tx = db) {
         : null;
 }
 
+/**
+ * Fields that decide where a group's secret is sent. Changing one without
+ * sending the secret again would hand the stored secret to a new host.
+ */
+const secretDestinations: Partial<Record<OperationalGroup, string[]>> = {
+    mail: ["smtpHost", "smtpPort", "smtpUser"],
+    backup: [
+        "backupStorage",
+        "backupR2AccountId",
+        "backupR2Jurisdiction",
+        "backupS3Endpoint",
+        "backupAccessKeyId",
+    ],
+    captcha: ["captchaProvider"],
+};
+
+/** Switching the feature off sends the secret nowhere. */
+function sendsNowhere(group: OperationalGroup, data: Record<string, unknown>) {
+    return (
+        (group === "mail" && !data.smtpHost) ||
+        (group === "captcha" && data.captchaProvider === "off")
+    );
+}
+
 export async function saveOperationalGroup(
     tx: Tx,
     actorId: number,
@@ -74,6 +98,18 @@ export async function saveOperationalGroup(
         }
     }
     const before = await readOperationalGroup(group, tx);
+    const moved = (secretDestinations[group] ?? []).filter(
+        (field) =>
+            data[field] !== undefined &&
+            data[field] !== (before as Record<string, unknown>)[field],
+    );
+    if (
+        moved.length &&
+        data[secret] === undefined &&
+        (before as Record<string, unknown>)[`${secret}Set`] &&
+        !sendsNowhere(group, data)
+    )
+        throw badRequest("修改服务器地址时，请重新填写密码。");
     for (const [key, value] of Object.entries(data)) {
         if (value === undefined) continue;
         if (key === secret && value === null) {

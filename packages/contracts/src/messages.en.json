@@ -1599,5 +1599,6 @@
     "，优惠抵扣": ", coupon discount",
     "，待发送 {0} 封": ", {0} queued",
     "，跳过 {0} 个管理员": ", skipped {0} administrators",
-    "，跳过 {0} 位": ", skipped {0}"
+    "，跳过 {0} 位": ", skipped {0}",
+    "修改服务器地址时，请重新填写密码。": "Re-enter the password when changing the server address"
 }

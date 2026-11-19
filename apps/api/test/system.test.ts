@@ -111,6 +111,117 @@ describe("system provisioning and settings", () => {
         assert.equal((await getSmtpConfig())?.password, undefined);
     });
 
+    it("asks for the secret again before sending it to a different server", async () => {
+        const save = (group: string, body: Record<string, unknown>) =>
+            test.call(`/admin/settings/${group}`, {
+                cookie,
+                method: "PUT",
+                body,
+            });
+        const mail = {
+            smtpHost: "smtp.example.test",
+            smtpPort: 587,
+            smtpUser: "panel",
+            mailFrom: "panel@example.test",
+        };
+        assert.equal(
+            (await save("mail", { ...mail, smtpPassword: "first-secret" }))
+                .status,
+            200,
+        );
+        // Another server, port or user without the password: refused, stored
+        // password untouched.
+        for (const moved of [
+            { smtpHost: "smtp.attacker.test" },
+            { smtpPort: 2525 },
+            { smtpUser: "other" },
+        ]) {
+            const response = await save("mail", { ...mail, ...moved });
+            assert.equal(response.status, 400);
+            assert.match(await response.text(), /重新填写密码/);
+        }
+        assert.equal((await getSmtpConfig())?.host, "smtp.example.test");
+        // Unrelated fields still save without the password.
+        assert.equal(
+            (await save("mail", { ...mail, mailFrom: "ops@example.test" }))
+                .status,
+            200,
+        );
+        assert.equal((await getSmtpConfig())?.password, "first-secret");
+        // Moving with the password re-entered is fine.
+        assert.equal(
+            (
+                await save("mail", {
+                    ...mail,
+                    smtpHost: "smtp2.example.test",
+                    smtpPassword: "second-secret",
+                })
+            ).status,
+            200,
+        );
+        assert.equal((await getSmtpConfig())?.password, "second-secret");
+
+        const backup = {
+            backupStorage: "r2",
+            backupR2AccountId: "a".repeat(32),
+            backupBucket: "panel-backups",
+            backupAccessKeyId: "access-key",
+        };
+        assert.equal(
+            (
+                await save("backup", {
+                    ...backup,
+                    backupSecretAccessKey: "backup-secret",
+                })
+            ).status,
+            200,
+        );
+        for (const moved of [
+            {
+                backupStorage: "s3",
+                backupS3Endpoint: "https://s3.attacker.test",
+            },
+            { backupR2AccountId: "b".repeat(32) },
+            { backupR2Jurisdiction: "eu" },
+            { backupAccessKeyId: "other-key" },
+        ])
+            assert.equal(
+                (await save("backup", { ...backup, ...moved })).status,
+                400,
+            );
+        assert.equal(
+            (await save("backup", { ...backup, backupPrefix: "panel/" }))
+                .status,
+            200,
+        );
+
+        const captcha = {
+            captchaProvider: "turnstile",
+            captchaSiteKey: "site-key",
+            captchaOnLogin: false,
+        };
+        assert.equal(
+            (
+                await save("captcha", {
+                    ...captcha,
+                    captchaSecretKey: "captcha-secret",
+                })
+            ).status,
+            200,
+        );
+        assert.equal(
+            (await save("captcha", { ...captcha, captchaProvider: "hcaptcha" }))
+                .status,
+            400,
+        );
+        // Switching the feature off sends the secret nowhere.
+        assert.equal(
+            (await save("captcha", { ...captcha, captchaProvider: "off" }))
+                .status,
+            200,
+        );
+    });
+
     it("reauthenticates before exporting the application key and redeems a recovery code once", async () => {
         const path = "/admin/settings/application-key";
         const user = await db.user.findUniqueOrThrow({ where: { email } });
