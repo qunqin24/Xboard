@@ -11,6 +11,7 @@
         "db:setup": "node scripts/setup-database.mjs",
         "db:seed": "tsx scripts/seed.ts",
         "admin:create": "tsx scripts/admin.ts",
+        "app-key:reset": "tsx scripts/reset-app-key.ts",
         "openapi": "tsx scripts/openapi.ts"
     },
     "dependencies": {

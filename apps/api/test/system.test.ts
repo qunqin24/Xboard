@@ -1,13 +1,19 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { stat } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { readFile, rm, stat, writeFile } from "node:fs/promises";
 import { after, before, describe, it } from "node:test";
 import {
     applicationKey,
     installationSecret,
     secretPath,
 } from "../src/modules/system/secrets";
+import { appDirectory } from "../src/config";
 import { db } from "../src/db";
+import {
+    ApplicationKeyError,
+    prepareApplicationKey,
+} from "../src/modules/system/application-key";
 import { getSmtpConfig } from "../src/modules/system/settings";
 import { makeRecoveryCodes, sealSecret } from "../src/modules/auth/totp";
 import { startTestApp } from "./helpers";
@@ -251,6 +257,56 @@ describe("system provisioning and settings", () => {
             await db.audit.count({
                 where: { action: "settings.application_key_export" },
             }),
+            1,
+        );
+    });
+
+    it("refuses a missing or foreign application key once data is sealed, and never creates one at runtime", async () => {
+        // The earlier tests sealed a two-step secret and the mail password.
+        const path = secretPath("app.key");
+        const original = await readFile(path, "utf8");
+        await rm(path);
+        assert.throws(() => applicationKey(), /missing/);
+        await assert.rejects(prepareApplicationKey(), ApplicationKeyError);
+        await assert.rejects(stat(path), { code: "ENOENT" });
+
+        // A valid key from another installation is caught by the key check.
+        await writeFile(path, Buffer.alloc(32, 7).toString("base64url"), {
+            mode: 0o600,
+        });
+        await assert.rejects(prepareApplicationKey(), ApplicationKeyError);
+
+        await writeFile(path, original, { mode: 0o600 });
+        await prepareApplicationKey();
+
+        // The reset script is the way out when the key is truly lost.
+        await rm(path);
+        const env = { ...process.env };
+        const refused = spawnSync(
+            "pnpm",
+            ["exec", "tsx", "scripts/reset-app-key.ts"],
+            { cwd: appDirectory, env, stdio: "pipe" },
+        );
+        assert.equal(refused.status, 2, refused.stderr.toString());
+        await assert.rejects(stat(path), { code: "ENOENT" });
+        const reset = spawnSync(
+            "pnpm",
+            ["exec", "tsx", "scripts/reset-app-key.ts", "--confirm"],
+            { cwd: appDirectory, env, stdio: "pipe" },
+        );
+        assert.equal(reset.status, 0, reset.stderr.toString());
+        assert.notEqual(await readFile(path, "utf8"), original);
+        await prepareApplicationKey();
+        assert.equal(
+            await db.user.count({ where: { totpSecret: { not: null } } }),
+            0,
+        );
+        assert.equal(
+            await db.setting.count({ where: { key: "smtpPassword" } }),
+            0,
+        );
+        assert.equal(
+            await db.audit.count({ where: { action: "system.app_key_reset" } }),
             1,
         );
     });

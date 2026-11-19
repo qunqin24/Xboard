@@ -11,7 +11,8 @@ import { audit } from "../admin/shared";
 import { hashPassword } from "../auth/password";
 import { claimMailbox, mailboxKey } from "../auth/registration";
 import { readSettings } from "../site/service";
-import { applicationKey, installationSecret, secretPath } from "./secrets";
+import { prepareApplicationKey } from "./application-key";
+import { installationSecret, secretPath } from "./secrets";
 
 async function requireUnconfigured(tx: Tx = db) {
     if (
@@ -24,7 +25,7 @@ async function requireUnconfigured(tx: Tx = db) {
 }
 
 export async function initializeInstallation() {
-    applicationKey();
+    await prepareApplicationKey();
     const admin = await db.user.findFirst({
         where: { role: "admin" },
         select: { id: true },

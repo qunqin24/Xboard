@@ -22,13 +22,18 @@ export function secretPath(name: "app.key" | "setup.code") {
     );
 }
 
-export function installationSecret(name: "app.key" | "setup.code") {
-    const path = secretPath(name);
+function readSecretFile(name: "app.key" | "setup.code") {
     try {
-        return readFileSync(path, "utf8").trim();
+        return readFileSync(secretPath(name), "utf8").trim();
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        return undefined;
     }
+}
+
+/** Create the file once, atomically, even with several workers starting together. */
+export function createSecretFile(name: "app.key" | "setup.code") {
+    const path = secretPath(name);
     mkdirSync(resolve(path, ".."), { recursive: true, mode: 0o700 });
     const temporary = `${path}.${randomUUID()}`;
     const value = randomBytes(32).toString("base64url");
@@ -48,8 +53,24 @@ export function installationSecret(name: "app.key" | "setup.code") {
     return readFileSync(path, "utf8").trim();
 }
 
+/** The one-time setup code is created on demand. */
+export function installationSecret(name: "setup.code") {
+    return readSecretFile(name) ?? createSecretFile(name);
+}
+
+export function applicationKeyExists() {
+    return readSecretFile("app.key") !== undefined;
+}
+
+/**
+ * Never creates a key: a missing key at runtime means the data volume was lost
+ * or not mounted, and a fresh key would make every sealed value unreadable.
+ * The key is created or verified once at startup (system/application-key.ts).
+ */
 export function applicationKey() {
-    const key = installationSecret("app.key");
+    const key = readSecretFile("app.key");
+    if (key === undefined)
+        throw new Error("The application key file is missing.");
     if (
         !/^[A-Za-z0-9_-]{43}$/.test(key) ||
         Buffer.from(key, "base64url").length !== 32

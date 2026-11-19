@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createApp, type App } from "../src/app";
+import { prepareApplicationKey } from "../src/modules/system/application-key";
 import { appDirectory } from "../src/config";
 import { closeDb, db } from "../src/db";
 import { hashPassword } from "../src/modules/auth/password";
@@ -34,6 +35,7 @@ export async function startTestApp() {
     const previousDataDir = process.env.APP_DATA_DIR;
     const dataDir = await mkdtemp(join(tmpdir(), "xboard-test-"));
     process.env.APP_DATA_DIR = dataDir;
+    await prepareApplicationKey();
     const app: App = createApp({ logging: false });
     await app.listen(0, "127.0.0.1");
     const baseUrl = app.getUrl();
