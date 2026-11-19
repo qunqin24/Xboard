@@ -503,6 +503,7 @@ model BackupRun {
   scheduledDay String?   @unique
   status       String    @default("pending")
   createdAt    DateTime  @default(now())
+  startedAt    DateTime?
   finishedAt   DateTime?
   bytes        BigInt?
   objects      String[]  @default([])

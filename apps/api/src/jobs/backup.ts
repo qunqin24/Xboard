@@ -160,6 +160,9 @@ async function writeBackup(connection: Storage, now: Date, runId: string) {
                 `--file=${join(folder, "database.dump")}`,
                 `--dbname=${target.url}`,
                 ...(target.schema ? [`--schema=${target.schema}`] : []),
+                // The run being taken is already recorded as "running"; a
+                // restored copy of that row would look like a stalled backup.
+                '--exclude-table-data=*."BackupRun"',
             ],
             {
                 env: { ...process.env, PGPASSWORD: target.password },
@@ -226,68 +229,98 @@ async function writeBackup(connection: Storage, now: Date, runId: string) {
     }
 }
 
-/** The transaction-scoped lock serializes both scheduled and queued manual backups across replicas. */
-export async function runBackup(now = new Date()) {
-    try {
-        await db.$transaction(
-            async (tx) => {
-                const [lock] = await tx.$queryRaw<
-                    { granted: boolean }[]
-                >`SELECT pg_try_advisory_xact_lock(hashtext('xboard:backup')) AS granted`;
-                if (!lock?.granted) return;
-                const settings = await readOperationalGroup("backup", tx);
-                let job = await tx.backupRun.findFirst({
-                    where: { status: "pending" },
-                    orderBy: { createdAt: "asc" },
-                });
-                const scheduledDay = day.format(now);
-                if (
-                    !job &&
-                    settings.backupEnabled &&
-                    time.format(now) >= settings.backupTime
-                ) {
-                    if (
-                        !(await tx.backupRun.findUnique({
-                            where: { scheduledDay },
-                        }))
-                    )
-                        job = await tx.backupRun.create({
-                            data: { scheduledDay },
-                        });
-                }
-                if (!job) return;
-                try {
-                    const connection = await storage(tx);
-                    try {
-                        const result = await writeBackup(
-                            connection,
-                            now,
-                            job.id,
-                        );
-                        await tx.backupRun.update({
-                            where: { id: job.id },
-                            data: {
-                                ...result,
-                                status: "completed",
-                                finishedAt: new Date(),
-                            },
-                        });
-                    } finally {
-                        connection.client.destroy();
-                    }
-                } catch (error) {
-                    await tx.backupRun.update({
-                        where: { id: job.id },
-                        data: { status: "failed", finishedAt: new Date() },
-                    });
-                    reportJobFailure("database backup", error, {
-                        backupId: job.id,
-                    });
-                }
+/** A run still "running" after this long died with its process (OOM, restart). */
+const STALE_RUN_MS = 90 * 60_000;
+
+/**
+ * Claim at most one run in a short transaction: the oldest manual request,
+ * or today's scheduled backup once its time has come. Only one run is ever
+ * "running", which keeps replicas from backing up twice.
+ */
+async function claimBackup(now: Date) {
+    return db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('xboard:backup'))::text`;
+        const stale = await tx.backupRun.findMany({
+            where: {
+                status: "running",
+                startedAt: { lt: new Date(now.getTime() - STALE_RUN_MS) },
             },
-            { timeout: 4 * timeout },
-        );
+            select: { id: true },
+        });
+        for (const { id } of stale) {
+            await tx.backupRun.update({
+                where: { id },
+                data: { status: "failed", finishedAt: now },
+            });
+            reportJobFailure(
+                "database backup",
+                new Error("Backup run stopped"),
+                { backupId: id },
+            );
+        }
+        if (await tx.backupRun.findFirst({ where: { status: "running" } }))
+            return null;
+        const pending = await tx.backupRun.findFirst({
+            where: { status: "pending" },
+            orderBy: { createdAt: "asc" },
+        });
+        if (pending)
+            return tx.backupRun.update({
+                where: { id: pending.id },
+                data: { status: "running", startedAt: now },
+            });
+        const settings = await readOperationalGroup("backup", tx);
+        const scheduledDay = day.format(now);
+        if (
+            !settings.backupEnabled ||
+            time.format(now) < settings.backupTime ||
+            // One scheduled attempt per day: a failure alerts and waits for an
+            // admin rather than uploading again every minute.
+            (await tx.backupRun.findUnique({ where: { scheduledDay } }))
+        )
+            return null;
+        return tx.backupRun.create({
+            data: { scheduledDay, status: "running", startedAt: now },
+        });
+    });
+}
+
+/**
+ * The dump and uploads run outside any transaction, so a slow upload cannot
+ * outlive a transaction timeout and lose the run's record.
+ */
+export async function runBackup(now = new Date()) {
+    let job: Awaited<ReturnType<typeof claimBackup>>;
+    try {
+        job = await claimBackup(now);
     } catch (error) {
         reportJobFailure("database backup", error);
+        return;
+    }
+    if (!job) return;
+    try {
+        const connection = await storage();
+        let result: Awaited<ReturnType<typeof writeBackup>>;
+        try {
+            result = await writeBackup(connection, now, job.id);
+        } finally {
+            connection.client.destroy();
+        }
+        await db.backupRun.update({
+            where: { id: job.id },
+            data: { ...result, status: "completed", finishedAt: new Date() },
+        });
+    } catch (error) {
+        reportJobFailure("database backup", error, { backupId: job.id });
+        await db.backupRun
+            .update({
+                where: { id: job.id },
+                data: { status: "failed", finishedAt: new Date() },
+            })
+            .catch((failure: unknown) =>
+                reportJobFailure("database backup", failure, {
+                    backupId: job.id,
+                }),
+            );
     }
 }

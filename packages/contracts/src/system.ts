@@ -139,7 +139,7 @@ export const operationalGroupNames = Object.keys(
 
 export const backupRunSchema = z.object({
     id: z.uuid(),
-    status: z.enum(["pending", "completed", "failed"]),
+    status: z.enum(["pending", "running", "completed", "failed"]),
     createdAt: z.iso.datetime(),
     finishedAt: z.iso.datetime().nullable(),
     bytes: z.string().nullable(),

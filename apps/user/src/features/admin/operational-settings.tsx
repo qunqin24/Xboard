@@ -321,7 +321,11 @@ function MailTest() {
 function BackupActions() {
     const history = usePanel<BackupRun[]>(`${pathFor("backup")}/runs`, {
         refetchInterval: (rows) =>
-            rows?.some((row) => row.status === "pending") ? 5_000 : 30_000,
+            rows?.some(
+                (row) => row.status === "pending" || row.status === "running",
+            )
+                ? 5_000
+                : 30_000,
     });
     const test = useCommand();
     const queue = useCommand();
@@ -388,6 +392,7 @@ function BackupActions() {
                                 {
                                     {
                                         pending: "待处理",
+                                        running: "进行中",
                                         completed: "已完成",
                                         failed: "失败",
                                     }[row.status]
