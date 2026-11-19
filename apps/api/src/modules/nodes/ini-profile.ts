@@ -7,6 +7,19 @@ import {
 } from "./settings";
 import type { Entry } from "./subscription";
 
+/**
+ * Sources (checked 2026-11-19):
+ * - Surge: https://manual.nssurge.com/policies/overview.html lists Shadowsocks,
+ *   VMess, Trojan and VLESS (iOS 6.0.0+, Mac 6.12.0+); the VLESS page documents
+ *   username, flow, sni, reality-public-key and reality-short-id. The VMess and
+ *   Trojan pages document ws, ws-path and ws-headers; there is no HTTP Upgrade
+ *   transport, so such nodes are left out.
+ * - Surfboard follows the Surge profile format but has no VLESS proxy type: its
+ *   changelog says importing skips unsupported URIs such as vless://
+ *   (https://getsurfboard.com/docs/changelog).
+ * A node a client cannot use is skipped rather than written, since an unknown
+ * proxy type can make the client reject the whole profile.
+ */
 type Client = "surge" | "surfboard";
 type Tls = NodeSettings<"vmess">["tls"];
 type Transport = NodeSettings<"vmess">["transport"];
@@ -23,22 +36,14 @@ function tlsOptions(tls: Tls, host: string): string[] | null {
     return [`sni=${sniOf(tls, host)}`, `skip-cert-verify=${tls.allowInsecure}`];
 }
 
-function transportOptions(
-    transport: Transport,
-    client: Client,
-): string[] | null {
+function transportOptions(transport: Transport): string[] | null {
     if (transport.network === "tcp")
         return transport.headerType === "none" ? [] : null;
-    if (transport.network === "httpupgrade" && client !== "surge") return null;
-    if (transport.network !== "httpupgrade" && transport.network !== "ws")
-        return null;
+    if (transport.network !== "ws") return null;
     const path = wsEarlyData(transport.path || "/");
     if (path.maxEarlyData || !path.path.startsWith("/")) return null;
     return [
         "ws=true",
-        ...(transport.network === "httpupgrade"
-            ? ["ws-http-upgrade=true"]
-            : []),
         `ws-path=${path.path}`,
         ...(transport.host ? [`ws-headers=Host:${transport.host}`] : []),
     ];
@@ -63,6 +68,8 @@ function proxy(entry: Entry, uuid: string, client: Client): string[] | null {
         case "vmess":
         case "vless":
         case "trojan": {
+            if (typed.protocol === "vless" && client === "surfboard")
+                return null;
             const { settings, protocol } = typed;
             if (settings.security === "reality") {
                 if (typed.protocol !== "vless") return null;
@@ -91,7 +98,7 @@ function proxy(entry: Entry, uuid: string, client: Client): string[] | null {
                 settings.security === "tls"
                     ? tlsOptions(settings.tls, host)
                     : [];
-            const transport = transportOptions(settings.transport, client);
+            const transport = transportOptions(settings.transport);
             if (!tls || !transport) return null;
             const flow = typed.protocol === "vless" ? typed.settings.flow : "";
             return [

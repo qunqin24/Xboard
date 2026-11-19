@@ -2447,15 +2447,29 @@ describe("Surge and Surfboard subscription profiles", () => {
                 shortId: "abcd",
             },
         });
+        const profile = iniProfile([entryFor(node)], UUID, "surge");
+        assert.ok(profile);
+        assert.ok(profile.includes(`reality-public-key=${PUBLIC_KEY}`));
+        assert.match(profile, /reality-short-id=abcd, flow=xtls-rprx-vision/);
+        assert.ok(!profile.includes(PRIVATE_KEY));
+        // Surfboard has no VLESS proxy type: the node is left out.
+        assert.equal(iniProfile([entryFor(node)], UUID, "surfboard"), null);
+    });
+
+    it("skips transports neither client documents and keeps the other nodes", () => {
+        const upgrade = fakeNode("vmess", {
+            transport: { network: "httpupgrade", path: "/up", host: "" },
+        });
+        const ss = fakeNode("shadowsocks");
         for (const client of ["surge", "surfboard"] as const) {
-            const profile = iniProfile([entryFor(node)], UUID, client);
-            assert.ok(profile);
-            assert.ok(profile.includes(`reality-public-key=${PUBLIC_KEY}`));
-            assert.match(
-                profile,
-                /reality-short-id=abcd, flow=xtls-rprx-vision/,
+            const profile = iniProfile(
+                [entryFor(upgrade), entryFor(ss)],
+                UUID,
+                client,
             );
-            assert.ok(!profile.includes(PRIVATE_KEY));
+            assert.ok(profile);
+            assert.doesNotMatch(profile, /http-upgrade|vmess/);
+            assert.match(profile, /ss, node\.example\.test, 443/);
         }
     });
 
