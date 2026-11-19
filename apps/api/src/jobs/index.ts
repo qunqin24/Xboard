@@ -1,5 +1,5 @@
 import { flushTelegram } from "../modules/telegram/service";
-import { reportJobFailure } from "../logging";
+import { refreshAlertWebhook, reportJobFailure } from "../logging";
 import { getConfig } from "../config";
 import { runBackup } from "./backup";
 import { flushMail } from "./mail-queue";
@@ -9,7 +9,16 @@ import { checkOfflineNodes } from "./node-monitor";
 /** Start the periodic workers; returns a function that stops them. */
 export function startJobs(): () => void {
     if (getConfig().environment === "test") return () => {};
-    const timers = [setInterval(() => void runMaintenance(), 60_000)];
+    // Keep the alert webhook cached so alerts still go out if the database fails.
+    const refreshAlerts = () =>
+        void refreshAlertWebhook().catch((error) =>
+            reportJobFailure("alert settings refresh", error),
+        );
+    refreshAlerts();
+    const timers = [
+        setInterval(() => void runMaintenance(), 60_000),
+        setInterval(refreshAlerts, 60_000),
+    ];
     timers.push(
         setInterval(() => void flushMail(), 5_000),
         setInterval(

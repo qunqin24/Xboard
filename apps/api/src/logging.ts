@@ -79,15 +79,63 @@ export async function sendAlertWebhook(value: string, payload: LogFields) {
         throw new Error(`Alert webhook returned ${response.status}.`);
 }
 
+type WebhookReader = () => Promise<string | null>;
+const readWebhookSetting: WebhookReader = () =>
+    getSettingSecret("alertWebhookUrl");
+let readWebhook = readWebhookSetting;
+let cachedWebhook: { url: string | null; readAt: number } | undefined;
+
+/** Tests swap the settings reader to simulate a database outage. */
+export function setAlertWebhookReader(
+    reader: WebhookReader = readWebhookSetting,
+) {
+    readWebhook = reader;
+}
+
+/** Called every minute by the jobs so the last known URL survives an outage. */
+export async function refreshAlertWebhook() {
+    const url = await readWebhook();
+    cachedWebhook = { url, readAt: Date.now() };
+    return url;
+}
+
+/**
+ * The URL lives in the database, and a database outage is exactly when an
+ * alert matters most, so fall back to the last value read successfully.
+ */
+async function alertWebhookUrl() {
+    if (cachedWebhook && Date.now() - cachedWebhook.readAt < 60_000)
+        return cachedWebhook.url;
+    try {
+        return await refreshAlertWebhook();
+    } catch (error) {
+        if (!cachedWebhook) throw error;
+        log("warn", "alert.settings_unavailable", {
+            error: errorFields(error),
+        });
+        return cachedWebhook.url;
+    }
+}
+
 const lastAlert = new Map<string, number>();
 export async function alertFailure(alert: Alert) {
     const key = alert.event === "job.failed" ? alert.job : alert.event;
+    if (Date.now() - (lastAlert.get(key) ?? 0) < 60_000) return;
+    let url: string | null;
+    try {
+        url = await alertWebhookUrl();
+    } catch (error) {
+        log("warn", "alert.delivery_failed", { error: errorFields(error) });
+        return;
+    }
+    if (!url) return;
+    // Throttle only once a delivery is actually attempted; re-check after the
+    // lookup so concurrent failures still send a single alert.
     const now = Date.now();
     if (now - (lastAlert.get(key) ?? 0) < 60_000) return;
     lastAlert.set(key, now);
     try {
-        const url = await getSettingSecret("alertWebhookUrl");
-        if (url) await sendAlertWebhook(url, alert);
+        await sendAlertWebhook(url, alert);
     } catch (error) {
         log("warn", "alert.delivery_failed", { error: errorFields(error) });
     }

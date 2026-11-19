@@ -8,7 +8,13 @@ import { db } from "../src/db";
 import { sealApplicationSecret } from "../src/modules/system/secrets";
 import { startTestApp } from "./helpers";
 import { errorHandler } from "../src/http/errors";
-import { errorFields, reportJobFailure, requestLogging } from "../src/logging";
+import {
+    errorFields,
+    refreshAlertWebhook,
+    reportJobFailure,
+    requestLogging,
+    setAlertWebhookReader,
+} from "../src/logging";
 
 async function listen(server: Server) {
     server.listen(0, "127.0.0.1");
@@ -86,5 +92,36 @@ it("correlates 5xx and failed job alerts without sending request credentials", a
         server.close();
         webhook.close();
         await database.stop();
+    }
+});
+
+it("alerts through the last known webhook while the settings database is down", async (t) => {
+    const alerts: Record<string, unknown>[] = [];
+    const webhook = createServer(async (req, res) => {
+        const chunks = [];
+        for await (const chunk of req) chunks.push(chunk);
+        alerts.push(JSON.parse(Buffer.concat(chunks).toString()));
+        res.writeHead(204).end();
+    });
+    try {
+        const url = await listen(webhook);
+        setAlertWebhookReader(async () => url);
+        await refreshAlertWebhook();
+        // The cached value is stale, so the alert tries the database first.
+        t.mock.timers.enable({ apis: ["Date"], now: Date.now() + 120_000 });
+        let reads = 0;
+        setAlertWebhookReader(async () => {
+            reads += 1;
+            throw new Error("Synthetic database outage");
+        });
+        reportJobFailure("outage fixture", new Error("Synthetic failure"));
+        const until = performance.now() + 3_000;
+        while (!alerts.length && performance.now() < until)
+            await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(reads, 1);
+        assert.equal(alerts[0]?.job, "outage fixture");
+    } finally {
+        setAlertWebhookReader();
+        webhook.close();
     }
 });
