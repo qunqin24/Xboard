@@ -4,11 +4,11 @@ import { useCommand, usePanel } from "@/api/panel";
 import { ErrorState } from "@/components/error-state";
 import { LoadingButton } from "@/components/loading-button";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDateTime, formatMinor } from "@/lib/format";
 import { serverErrorMessage } from "@/lib/handle-server-error";
+import { SettingsCard } from "./settings-card";
 
 function GatewayEditor({
     current,
@@ -264,11 +264,11 @@ export function PaymentSettings() {
     const receipts = usePanel<PaymentReceipt[]>("/admin/payment-receipts");
     const [editing, setEditing] = useState<AdminGateway | "new" | null>(null);
     return (
-        <Card className="max-w-3xl">
-            <CardHeader>
-                <CardTitle>在线支付</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-group">
+        <>
+            <SettingsCard
+                title="支付网关"
+                description="每个网关单独保存，启用后用户可在结账时选择。"
+            >
                 <Button
                     type="button"
                     variant="outline"
@@ -308,7 +308,11 @@ export function PaymentSettings() {
                         onDone={() => setEditing(null)}
                     />
                 ) : null}
-                <h3 className="font-medium">最近支付回执</h3>
+            </SettingsCard>
+            <SettingsCard
+                title="最近支付回执"
+                description="待人工处理的回执需在此入账或记录线下退款。"
+            >
                 {receipts.error ? (
                     <ErrorState
                         error={receipts.error}
@@ -341,7 +345,7 @@ export function PaymentSettings() {
                         暂无支付回执
                     </p>
                 )}
-            </CardContent>
-        </Card>
+            </SettingsCard>
+        </>
     );
 }

@@ -15,7 +15,6 @@ import { SecretDialog } from "@/components/secret-dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,6 +23,7 @@ import { currentLocale } from "@/i18n";
 import { formatDateTime } from "@/lib/format";
 import { serverErrorMessage } from "@/lib/handle-server-error";
 import { EditorSheet } from "./editor-sheet";
+import { SettingsCard } from "./settings-card";
 
 type Field = {
     name: string;
@@ -116,6 +116,12 @@ const titles = {
     alerts: "告警",
     backup: "备份",
     captcha: "人机验证",
+};
+const descriptions: Record<OperationalGroup, string> = {
+    mail: "发送验证码、密码重置和提醒邮件用的 SMTP 服务。",
+    alerts: "5xx 错误、后台任务和备份失败的摘要发送到该 HTTPS 地址。",
+    backup: "每天把数据库加密后上传到对象存储。",
+    captcha: "在注册、登录和找回密码时要求通过验证。",
 };
 const pathFor = (group: OperationalGroup) => `/admin/settings/${group}`;
 
@@ -277,7 +283,7 @@ function GroupForm({
                 loading={save.isPending}
                 className="self-start"
             >
-                保存{titles[group]}设置
+                保存
             </LoadingButton>
         </form>
     );
@@ -417,7 +423,7 @@ function BackupActions() {
     );
 }
 
-function ApplicationKey() {
+export function ApplicationKey() {
     const account = useAccount();
     const [open, setOpen] = useState(false);
     const [secret, setSecret] = useState<string | null>(null);
@@ -425,14 +431,11 @@ function ApplicationKey() {
         inline: true,
     });
     return (
-        <Card className="max-w-3xl">
-            <CardHeader>
-                <CardTitle>应用密钥</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col items-start gap-group">
-                <p className="text-sm text-muted-foreground">
-                    应用密钥用于解密两步验证和后台保存的敏感配置。请妥善保存导出的副本。
-                </p>
+        <SettingsCard
+            title="应用密钥"
+            description="用于解密两步验证和后台保存的敏感配置。请妥善保存导出的副本。"
+        >
+            <div className="flex flex-col items-start gap-group">
                 <Button
                     variant="outline"
                     onClick={() => {
@@ -509,20 +512,17 @@ function ApplicationKey() {
                     value={secret}
                     onClose={() => setSecret(null)}
                 />
-            </CardContent>
-        </Card>
+            </div>
+        </SettingsCard>
     );
 }
 
-function GroupCard({ group }: { group: OperationalGroup }) {
+export function GroupCard({ group }: { group: OperationalGroup }) {
     const values = usePanel<GroupValues>(pathFor(group));
     const alert = useCommand();
     return (
-        <Card className="max-w-3xl">
-            <CardHeader>
-                <CardTitle>{titles[group]}</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-group">
+        <SettingsCard title={titles[group]} description={descriptions[group]}>
+            <div className="flex flex-col gap-group">
                 <LoadAnnouncement
                     loading={values.isPending}
                     failed={values.isError}
@@ -541,40 +541,33 @@ function GroupCard({ group }: { group: OperationalGroup }) {
                 ) : (
                     <Skeleton className="h-20" />
                 )}
-                {group === "mail" ? (
-                    <MailTest />
-                ) : group === "backup" ? (
-                    <BackupActions />
-                ) : group === "alerts" ? (
-                    <LoadingButton
-                        variant="outline"
-                        loading={alert.isPending}
-                        className="self-start"
-                        onClick={() =>
-                            alert.mutate(
-                                { path: `${pathFor("alerts")}/test` },
-                                {
-                                    onSuccess: () =>
-                                        toast.success("测试告警已发送"),
-                                },
-                            )
-                        }
-                    >
-                        发送测试告警
-                    </LoadingButton>
-                ) : null}
-            </CardContent>
-        </Card>
-    );
-}
-
-export function OperationalSettings() {
-    return (
-        <>
-            {(["mail", "alerts", "backup", "captcha"] as const).map((group) => (
-                <GroupCard key={group} group={group} />
-            ))}
-            <ApplicationKey />
-        </>
+                {group === "captcha" ? null : (
+                    <div className="flex flex-col gap-group border-t pt-group">
+                        {group === "mail" ? (
+                            <MailTest />
+                        ) : group === "backup" ? (
+                            <BackupActions />
+                        ) : (
+                            <LoadingButton
+                                variant="outline"
+                                loading={alert.isPending}
+                                className="self-start"
+                                onClick={() =>
+                                    alert.mutate(
+                                        { path: `${pathFor("alerts")}/test` },
+                                        {
+                                            onSuccess: () =>
+                                                toast.success("测试告警已发送"),
+                                        },
+                                    )
+                                }
+                            >
+                                发送测试告警
+                            </LoadingButton>
+                        )}
+                    </div>
+                )}
+            </div>
+        </SettingsCard>
     );
 }

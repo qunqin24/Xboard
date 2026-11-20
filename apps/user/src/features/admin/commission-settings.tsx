@@ -8,11 +8,11 @@ import { useCommand, usePanel } from "@/api/panel";
 import { ErrorState } from "@/components/error-state";
 import { LoadingButton } from "@/components/loading-button";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatMinor } from "@/lib/format";
 import { serverErrorMessage } from "@/lib/handle-server-error";
+import { SettingsCard } from "./settings-card";
 
 type Settings = z.output<typeof commissionSettingsBody>;
 function CommissionForm({ settings }: { settings: Settings }) {
@@ -112,7 +112,7 @@ function CommissionForm({ settings }: { settings: Settings }) {
                 className="justify-self-start"
                 loading={save.isPending}
             >
-                保存佣金设置
+                保存
             </LoadingButton>
         </form>
     );
@@ -222,11 +222,11 @@ export function CommissionSettings() {
     const settings = usePanel<Settings>("/admin/settings/commission");
     const requests = usePanel<AdminWithdrawal[]>("/admin/withdrawals");
     return (
-        <Card className="max-w-3xl">
-            <CardHeader>
-                <CardTitle>佣金与提现</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-group">
+        <>
+            <SettingsCard
+                title="佣金规则"
+                description="返佣比例、提现开关和收款方式。"
+            >
                 {settings.data ? (
                     <CommissionForm settings={settings.data} />
                 ) : settings.error ? (
@@ -235,7 +235,11 @@ export function CommissionSettings() {
                         onRetry={() => settings.refetch()}
                     />
                 ) : null}
-                <h3 className="font-medium">提现审核</h3>
+            </SettingsCard>
+            <SettingsCard
+                title="提现审核"
+                description="确认已线下付款后再标记为已付款；驳回会退回佣金。"
+            >
                 {requests.error ? (
                     <ErrorState
                         error={requests.error}
@@ -253,7 +257,7 @@ export function CommissionSettings() {
                         暂无提现申请
                     </p>
                 )}
-            </CardContent>
-        </Card>
+            </SettingsCard>
+        </>
     );
 }

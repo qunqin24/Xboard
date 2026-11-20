@@ -41,9 +41,9 @@ Compose 将动态容器地址分配在独立范围，保留 Caddy 的固定地�
 
 ### 系统设置
 
-在「系统设置 → 邮件服务」填写 SMTP 服务器、端口、TLS、发件人及可选凭据。保存后邮件队列使用新配置。先向自己的地址发送测试邮件，再到「邮件队列」确认投递结果。
+在「系统设置 → 邮件 → 邮件服务」填写 SMTP 服务器、端口、TLS、发件人及可选凭据。保存后邮件队列使用新配置。先向自己的地址发送测试邮件，再到「邮件队列」确认投递结果。
 
-在「系统设置 → 告警」保存 HTTPS webhook，点「发送测试告警」验证接收方。API 将 5xx、后台任务和备份失败摘要发送到这个地址。同类告警在每个实例内最多每分钟一次。用响应头 `X-Request-Id` 对照 JSON 请求日志定位问题。
+在「系统设置 → 管理员通知 → 告警」保存 HTTPS webhook，点「发送测试告警」验证接收方。API 将 5xx、后台任务和备份失败摘要发送到这个地址。同类告警在每个实例内最多每分钟一次。用响应头 `X-Request-Id` 对照 JSON 请求日志定位问题。
 
 把面板的 `https://<域名>/api/health` 配到外部监控，定期确认 HTTPS 请求返回 200。该接口还会检查 PostgreSQL。可用性告警的通知渠道设在外部监控中，确保 API 进程停机时仍能收到通知。
 
@@ -98,7 +98,7 @@ pg_restore --exit-on-error --no-owner --no-privileges --dbname="$DATABASE_URL" x
 
 ### 在线支付及佣金
 
-在「系统设置 → 在线支付」新增网关，填写名称、手续费和排序。易支付填商户号、密钥与 HTTPS 网关地址，支持经典 MD5 协议。Stripe 填 API 密钥和 webhook 签名密钥。在 Stripe 后台登记面板显示的 HTTPS webhook，订阅 `checkout.session.completed` 和 `checkout.session.async_payment_succeeded`。发布前用供应方测试模式验证成功回执、金额和回跳。[易支付协议示例](https://www.z-pay.cn/doc.html) · [Stripe Webhook](https://docs.stripe.com/webhooks)
+在「系统设置 → 支付 → 支付网关」新增网关，填写名称、手续费和排序。易支付填商户号、密钥与 HTTPS 网关地址，支持经典 MD5 协议。Stripe 填 API 密钥和 webhook 签名密钥。在 Stripe 后台登记面板显示的 HTTPS webhook，订阅 `checkout.session.completed` 和 `checkout.session.async_payment_succeeded`。发布前用供应方测试模式验证成功回执、金额和回跳。[易支付协议示例](https://www.z-pay.cn/doc.html) · [Stripe Webhook](https://docs.stripe.com/webhooks)
 
 用户在待支付订单的结算弹窗选择网关，手续费由下单会话锁定。回调会校验金额与签名。若订单已取消、超时或无法完成结算，支付本金会入余额。后台「最近支付回执」显示已结算、已入余额或待人工处理。达到余额上限的回执待人工核对，可在供应方后台处理退款。
 
@@ -106,13 +106,13 @@ pg_restore --exit-on-error --no-owner --no-privileges --dbname="$DATABASE_URL" x
 
 ### 人机验证
 
-在「系统设置 → 人机验证」选择供应方，填站点公钥与验证密钥。所选供应方需允许面板域名。用 Turnstile 托管小组件、reCAPTCHA v2 复选框或 hCaptcha 小组件。注册保护同时覆盖发送注册验证码与提交注册，两次提交各用一个证明。[Turnstile](https://developers.cloudflare.com/turnstile/get-started/) · [reCAPTCHA](https://developers.google.com/recaptcha/docs/display) · [hCaptcha](https://docs.hcaptcha.com/)
+在「系统设置 → 安全 → 人机验证」选择供应方，填站点公钥与验证密钥。所选供应方需允许面板域名。用 Turnstile 托管小组件、reCAPTCHA v2 复选框或 hCaptcha 小组件。注册保护同时覆盖发送注册验证码与提交注册，两次提交各用一个证明。[Turnstile](https://developers.cloudflare.com/turnstile/get-started/) · [reCAPTCHA](https://developers.google.com/recaptcha/docs/display) · [hCaptcha](https://docs.hcaptcha.com/)
 
 ### Telegram 及语言
 
-从 BotFather 获取机器人令牌，将令牌填入「系统设置 → Telegram 机器人」。面板校验并为公网 HTTPS 域名登记 webhook。用户在账户设置中生成一次性链接并在私聊点击开始。命令 `/status` 显示流量与到期时间。管理员绑定后可接收新工单、新订单和离线通知。 [Telegram Bot API](https://core.telegram.org/bots/api)
+从 BotFather 获取机器人令牌，将令牌填入「系统设置 → 管理员通知 → Telegram 机器人」。面板校验并为公网 HTTPS 域名登记 webhook。用户在账户设置中生成一次性链接并在私聊点击开始。命令 `/status` 显示流量与到期时间。管理员绑定后可接收新工单、新订单和离线通知。 [Telegram Bot API](https://core.telegram.org/bots/api)
 
-「系统设置 → 语言」配置访客默认语言，账户设置可保存个人偏好。「邮件队列 → 邮件模板」按语言编辑系统邮件。已有模板继续作为简体中文版本。手工群发使用管理员提供的正文。
+「系统设置 → 站点 → 语言」配置访客默认语言，账户设置可保存个人偏好。「邮件队列 → 邮件模板」按语言编辑系统邮件。已有模板继续作为简体中文版本。手工群发使用管理员提供的正文。
 
 ## 日常操作
 
