@@ -4,6 +4,7 @@ import {
     CreditCard,
     Database,
     Globe,
+    Info,
     Mail,
     ShieldCheck,
     UserPlus,
@@ -59,6 +60,12 @@ export const SETTINGS_SECTIONS = [
         title: "备份",
         description: "每日自动备份到对象存储。",
         icon: Database,
+    },
+    {
+        id: "about",
+        title: "关于",
+        description: "当前版本和检查更新。",
+        icon: Info,
     },
 ] as const satisfies readonly {
     id: string;

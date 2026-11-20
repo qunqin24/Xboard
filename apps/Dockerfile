@@ -26,6 +26,11 @@ COPY --from=build /out/node_modules node_modules
 COPY --from=build /out/prisma prisma
 COPY --from=build /workspace/apps/api/dist dist
 COPY --from=build /workspace/apps/user/dist web
+# Set by the image workflow: the release version ("1.2.3", or "edge" for
+# main) and the commit, shown in the admin console next to the update check.
+ARG APP_VERSION=""
+ARG APP_COMMIT=""
+ENV APP_VERSION=${APP_VERSION} APP_COMMIT=${APP_COMMIT}
 ENV NODE_ENV=production API_HOST=0.0.0.0 API_PORT=3001 APP_DATA_DIR=/data APP_WEB_DIR=/app/web
 USER node
 EXPOSE 3001

@@ -34,6 +34,7 @@ import {
     type Values,
 } from "./site-settings-form";
 import { TelegramSettings } from "./telegram-settings";
+import { VersionSettings } from "./version-settings";
 import type { PlanRow, SiteSettings } from "./types";
 
 const FORM_ID = "site-settings";
@@ -83,6 +84,8 @@ function sectionContent(section: SettingsSectionId, plans: PlanRow[]) {
             );
         case "backup":
             return <GroupCard group="backup" />;
+        case "about":
+            return <VersionSettings />;
     }
 }
 

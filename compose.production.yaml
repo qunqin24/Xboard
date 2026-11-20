@@ -36,6 +36,9 @@ services:
       # Connections through the published port arrive from the network
       # gateway, so X-Forwarded-For is trusted only from there.
       TRUSTED_PROXY: ${TRUSTED_PROXY:-172.30.56.1}
+      # The admin console checks this repository's releases for updates;
+      # set APP_UPDATE_REPO= (empty) in ops/.env to turn the check off.
+      APP_UPDATE_REPO: ${APP_UPDATE_REPO-qunqin24/Xboard}
     depends_on:
       postgres:
         condition: service_healthy

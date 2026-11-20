@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { exportKeyBody } from "@xboard/contracts";
+import { exportKeyBody, versionQuery } from "@xboard/contracts";
 import { db, lockUser } from "../../db";
 import { badRequest, unauthorized } from "../../http/errors";
 import { testBackupStorage } from "../../jobs/backup";
@@ -16,8 +16,17 @@ import {
 } from "../auth/two-factor-limit";
 import { applicationKey } from "./secrets";
 import { getSettingSecret } from "./settings";
+import { versionInfo } from "./version";
 
 export const systemAdminRoutes = Router();
+
+systemAdminRoutes.get("/version", async (req, res) => {
+    const { refresh } = parse(versionQuery, req.query);
+    // A forced check asks GitHub, whose anonymous API allows 60 calls an hour.
+    if (refresh === "1")
+        await enforce(`version-check:${currentUser(req).id}`, 60_000, 5);
+    res.json(await versionInfo(refresh === "1"));
+});
 
 systemAdminRoutes.post("/settings/alerts/test", async (req, res) => {
     const actorId = currentUser(req).id;

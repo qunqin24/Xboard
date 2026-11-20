@@ -21,6 +21,7 @@ import {
     YAxis,
 } from "recharts";
 import { usePanel } from "@/api/panel";
+import { UpdateNotice } from "./version-settings";
 import { chartAxis, chartMargin, chartTooltip } from "@/components/chart-style";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
@@ -209,6 +210,7 @@ export function AdminDashboard() {
                 </ToggleGroup>
             }
         >
+            <UpdateNotice />
             <div className="flex flex-wrap items-center gap-x-group gap-y-field text-sm text-muted-foreground">
                 {overview.isPending ? (
                     <Skeleton className="h-5 w-64" />

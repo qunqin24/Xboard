@@ -69,6 +69,8 @@ docker compose --env-file ops/.env -f compose.production.yaml up -d --no-build -
 
 ## 升级与回退
 
+后台“系统设置 → 关于”显示当前运行的版本和构建它的提交，并提供“检查更新”。服务器每小时向 GitHub 查询一次 `APP_UPDATE_REPO`（默认 `qunqin24/Xboard`）的最新正式版本，有新版本时仪表盘顶部会出现提示。服务器无法访问 GitHub 时，页面会显示检查失败，不影响其他功能。在 `ops/.env` 里写 `APP_UPDATE_REPO=`（留空）可以关闭检查，服务器就不再访问 GitHub。版本号来自镜像：发布的镜像是标签上的版本，`edge` 镜像显示 `edge`，不和正式版本比较。
+
 升级 TypeScript 版之前，备份 PostgreSQL 和应用密钥，并读一遍目标版本 Release 里的数据库迁移和配置说明。把 `XBOARD_IMAGE` 改成目标版本，或检出对应版本标签后重新构建。Compose 的 `migrate` 服务先执行前向迁移，成功后再启动应用。升级后检查 `/api/health`、登录、订单和一条订阅链接，保留本次备份直到验证完成。
 
 如果需要回退应用代码，先核对目标版本与当前数据库结构的兼容性。涉及数据库恢复时，先在独立库验证，再切换到完整的备份。保存新的写入记录并核对用户余额、订单和流水。具体步骤见 [部署文档](typescript-deployment.md)。

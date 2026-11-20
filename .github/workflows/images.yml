@@ -70,6 +70,9 @@ jobs:
           file: apps/Dockerfile
           target: app
           platforms: ${{ matrix.platform.name }}
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
+            APP_COMMIT=${{ github.sha }}
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
           outputs: ${{ inputs.push && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', env.IMAGE) || 'type=cacheonly' }}

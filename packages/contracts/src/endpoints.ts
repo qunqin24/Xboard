@@ -592,6 +592,16 @@ export const endpoints: Endpoint[] = [
     },
     {
         method: "get",
+        path: "/admin/version",
+        summary: "当前版本与检查更新",
+        tag: "admin",
+        auth: "admin",
+        browserOnly: true,
+        query: system.versionQuery,
+        response: system.versionSchema,
+    },
+    {
+        method: "get",
         path: "/admin/stats",
         summary: "每日统计（上海时区）",
         tag: "admin",

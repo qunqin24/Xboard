@@ -146,3 +146,31 @@ export const backupRunSchema = z.object({
     objects: z.array(z.string()),
 });
 export type BackupRun = z.infer<typeof backupRunSchema>;
+
+/** Query for the version check: refresh=1 skips the cached answer. */
+export const versionQuery = z.object({
+    refresh: z.enum(["0", "1"]).optional(),
+});
+
+/** The running version and, when the check is enabled, the newest release. */
+export const versionSchema = z.object({
+    /** "1.2.3" for a release image, "edge" for main, or the package version in development. */
+    current: z.string(),
+    /** The commit the image was built from, when known. */
+    commit: z.string().nullable(),
+    /** False when APP_UPDATE_REPO is empty: the server never asks GitHub. */
+    checkEnabled: z.boolean(),
+    latest: z
+        .object({
+            version: z.string(),
+            url: z.string(),
+            publishedAt: z.string(),
+        })
+        .nullable(),
+    /** Null when the versions cannot be compared (development or edge builds). */
+    updateAvailable: z.boolean().nullable(),
+    checkedAt: z.string().nullable(),
+    /** Why the last check failed, if it did. */
+    error: z.string().nullable(),
+});
+export type VersionInfo = z.infer<typeof versionSchema>;
