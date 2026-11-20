@@ -233,6 +233,12 @@ export async function listOrders(userId: number): Promise<Order[]> {
     return orders.map(toOrder);
 }
 
+export async function getOrder(userId: number, id: string): Promise<Order> {
+    const order = await db.order.findFirst({ where: { id, userId } });
+    if (!order) throw notFound("订单不存在。");
+    return toOrder(order);
+}
+
 export async function cancelOrder(userId: number, id: string): Promise<Order> {
     return db.$transaction(async (tx) => {
         await lockBuyer(tx, userId);

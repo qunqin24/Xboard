@@ -82,14 +82,32 @@ export function useOrders() {
     );
 }
 
+/** One order; polls while it awaits payment so a gateway receipt shows up. */
+export function useOrder(id: string) {
+    return useHeldPending(
+        useQuery({
+            queryKey: ["orders", id],
+            queryFn: () => request<Order>(`/orders/${id}`),
+            refetchInterval: (query) =>
+                query.state.data?.status === "pending" ? 5_000 : false,
+        }),
+    );
+}
+
 export function useCreateOrder() {
     const client = useQueryClient();
     return useMutation({
         mutationFn: (input: CreateOrderBody) =>
             request<Order>("/orders", "POST", input),
-        // Not awaited: the button is released when the order exists.
-        onSuccess: () =>
-            void client.invalidateQueries({ queryKey: ["orders"] }),
+        onSuccess: (order) => {
+            // The checkout page opens on this order without a second fetch.
+            client.setQueryData(["orders", order.id], order);
+            // Not awaited: the button is released when the order exists.
+            void client.invalidateQueries({
+                queryKey: ["orders"],
+                exact: true,
+            });
+        },
     });
 }
 

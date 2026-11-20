@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { useAccount, useOrderAction, useOrders } from "@/api/hooks";
+import { useOrderAction, useOrders } from "@/api/hooks";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
     DataTable,
@@ -22,7 +22,6 @@ import {
     RowActions,
 } from "@/components/data-table";
 import { Page } from "@/components/layout/page";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { EmptyState } from "@/components/empty-state";
 import { IconBlock } from "@/components/ui/icon-block";
 import { IconText } from "@/components/icon-text";
@@ -30,12 +29,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
     formatDateTime,
-    formatMinor,
     formatSettlement,
     formatTraffic,
     periodLabel,
 } from "@/lib/format";
-import { OnlinePayment } from "./online-payment";
 import { orderStatus } from "./status";
 
 /** Keyed by the labels orderStatus() returns. */
@@ -48,11 +45,8 @@ const STATUS_ICON: Record<string, LucideIcon> = {
 
 export function Orders() {
     const orders = useOrders();
-    const account = useAccount();
     const action = useOrderAction();
-    const [paying, setPaying] = useState<Order | null>(null);
     const [cancelling, setCancelling] = useState<Order | null>(null);
-    const balance = account.data?.balanceMinor ?? 0;
 
     const columns: ColumnDef<Order>[] = [
         {
@@ -145,31 +139,38 @@ export function Orders() {
                     row.original.status,
                     row.original.expiresAt,
                 );
-                return status.payable ? (
+                return (
                     <div className="flex items-center justify-end gap-inline">
                         <Button
+                            asChild
                             size="sm"
-                            onClick={() => setPaying(row.original)}
+                            variant={status.payable ? "default" : "ghost"}
                         >
-                            结算
+                            <Link
+                                to="/orders/$id"
+                                params={{ id: row.original.id }}
+                            >
+                                {status.payable ? "去支付" : "详情"}
+                            </Link>
                         </Button>
-                        <RowActions
-                            actions={[
-                                {
-                                    label: "取消订单",
-                                    icon: X,
-                                    destructive: true,
-                                    onSelect: () => setCancelling(row.original),
-                                },
-                            ]}
-                        />
+                        {status.payable ? (
+                            <RowActions
+                                actions={[
+                                    {
+                                        label: "取消订单",
+                                        icon: X,
+                                        destructive: true,
+                                        onSelect: () =>
+                                            setCancelling(row.original),
+                                    },
+                                ]}
+                            />
+                        ) : null}
                     </div>
-                ) : null;
+                );
             },
         },
     ];
-
-    const short = paying ? balance < paying.payableMinor : false;
 
     return (
         <Page
@@ -205,77 +206,6 @@ export function Orders() {
                         ),
                     },
                 ]}
-            />
-            <ConfirmDialog
-                open={paying !== null}
-                onOpenChange={(open) => !open && setPaying(null)}
-                title={
-                    paying?.kind === "traffic_reset"
-                        ? "确认重置流量"
-                        : paying?.replacesPlan
-                          ? "确认更换套餐"
-                          : "余额支付"
-                }
-                desc={
-                    paying ? (
-                        <div className="space-y-group">
-                            <p>
-                                {paying.planName} · {periodLabel(paying.period)}
-                            </p>
-                            {paying.replacesPlan && (
-                                <p>
-                                    {paying.creditMinor > 0
-                                        ? `原套餐剩余价值 ${formatMinor(paying.creditMinor)} 将用于结算。`
-                                        : "原套餐没有可折算的剩余时间（例如长期套餐或赠送套餐），不抵扣。"}
-                                    确认后，新套餐立即生效。
-                                </p>
-                            )}
-                            {paying.discountMinor > 0 && (
-                                <p>
-                                    原价 {formatMinor(paying.amountMinor)}
-                                    ，优惠抵扣{" "}
-                                    {formatMinor(paying.discountMinor)}。
-                                </p>
-                            )}
-                            <p>
-                                {paying.payableMinor < 0
-                                    ? `将退回余额 ${formatMinor(-paying.payableMinor)}。`
-                                    : paying.payableMinor === 0
-                                      ? "本订单无需扣款。"
-                                      : `将从余额扣除 ${formatMinor(paying.payableMinor)}（当前余额 ${formatMinor(balance)}）。`}
-                            </p>
-                            {short ? (
-                                <Alert variant="destructive">
-                                    <AlertDescription>
-                                        余额不足，可选择已启用的在线支付方式或联系管理员入账。
-                                    </AlertDescription>
-                                </Alert>
-                            ) : null}
-                            <OnlinePayment key={paying.id} order={paying} />
-                        </div>
-                    ) : (
-                        ""
-                    )
-                }
-                confirmText="确认结算"
-                disabled={short || !account.isSuccess}
-                isLoading={action.isPending}
-                handleConfirm={() =>
-                    paying &&
-                    action.mutate(
-                        { id: paying.id, action: "pay" },
-                        {
-                            onSuccess: () => {
-                                toast.success(
-                                    paying.kind === "traffic_reset"
-                                        ? "流量已重置"
-                                        : "订单已结算，套餐已生效",
-                                );
-                                setPaying(null);
-                            },
-                        },
-                    )
-                }
             />
             <ConfirmDialog
                 open={cancelling !== null}

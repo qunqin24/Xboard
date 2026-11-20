@@ -502,6 +502,14 @@ export const endpoints: Endpoint[] = [
         status: 201,
     },
     {
+        method: "get",
+        path: "/orders/:id",
+        summary: "订单详情",
+        tag: "orders",
+        auth: "user",
+        response: orders.orderSchema,
+    },
+    {
         method: "post",
         path: "/orders/:id/pay",
         summary: "用余额支付",

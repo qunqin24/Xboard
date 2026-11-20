@@ -57,10 +57,12 @@ function useOrderCheckout() {
         create.mutate(
             { ...input, requestId: previous.current.id },
             {
-                onSuccess: () => {
+                onSuccess: (order) => {
                     previous.current = null;
-                    toast.success("订单已创建，请在 30 分钟内确认结算。");
-                    void navigate({ to: "/orders" });
+                    void navigate({
+                        to: "/orders/$id",
+                        params: { id: order.id },
+                    });
                 },
             },
         );

@@ -45,6 +45,7 @@ import { Route as AuthenticatedAdminSettingsRouteImport } from './routes/_authen
 import { Route as AuthenticatedAdminTemplatesRouteImport } from './routes/_authenticated/admin/templates'
 import { Route as AuthenticatedAdminTicketsRouteImport } from './routes/_authenticated/admin/tickets'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
+import { Route as AuthenticatedOrdersIdRouteImport } from './routes/_authenticated/orders_.$id'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
 import { Route as AuthenticatedSettingsAppearanceRouteImport } from './routes/_authenticated/settings/appearance'
 import { Route as AuthenticatedSettingsInviteRouteImport } from './routes/_authenticated/settings/invite'
@@ -239,6 +240,11 @@ const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AuthenticatedAdminRouteRoute,
 } as any)
+const AuthenticatedOrdersIdRoute = AuthenticatedOrdersIdRouteImport.update({
+  id: '/orders_/$id',
+  path: '/orders/$id',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedSettingsIndexRoute =
   AuthenticatedSettingsIndexRouteImport.update({
     id: '/',
@@ -299,6 +305,7 @@ export interface FileRoutesByFullPath {
   '/admin/templates': typeof AuthenticatedAdminTemplatesRoute
   '/admin/tickets': typeof AuthenticatedAdminTicketsRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/orders/$id': typeof AuthenticatedOrdersIdRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
   '/settings/invite': typeof AuthenticatedSettingsInviteRoute
   '/settings/security': typeof AuthenticatedSettingsSecurityRoute
@@ -338,6 +345,7 @@ export interface FileRoutesByTo {
   '/admin/templates': typeof AuthenticatedAdminTemplatesRoute
   '/admin/tickets': typeof AuthenticatedAdminTicketsRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/orders/$id': typeof AuthenticatedOrdersIdRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
   '/settings/invite': typeof AuthenticatedSettingsInviteRoute
   '/settings/security': typeof AuthenticatedSettingsSecurityRoute
@@ -381,6 +389,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/templates': typeof AuthenticatedAdminTemplatesRoute
   '/_authenticated/admin/tickets': typeof AuthenticatedAdminTicketsRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/_authenticated/orders_/$id': typeof AuthenticatedOrdersIdRoute
   '/_authenticated/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
   '/_authenticated/settings/invite': typeof AuthenticatedSettingsInviteRoute
   '/_authenticated/settings/security': typeof AuthenticatedSettingsSecurityRoute
@@ -424,6 +433,7 @@ export interface FileRouteTypes {
     | '/admin/templates'
     | '/admin/tickets'
     | '/admin/users'
+    | '/orders/$id'
     | '/settings/appearance'
     | '/settings/invite'
     | '/settings/security'
@@ -463,6 +473,7 @@ export interface FileRouteTypes {
     | '/admin/templates'
     | '/admin/tickets'
     | '/admin/users'
+    | '/orders/$id'
     | '/settings/appearance'
     | '/settings/invite'
     | '/settings/security'
@@ -505,6 +516,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/templates'
     | '/_authenticated/admin/tickets'
     | '/_authenticated/admin/users'
+    | '/_authenticated/orders_/$id'
     | '/_authenticated/settings/appearance'
     | '/_authenticated/settings/invite'
     | '/_authenticated/settings/security'
@@ -781,6 +793,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminUsersRouteImport
       parentRoute: typeof AuthenticatedAdminRouteRoute
     }
+    '/_authenticated/orders_/$id': {
+      id: '/_authenticated/orders_/$id'
+      path: '/orders/$id'
+      fullPath: '/orders/$id'
+      preLoaderRoute: typeof AuthenticatedOrdersIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/settings/': {
       id: '/_authenticated/settings/'
       path: '/'
@@ -884,6 +903,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSubscriptionRoute: typeof AuthenticatedSubscriptionRoute
   AuthenticatedTicketsRoute: typeof AuthenticatedTicketsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedOrdersIdRoute: typeof AuthenticatedOrdersIdRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -896,6 +916,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSubscriptionRoute: AuthenticatedSubscriptionRoute,
   AuthenticatedTicketsRoute: AuthenticatedTicketsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedOrdersIdRoute: AuthenticatedOrdersIdRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

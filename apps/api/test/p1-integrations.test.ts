@@ -201,6 +201,10 @@ describe("P1 integrations", () => {
             assert.deepEqual(await (await start()).json(), opened);
             assert.deepEqual([opened.amountMinor, opened.feeMinor], [2057, 57]);
             const info = new URL(opened.url);
+            assert.equal(
+                info.searchParams.get("return_url"),
+                `${ORIGIN}/orders/${row.id}`,
+            );
             assert.match(
                 info.searchParams.get("out_trade_no") ?? "",
                 /^\d{32}$/,
@@ -422,6 +426,7 @@ describe("P1 integrations", () => {
         });
         const fetchReal = globalThis.fetch;
         let attempt = "";
+        let returnUrls: (string | null)[] = [];
         t.mock.method(
             globalThis,
             "fetch",
@@ -433,6 +438,7 @@ describe("P1 integrations", () => {
                     return fetchReal(input, init);
                 const form = init?.body as URLSearchParams;
                 attempt = form.get("metadata[xboard_payment]")!;
+                returnUrls = [form.get("success_url"), form.get("cancel_url")];
                 assert.equal(
                     new Headers(init?.headers).get("idempotency-key"),
                     attempt,
@@ -461,6 +467,11 @@ describe("P1 integrations", () => {
             ).status,
             200,
         );
+        // The buyer comes back to the order's checkout page either way.
+        assert.deepEqual(returnUrls, [
+            `${ORIGIN}/orders/${pending.id}`,
+            `${ORIGIN}/orders/${pending.id}`,
+        ]);
         const receipt = {
             id: "cs_test_fixture",
             currency: "cny",

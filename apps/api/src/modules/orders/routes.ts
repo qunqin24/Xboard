@@ -2,7 +2,13 @@ import { Router } from "express";
 import { createOrderBody, uuidParam } from "@xboard/contracts";
 import { currentUser, requireUser } from "../../http/session";
 import { parse } from "../../http/validate";
-import { cancelOrder, createOrder, listOrders, payOrder } from "./service";
+import {
+    cancelOrder,
+    createOrder,
+    getOrder,
+    listOrders,
+    payOrder,
+} from "./service";
 
 export const orderRoutes = Router();
 orderRoutes.use("/orders", requireUser);
@@ -14,6 +20,12 @@ orderRoutes.get("/orders", async (req, res) => {
 orderRoutes.post("/orders", async (req, res) => {
     const input = parse(createOrderBody, req.body);
     res.status(201).json(await createOrder(currentUser(req).id, input));
+});
+
+orderRoutes.get("/orders/:id", async (req, res) => {
+    res.json(
+        await getOrder(currentUser(req).id, parse(uuidParam, req.params.id)),
+    );
 });
 
 orderRoutes.post("/orders/:id/pay", async (req, res) => {

@@ -160,7 +160,7 @@ export async function checkoutFor(
             pid,
             out_trade_no: z.string().parse(attempt.providerReference),
             notify_url: `${origin}/api/payments/webhooks/epay/${attempt.gatewayId}`,
-            return_url: `${origin}/orders`,
+            return_url: `${origin}/orders/${attempt.orderId}`,
             name: attempt.order.planName.replace(/[&=\r\n]/g, " ").slice(0, 80),
             money: money(attempt.amountMinor),
             ...(payType && { type: payType }),
@@ -190,8 +190,8 @@ export async function checkoutFor(
                 },
                 body: new URLSearchParams({
                     mode: "payment",
-                    success_url: `${origin}/orders`,
-                    cancel_url: `${origin}/orders`,
+                    success_url: `${origin}/orders/${attempt.orderId}`,
+                    cancel_url: `${origin}/orders/${attempt.orderId}`,
                     client_reference_id: attempt.id,
                     // Close the session with the order (Stripe allows 30 minutes
                     // to 24 hours); a payment after the order lapses is credited

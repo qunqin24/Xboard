@@ -267,6 +267,22 @@ describe("development API slice", () => {
             409,
         );
         const other = await login("new@example.test", "new-account-password");
+        const read = (auth: string) =>
+            fetch(`${baseUrl}/api/orders/${order.id}`, {
+                headers: { cookie: auth },
+            });
+        const own = await read(cookie);
+        assert.equal(own.status, 200);
+        assert.equal(((await own.json()) as { id: string }).id, order.id);
+        assert.equal((await read(`xboard_session=${other.token}`)).status, 404);
+        assert.equal(
+            (
+                await fetch(`${baseUrl}/api/orders/not-a-uuid`, {
+                    headers: { cookie },
+                })
+            ).status,
+            400,
+        );
         assert.equal(
             (
                 await post(
