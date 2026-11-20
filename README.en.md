@@ -13,7 +13,7 @@ Use Node.js 24, pnpm 11.0.3 and Docker with Compose v2, or a dedicated PostgreSQ
 ```bash
 pnpm install
 docker compose -f compose.typescript.yaml up -d
-cp -n apps/api/.env.example apps/api/.env
+cp -n .env.example .env
 pnpm db:setup
 pnpm dev
 ```

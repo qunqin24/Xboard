@@ -26,7 +26,7 @@
 
 - 提交说明和 PR 里不加任何 AI 署名。用户没说就不提交、不推送；推送前先问。
 - 不操作用户的桌面：不做鼠标、键盘自动化，不截屏。界面检查用无头浏览器或测试。
-- 改数据库前，先用 `pg_dump` 备份开发库（本地集群在 `apps/api/.data/postgres`，端口 55432，连接串在 `apps/api/.env`）。迁移只向前执行，不回改已经发布的迁移。
+- 改数据库前，先用 `pg_dump` 备份开发库（本地集群在 `apps/api/.data/postgres`，端口 55432，连接串在根目录 `.env`）。迁移只向前执行，不回改已经发布的迁移。
 - 金额、余额、订单相关的改动，必须遵守 `ARCHITECTURE.md`：
     - 金额用整数分。
     - 扣款、权益变更和流水记录在同一个事务里，并按用户锁行。
@@ -66,8 +66,8 @@
 | -------------------------------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `APP_DOMAIN`                                       | 站长，`ops/.env`     | 面板域名，Caddy 用它申请证书                                                                                                                                                                        |
 | `POSTGRES_PASSWORD`                                | 站长，`ops/.env`     | 数据库密码                                                                                                                                                                                          |
-| `APP_ORIGIN`                                       | compose 自动生成     | 等于 `https://${APP_DOMAIN}`；本地开发写在 `apps/api/.env`，默认 `http://127.0.0.1:5173`                                                                                                            |
-| `DATABASE_URL`                                     | compose 自动生成     | 本地开发写在 `apps/api/.env`                                                                                                                                                                        |
+| `APP_ORIGIN`                                       | compose 自动生成     | 等于 `https://${APP_DOMAIN}`；本地开发写在根目录 `.env`，默认 `http://127.0.0.1:5173`                                                                                                               |
+| `DATABASE_URL`                                     | compose 自动生成     | 本地开发写在根目录 `.env`                                                                                                                                                                           |
 | `TRUSTED_PROXY`                                    | compose 固定         | Caddy 的内网地址                                                                                                                                                                                    |
 | `NODE_ENV`、`API_HOST`、`API_PORT`                 | 镜像固定             | 不变                                                                                                                                                                                                |
 | `APP_DATA_DIR`                                     | 镜像固定为 `/data`   | **新增，站长看不到。** 存放应用密钥文件（`<APP_DATA_DIR>/secrets/app.key`）。本地开发默认 `apps/api/.data`。镜像以 `node` 用户运行，要保证这个目录可写。compose 给 API 容器挂一个数据卷到 `/data`。 |
@@ -220,7 +220,7 @@
         - `POSTGRES_PASSWORD`：连上数据库之前就要用，没法存在数据库里。
         - `APP_DOMAIN`：Caddy 启动时要用它申请证书，Caddy 读不了数据库。
         - `APP_ORIGIN` 不再单独填，在 `compose.production.yaml` 里写成 `https://${APP_DOMAIN}`。它不能放进后台：一旦填错，Origin 检查会把管理员自己挡在外面，改不回来。
-        - `DATABASE_URL`、`TRUSTED_PROXY`、`NODE_ENV`、`API_HOST`、`API_PORT` 已经由 compose 和镜像设好，站长看不到，保持不变。本地开发照旧用 `apps/api/.env`。
+        - `DATABASE_URL`、`TRUSTED_PROXY`、`NODE_ENV`、`API_HOST`、`API_PORT` 已经由 compose 和镜像设好，站长看不到，保持不变。本地开发照旧用根目录 `.env`。
     - 移到后台的：
         - **SMTP**（`SMTP_HOST`、`SMTP_PORT`、`SMTP_SECURE`、`SMTP_USER`、`SMTP_PASSWORD`、`MAIL_FROM`）：放进“系统设置”的邮件分组，加一个“发送测试邮件”按钮。注意：`apps/api/src/jobs/index.ts` 现在只在启动时检查一次 SMTP，没配就不启动邮件队列。要改成每次运行都读设置，否则在后台配好 SMTP 后还得重启。`getSmtpConfig()` 的几处调用都改为读数据库。
         - **告警 webhook**（`ALERT_WEBHOOK_URL`）：放进“系统设置”，加一个“发送测试告警”按钮。`apps/api/src/logging.ts` 改为读设置，短时间缓存即可。
@@ -236,7 +236,7 @@
         - 防止别人抢先创建：首次启动时生成一次性的安装码，打印在 API 日志里（`docker compose logs api` 可见），向导里必须填对安装码。管理员建好后安装码作废，`/setup` 关闭。
         - 保留现有的命令行脚本（`admin:create`），改为交互式输入，作为忘记密码时的应急手段。
     - 敏感字段在后台只能写、不能读：页面只显示“已设置”，可以替换或清空；接口（包括运维接口）不返回这些值。每次修改都写审计，审计里不记录值本身。运维接口的审计触发器也要排除这些键（见第 9 项第 3 条）。
-    - 新系统还没有正式部署过，不需要兼容旧的环境变量。删掉 `ops/.env.example`、`apps/api/.env.example` 和 `compose.production.yaml` 里对应的变量，同步更新 `docs/typescript-deployment.md` 和 README。
+    - 新系统还没有正式部署过，不需要兼容旧的环境变量。删掉 `ops/.env.example`、根目录 `.env.example` 和 `compose.production.yaml` 里对应的变量，同步更新 `docs/typescript-deployment.md` 和 README。
     - 测试：
         - 后台改了 SMTP 后不用重启就能发信。
         - 接口不返回任何敏感字段的值。
@@ -348,6 +348,7 @@
 - 2026-11-18：能在网页后台配的都放后台，生产环境变量只留 `APP_DOMAIN` 和 `POSTGRES_PASSWORD`。两步验证密钥改为自动生成的“应用密钥”文件，管理员改用首次安装向导创建（见待办第 5 项）。这一条改变了上面“密钥配置单独保管”的做法：应用密钥文件和数据库导出一起打包，用 age 加密后备份。
 - 2026-11-18：首批支付网关是易支付和 Stripe；语言只做简体中文和英文；不做旧版迁移工具；LICENSE 保留原版权行并加 `Copyright (c) 2026 qunqin24`。
 - 2026-11-18：两步验证密钥加密存储；订阅令牌明文存储，以便用户随时查看链接（代理 UUID 本来就是明文）。
+- 2026-11-20：本地开发的 `.env` 和 `.env.example` 放在仓库根目录（用户决定），API、脚本和 Prisma CLI（`apps/api/prisma.config.ts`）都读这一个文件。生产镜像不读 `.env`，照旧用环境变量。`pnpm api` 启动前自动运行 `prisma generate`，避免拉代码后 Prisma Client 过期；迁移仍要手动运行 `pnpm db:setup`。
 
 ## 已完成
 

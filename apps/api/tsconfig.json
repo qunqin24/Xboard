@@ -10,6 +10,7 @@
         "src/**/*.ts",
         "test/**/*.ts",
         "scripts/**/*.ts",
-        "tsup.config.ts"
+        "tsup.config.ts",
+        "prisma.config.ts"
     ]
 }

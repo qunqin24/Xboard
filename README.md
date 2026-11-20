@@ -12,14 +12,14 @@
 ```bash
 pnpm install
 docker compose -f compose.typescript.yaml up -d
-cp -n apps/api/.env.example apps/api/.env
+cp -n .env.example .env
 pnpm db:setup
 pnpm dev
 ```
 
-`pnpm dev` 同时启动前后端；也可以分开启动：`pnpm api`（后端，端口 3001）和 `pnpm web`（前端，端口 5173，`/api` 转发到 3001）。
+`pnpm dev` 同时启动前后端；也可以分开启动：`pnpm api`（后端，端口 3001）和 `pnpm web`（前端，端口 5173，`/api` 转发到 3001）。后端启动前会自动重新生成 Prisma Client；拉到新的数据库迁移后仍需运行 `pnpm db:setup`。
 
-已有 `apps/api/.env` 时请保留原配置。使用本机 PostgreSQL 时可跳过 Docker，
+已有根目录 `.env` 时请保留原配置。使用本机 PostgreSQL 时可跳过 Docker，
 将 `DATABASE_URL` 指向该数据库。
 
 - 用户端：http://127.0.0.1:5173

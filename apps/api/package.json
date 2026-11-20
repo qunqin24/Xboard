@@ -3,7 +3,7 @@
     "version": "0.1.0",
     "private": true,
     "scripts": {
-        "dev": "tsx watch --clear-screen=false src/server.ts",
+        "dev": "prisma generate --no-hints && tsx watch --clear-screen=false src/server.ts",
         "build": "tsup",
         "start": "node dist/server.js",
         "typecheck": "tsc --noEmit",

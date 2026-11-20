@@ -18,9 +18,9 @@ Use Node.js 24 (supported range: `>=22.12 <26`), pnpm 11.0.3, and PostgreSQL. Ru
 
 - `pnpm install`: install workspace dependencies.
 - `docker compose -f compose.typescript.yaml up -d`: start local PostgreSQL and Mailpit.
-- Copy `apps/api/.env.example` to `apps/api/.env` only if absent; configure `DATABASE_URL`.
+- Copy `.env.example` to `.env` at the repository root only if absent; configure `DATABASE_URL`. The API, its scripts and the Prisma CLI (`apps/api/prisma.config.ts`) all read this one file.
 - `pnpm db:setup`: generate Prisma Client and apply migrations.
-- `pnpm dev`: start API and frontend development servers together; frontend uses port 5173 and proxies `/api` to the API on port 3001. `pnpm api` / `pnpm web` start only the API or only the frontend.
+- `pnpm dev`: start API and frontend development servers together; frontend uses port 5173 and proxies `/api` to the API on port 3001. `pnpm api` / `pnpm web` start only the API or only the frontend. The API dev script regenerates Prisma Client first; new migrations still need `pnpm db:setup`.
 - `pnpm api:generate`: write `packages/contracts/openapi.json` (not committed). The dev API also serves it at `/api/docs`.
 - `pnpm typecheck`, `pnpm test`, `pnpm build`: check types, run both test suites, and build both applications.
 - `pnpm format:check` / `pnpm format`: check or apply Prettier formatting.

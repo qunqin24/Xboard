@@ -27,7 +27,7 @@
 ```bash
 pnpm install
 docker compose -f compose.typescript.yaml up -d
-cp apps/api/.env.example apps/api/.env
+cp -n .env.example .env
 pnpm db:setup
 pnpm dev
 ```

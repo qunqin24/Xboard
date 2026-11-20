@@ -14,7 +14,12 @@ function findAppDirectory(start: string): string {
 }
 
 export const appDirectory = findAppDirectory(import.meta.dirname);
-config({ path: resolve(appDirectory, ".env"), quiet: true });
+
+// Local development reads .env from the repository root. A deployed image has
+// no workspace root and takes its settings from the environment instead.
+const workspaceDirectory = resolve(appDirectory, "..", "..");
+if (existsSync(resolve(workspaceDirectory, "pnpm-workspace.yaml")))
+    config({ path: resolve(workspaceDirectory, ".env"), quiet: true });
 
 export function getConfig() {
     const environment = process.env.NODE_ENV ?? "development";
@@ -43,7 +48,7 @@ export function getConfig() {
         !["postgres:", "postgresql:"].includes(new URL(databaseUrl).protocol)
     ) {
         throw new Error(
-            "Set DATABASE_URL to your PostgreSQL database in apps/api/.env.",
+            "Set DATABASE_URL to your PostgreSQL database in the .env file at the repository root.",
         );
     }
     return {

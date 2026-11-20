@@ -12,7 +12,7 @@ async function main() {
         Buffer.byteLength(password) > 72
     ) {
         throw new Error(
-            "Set DEMO_PASSWORD to 12–72 UTF-8 bytes in apps/api/.env before seeding.",
+            "Set DEMO_PASSWORD to 12–72 UTF-8 bytes in the .env file at the repository root before seeding.",
         );
     }
     try {
