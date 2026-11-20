@@ -19,7 +19,7 @@ import { promisify } from "node:util";
 import { PrismaClient } from "@prisma/client";
 import { appDirectory } from "../src/config";
 import { db } from "../src/db";
-import { runBackup } from "../src/jobs/backup";
+import { dumpTarget, runBackup } from "../src/jobs/backup";
 import { applicationKey } from "../src/modules/system/secrets";
 import { ORIGIN, startTestApp } from "./helpers";
 
@@ -118,6 +118,27 @@ async function checkRestoredApi(
         }
     }
 }
+
+it("hands pg_dump a connection string libpq reads the same on every version", () => {
+    const previous = process.env.DATABASE_URL;
+    process.env.DATABASE_URL =
+        "postgresql://xboard:p%40ss@127.0.0.1:5432/xboard?schema=test_1&options=-c%20TimeZone%3DAsia%2FShanghai&connection_limit=5&application_name=a%2Bb";
+    try {
+        const target = dumpTarget();
+        assert.equal(target.password, "p@ss");
+        assert.equal(target.schema, "test_1");
+        const url = new URL(target.url);
+        assert.equal(url.password, "");
+        // No Prisma-only parameters, and no "+" that libpq 17 would keep as a
+        // literal plus instead of a space.
+        assert.equal(
+            url.search,
+            "?options=-c%20TimeZone%3DAsia%2FShanghai&application_name=a%2Bb",
+        );
+    } finally {
+        process.env.DATABASE_URL = previous;
+    }
+});
 
 it(
     "encrypts a full backup, uploads retention copies once, and restores the database and key",

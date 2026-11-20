@@ -127,7 +127,8 @@ export async function testBackupStorage() {
     }
 }
 
-function dumpTarget() {
+/** The libpq connection for pg_dump and psql, without Prisma-only parameters. */
+export function dumpTarget() {
     const url = new URL(getConfig().databaseUrl);
     const password = decodeURIComponent(url.password);
     const schema = url.searchParams.get("schema");
@@ -142,6 +143,10 @@ function dumpTarget() {
         "sslaccept",
     ])
         url.searchParams.delete(param);
+    // URLSearchParams writes a space as "+", which libpq before 18 keeps as a
+    // literal plus (options=-c TimeZone=UTC became "+TimeZone"). A real plus
+    // is already %2B, so every remaining "+" is a space.
+    url.search = url.searchParams.toString().replaceAll("+", "%20");
     return { url: url.toString(), password, schema };
 }
 
