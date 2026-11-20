@@ -6,6 +6,10 @@ Before tagging `v1.2.3`, move the entries under a `## 1.2.3 - YYYY-MM-DD` headin
 
 ## Unreleased
 
+## 1.0.1 - 2026-11-20
+
+- New logo: the panel as a planet with a node on its orbit, in the console and as the favicon. The mark follows the light and dark themes.
+
 ## 1.0.0 - 2026-11-20
 
 - TypeScript rewrite with an Express API, a React user center and administrator console, and PostgreSQL persistence.

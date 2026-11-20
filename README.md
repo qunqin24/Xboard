@@ -48,8 +48,8 @@ pnpm dev
 
 ```bash
 mkdir -p xboard/ops && cd xboard
-curl -fsSLo compose.production.yaml https://raw.githubusercontent.com/qunqin24/Xboard/v1.0.0/compose.production.yaml
-curl -fsSLo ops/.env https://raw.githubusercontent.com/qunqin24/Xboard/v1.0.0/ops/.env.example
+curl -fsSLo compose.production.yaml https://raw.githubusercontent.com/qunqin24/Xboard/v1.0.1/compose.production.yaml
+curl -fsSLo ops/.env https://raw.githubusercontent.com/qunqin24/Xboard/v1.0.1/ops/.env.example
 ```
 
 **2. 填写 `ops/.env`**
@@ -57,7 +57,7 @@ curl -fsSLo ops/.env https://raw.githubusercontent.com/qunqin24/Xboard/v1.0.0/op
 ```bash
 APP_DOMAIN=panel.example.com
 POSTGRES_PASSWORD=换成你自己的长随机密码
-XBOARD_IMAGE=ghcr.io/qunqin24/xboard:1.0.0
+XBOARD_IMAGE=ghcr.io/qunqin24/xboard:1.0.1
 ```
 
 数据库密码可以用 `openssl rand -hex 32` 生成。`XBOARD_IMAGE` 写完整版本号，不要用 `latest` 或 `edge`，这样升级的时机由你决定。`.env` 里的其他项都可以不填。

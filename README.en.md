@@ -34,8 +34,8 @@ You need:
 
 ```bash
 mkdir -p xboard/ops && cd xboard
-curl -fsSLo compose.production.yaml https://raw.githubusercontent.com/qunqin24/Xboard/v1.0.0/compose.production.yaml
-curl -fsSLo ops/.env https://raw.githubusercontent.com/qunqin24/Xboard/v1.0.0/ops/.env.example
+curl -fsSLo compose.production.yaml https://raw.githubusercontent.com/qunqin24/Xboard/v1.0.1/compose.production.yaml
+curl -fsSLo ops/.env https://raw.githubusercontent.com/qunqin24/Xboard/v1.0.1/ops/.env.example
 ```
 
 **2. Fill in `ops/.env`**
@@ -43,7 +43,7 @@ curl -fsSLo ops/.env https://raw.githubusercontent.com/qunqin24/Xboard/v1.0.0/op
 ```bash
 APP_DOMAIN=panel.example.com
 POSTGRES_PASSWORD=replace-with-your-own-long-random-password
-XBOARD_IMAGE=ghcr.io/qunqin24/xboard:1.0.0
+XBOARD_IMAGE=ghcr.io/qunqin24/xboard:1.0.1
 ```
 
 Generate the database password with `openssl rand -hex 32`. Pin `XBOARD_IMAGE` to a full version rather than `latest` or `edge`, so you decide when to upgrade. The other settings in the file are optional.
