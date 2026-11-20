@@ -1,0 +1,38 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  # Superseded pull request runs are cancelled; main runs queue so that the
+  # edge images are always published in commit order.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml
+
+  # Pull requests: build the image for both platforms without pushing.
+  images:
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/images.yml
+    with:
+      push: false
+
+  # main: publish ghcr.io/<owner>/xboard:edge after the checks pass.
+  edge:
+    if: github.event_name == 'push'
+    needs: checks
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/images.yml
+    with:
+      push: true

@@ -24,6 +24,12 @@ The web app runs at <http://127.0.0.1:5173>, the admin console at `/admin`, and 
 
 Point the panel domain at your server and follow the [Docker deployment guide](docs/typescript-deployment.md). Set the values in `ops/.env` using the example file and start Compose with `docker compose --env-file ops/.env -f compose.production.yaml up -d --build`. The [release guide](docs/releases.md) covers published images, upgrading, and database recovery.
 
+One image serves both the API and the web app, so Compose runs just the application and PostgreSQL. The application listens on `127.0.0.1:3001`; your own reverse proxy (Nginx, Caddy and so on) handles HTTPS. The deployment guide has examples.
+
+Instead of building on the server, set `XBOARD_IMAGE=ghcr.io/qunqin24/xboard:1.2.3` in `ops/.env` to use the published image for amd64 and arm64. Pin production to a full version number; `edge` follows `main` and is meant for testing.
+
+To publish a release, add the version entry to `CHANGELOG.md`, then push a tag such as `v1.2.3` from `main`. GitHub Actions runs the full checks, pushes the multi-arch image and creates the GitHub Release. See [Publishing a release](docs/releases.md#发布新版本).
+
 On first launch, get the installation code from the API logs and create the administrator at `/setup`. Configure SMTP, alerts, and backups in the admin console.
 
 The TypeScript edition uses a new database schema. Plan a separate migration for data from the PHP edition, keep a copy of the old database, and rotate node credentials when switching.

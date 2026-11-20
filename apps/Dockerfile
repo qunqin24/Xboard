@@ -13,7 +13,9 @@ RUN pnpm build
 RUN pnpm --filter @xboard/api deploy --prod --legacy /out \
     && cd /out && node_modules/.bin/prisma generate
 
-FROM node:24-trixie-slim AS api
+# One image serves the API and the built React app (APP_WEB_DIR); HTTPS is
+# terminated by the operator's reverse proxy.
+FROM node:24-trixie-slim AS app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates postgresql-client-17 age && rm -rf /var/lib/apt/lists/*
 # Only /data is writable by the runtime user; the code stays root-owned so a
 # compromised process cannot rewrite it.
@@ -23,11 +25,8 @@ COPY --from=build /out/package.json ./
 COPY --from=build /out/node_modules node_modules
 COPY --from=build /out/prisma prisma
 COPY --from=build /workspace/apps/api/dist dist
-ENV NODE_ENV=production API_HOST=0.0.0.0 API_PORT=3001 APP_DATA_DIR=/data
+COPY --from=build /workspace/apps/user/dist web
+ENV NODE_ENV=production API_HOST=0.0.0.0 API_PORT=3001 APP_DATA_DIR=/data APP_WEB_DIR=/app/web
 USER node
 EXPOSE 3001
 CMD ["node", "dist/server.js"]
-
-FROM caddy:2-alpine AS web
-COPY --from=build /workspace/apps/user/dist /srv
-COPY ops/Caddyfile /etc/caddy/Caddyfile

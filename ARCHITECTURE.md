@@ -143,7 +143,7 @@ Naive 不进 Mihomo 订阅；Mieru、XHTTP、TUIC v4、带 TLS 的 SOCKS、开�
 apps/api/              Express API、持久化邮件队列、定时维护、Prisma 迁移
 apps/user/             React 用户中心和管理后台（基于 shadcn-admin，文件路由）
 packages/contracts/    前后端共用的 zod 接口定义，生成 /api/docs 的 OpenAPI
-ops/                   HTTPS 反向代理与部署环境示例
+ops/                   生产环境变量示例（HTTPS 由站长自己的反向代理负责）
 compose.typescript.yaml 本地 PostgreSQL、Mailpit
 compose.production.yaml 生产候选部署配置
 ```

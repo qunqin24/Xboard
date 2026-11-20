@@ -2,7 +2,6 @@ import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import express from "express";
 import cookieParser from "cookie-parser";
-import helmet from "helmet";
 import swaggerUi from "swagger-ui-express";
 import {
     buildOpenApi,
@@ -14,6 +13,8 @@ import { db } from "./db";
 import { errorHandler, notFoundHandler } from "./http/errors";
 import { originCheck } from "./http/origin";
 import { rateLimit } from "./http/rate-limit";
+import { securityHeaders } from "./http/security-headers";
+import { webApp } from "./http/web";
 import { requestLogging } from "./logging";
 import { accountRoutes } from "./modules/account/routes";
 import { securityRoutes } from "./modules/account/security";
@@ -51,7 +52,7 @@ export function createApp(options: { logging?: boolean } = {}) {
     app.disable("x-powered-by");
 
     if (options.logging !== false) app.use(requestLogging);
-    app.use(helmet());
+    app.use(securityHeaders());
     app.use((_req, res, next) => {
         res.setHeader("Cache-Control", "no-store");
         next();
@@ -110,6 +111,7 @@ export function createApp(options: { logging?: boolean } = {}) {
     api.use(notFoundHandler);
 
     app.use("/api", api);
+    if (config.webDirectory) app.use(webApp(config.webDirectory));
     app.use(notFoundHandler);
     app.use(errorHandler);
     return handle(app);

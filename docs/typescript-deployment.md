@@ -2,42 +2,79 @@
 
 ## 本地与生产区别
 
-本地 `pnpm dev` 使用 Vite 代理及 HTTP Cookie。
-生产候选使用 Caddy HTTPS、静态 React 产物、Express、PostgreSQL；
-Cookie 自动 `Secure`，写操作 Origin 必须匹配 `APP_ORIGIN`。
+本地 `pnpm dev` 由 Vite 提供前端并把 `/api` 转发给 API，使用 HTTP Cookie。
+生产环境是一个应用容器加一个 PostgreSQL 容器：应用镜像里的 Express 同时提供 `/api` 和构建好的 React 页面（`APP_WEB_DIR=/app/web`），`/admin/users` 这类前端路由的地址都返回 `index.html`。HTTPS 由站长自己的反向代理负责（Nginx、Caddy、1Panel、宝塔等），反向代理把请求转发到本机 `127.0.0.1:3001`。
+Cookie 自动 `Secure`，写操作 Origin 必须匹配 `APP_ORIGIN`（`https://<APP_DOMAIN>`）。
 接口文档 `/api/docs` 只在非生产模式启用。
-Caddy 返回 HSTS 与内容安全策略。脚本和 API 连接从站点自身载入，构建产物可内嵌字体，动态组件可使用内联样式。
+应用给所有响应加 HSTS、内容安全策略（CSP）、`X-Frame-Options: DENY` 等安全响应头，定义在 `apps/api/src/http/security-headers.ts`，反向代理不需要再加。脚本和 API 连接从站点自身载入，构建产物可内嵌字体，动态组件可使用内联样式。`/assets/` 下带哈希的文件缓存一年，其他页面每次重新校验。
 
 限流和邮件队列共享 PostgreSQL，当前无 Redis/BullMQ 依赖。
 任务量较大时可独立 worker，但不需要为了部署基础版本先搭一套微服务。
 
 ## 构建与启动
 
-Docker Engine + Compose v2，域名 DNS 指向服务器，开放 80/443。
+需要 Docker Engine + Compose v2、一个能签 HTTPS 证书的反向代理，以及指向服务器的域名。
 
 ```bash
 cp ops/.env.example ops/.env
 # 填写 APP_DOMAIN 和 POSTGRES_PASSWORD
 docker compose --env-file ops/.env -f compose.production.yaml config --quiet
-docker compose --env-file ops/.env -f compose.production.yaml build
-docker compose --env-file ops/.env -f compose.production.yaml up -d
+docker compose --env-file ops/.env -f compose.production.yaml up -d --build
 ```
 
-数据库密码须为长随机 URL 安全字符串（例如 `openssl rand -hex 32`）。
-API 与数据库不映射宿主机端口。Caddy 以固定容器 IP 被 API 信任，避免任意请求伪造
-`X-Forwarded-For` 绕过限流。若修改网络子网，同步调整 `TRUSTED_PROXY`，不要配置为 `true`。
-Compose 将动态容器地址分配在独立范围，保留 Caddy 的固定地址。
+不想在服务器上构建，可以在 `ops/.env` 里写 `XBOARD_IMAGE=ghcr.io/qunqin24/xboard:1.2.3`，改用 `up -d --no-build --pull always` 启动，见 [发布与升级](releases.md#使用发布的镜像)。
 
-迁移由一次性 `migrate` 容器先执行，成功后启动 API，API 健康后启动 Web。
-后台邮件 worker 与过期清理在 API 进程内运行，支持多实例锁定领取。
+数据库密码须为长随机 URL 安全字符串（例如 `openssl rand -hex 32`）。
+数据库不映射宿主机端口。应用只映射到宿主机的 `127.0.0.1:3001`，外网访问必须经过反向代理。需要换地址或端口时，在 `ops/.env` 设置 `APP_BIND` 和 `APP_PORT`。
+
+### 反向代理
+
+反向代理负责证书、80 跳转 443，并把所有路径原样转发到 `127.0.0.1:3001`。宿主机上用 Caddy 时，这几行就够，证书由 Caddy 自动申请：
+
+```caddyfile
+panel.example.com {
+	reverse_proxy 127.0.0.1:3001
+}
+```
+
+Nginx 示例（证书路径换成自己的）：
+
+```nginx
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name panel.example.com;
+    ssl_certificate     /etc/ssl/panel.example.com/fullchain.pem;
+    ssl_certificate_key /etc/ssl/panel.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+限流、登录记录和运维令牌的来源限制都按客户端 IP 计算，所以反向代理要在 `X-Forwarded-For` 里带上真实客户端地址。应用只信任来自 Docker 网络网关 `172.30.56.1` 的 `X-Forwarded-For`：经映射端口进来的连接都从这个地址到达容器。因此：
+
+- 不要把 `APP_BIND` 设成 `0.0.0.0` 后直接对公网开放端口，否则任何人都能伪造 `X-Forwarded-For` 绕过限流。确实要让别的机器上的反向代理访问时，用防火墙只放行那台机器。
+- 前面还有 CDN（例如 Cloudflare）时，先在反向代理里还原真实访客 IP（Nginx 的 `real_ip_header`、Caddy 的 `trusted_proxies`），再转发给应用。
+- 反向代理本身跑在 Docker 里时，给它用 `network_mode: host`，照样转发到 `127.0.0.1:3001`。
+- 修改了 `compose.production.yaml` 的子网时，在 `ops/.env` 里同步设置 `TRUSTED_PROXY` 为新的网关地址，不要设为 `true`。
+
+部署后用 `curl -sI https://panel.example.com/` 确认响应里有 `content-security-policy` 和 `strict-transport-security`，并在浏览器里登录一次，确认写操作没有被 Origin 检查拦下。
+
+迁移由一次性 `migrate` 容器先执行，成功后启动应用容器 `app`。
+后台邮件 worker 与过期清理在应用进程内运行，支持多实例锁定领取。
 
 ### 首次安装
 
 `ops/.env` 填写 `APP_DOMAIN` 和 `POSTGRES_PASSWORD`。Compose 从域名生成 `APP_ORIGIN`，并将 API 的应用数据卷挂载到 `/data`。
 
-面板首次访问会进入 `/setup`。用 `docker compose --env-file ops/.env -f compose.production.yaml logs api` 查看 `setup.available` 事件里的安装码。用该码创建管理员后，安装接口关闭。
+面板首次访问会进入 `/setup`。用 `docker compose --env-file ops/.env -f compose.production.yaml logs app` 查看 `setup.available` 事件里的安装码。用该码创建管理员后，安装接口关闭。
 
-应急恢复管理员账户时，执行 `docker compose --env-file ops/.env -f compose.production.yaml exec api node dist/admin.js`，按提示输入邮箱和新密码。已有账户会被提升为管理员、更新密码并撤销原会话。
+应急恢复管理员账户时，执行 `docker compose --env-file ops/.env -f compose.production.yaml exec app node dist/admin.js`，按提示输入邮箱和新密码。已有账户会被提升为管理员、更新密码并撤销原会话。
 
 ### 系统设置
 
@@ -63,7 +100,7 @@ API 只在启动时检查一次密钥：
 确认密钥已经永久丢失、也没有任何备份时，才运行重置脚本。它会关闭所有账户的两步验证，清空后台保存的密码和密钥（SMTP、告警 webhook、备份存储、人机验证、Telegram）、停用并清空支付网关凭据、把提现收款信息替换为提示文字，然后生成新密钥并写审计。此操作无法撤销：
 
 ```bash
-docker compose --env-file ops/.env -f compose.production.yaml run --rm api node dist/reset-app-key.js --confirm
+docker compose --env-file ops/.env -f compose.production.yaml run --rm app node dist/reset-app-key.js --confirm
 ```
 
 不带 `--confirm` 时只打印将要清除的内容。重置后重新在后台填写各项密钥，并通知开过两步验证的用户重新设置。
@@ -117,7 +154,7 @@ pg_restore --exit-on-error --no-owner --no-privileges --dbname="$DATABASE_URL" x
 ## 日常操作
 
 ```bash
-docker compose --env-file ops/.env -f compose.production.yaml logs --tail=100 api
+docker compose --env-file ops/.env -f compose.production.yaml logs --tail=100 app
 docker compose --env-file ops/.env -f compose.production.yaml ps
 docker compose --env-file ops/.env -f compose.production.yaml exec -T postgres \
   pg_dump -U xboard -Fc xboard > xboard-backup.dump
@@ -160,8 +197,8 @@ SELECT count(*) FROM "Order" WHERE "amountMinor" < 0 OR "durationDays" <= 0 OR "
 ## 验收状态
 
 - 已运行：PostgreSQL 迁移、本地 API 集成测试、SMTP 协议测试、TypeScript 检查、前端构建。
-- 已提供：Compose、Dockerfile、Caddy 配置、CI 检查流程。
-- 尚未验证：镜像构建与容器启动（当前机器 Docker daemon 未运行）、公网 HTTPS、
+- 已提供：Compose、Dockerfile、反向代理示例、GitHub Actions 检查和镜像构建流程。
+- 尚未验证：一体化镜像的构建与容器启动（本地未运行 Docker，由 CI 的 PR 检查构建）、反向代理后的公网 HTTPS、
   真实邮件提供商、真实节点连接。
 
 节点验收见 [typescript-nodes.md](typescript-nodes.md)。

@@ -1,13 +1,17 @@
-name: TypeScript checks
+# The same sequence as a local pre-submit run (see AGENTS.md). Called by
+# ci.yml for pull requests and main, and by release.yml before publishing.
+name: Checks
 on:
   workflow_call:
-  push:
-    paths: ["apps/**", "packages/**", "pnpm-lock.yaml", "pnpm-workspace.yaml", "package.json", ".github/workflows/typescript.yml"]
-  pull_request:
-    paths: ["apps/**", "packages/**", "pnpm-lock.yaml", "pnpm-workspace.yaml", "package.json", ".github/workflows/typescript.yml"]
+
+permissions:
+  contents: read
+
 jobs:
   check:
-    runs-on: ubuntu-latest
+    name: Generate, lint, test and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:17-alpine
@@ -19,12 +23,20 @@ jobs:
         options: --health-cmd "pg_isready -U xboard" --health-interval 5s --health-timeout 3s --health-retries 20
     env:
       DATABASE_URL: postgresql://xboard:xboard_ci@127.0.0.1:5432/xboard
+      # Tests create an isolated random schema in this database.
+      TEST_DATABASE_URL: postgresql://xboard:xboard_ci@127.0.0.1:5432/xboard
       APP_ORIGIN: http://127.0.0.1:5173
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Reads the version from "packageManager" in package.json (pnpm 11.0.3).
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
+          cache: pnpm
+      # The backup tests run pg_dump and age, matching the API image.
       - name: Install PostgreSQL 17 client and age
         run: |
           sudo install -d -m 0755 /usr/share/postgresql-common/pgdg
@@ -37,10 +49,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends age postgresql-client-17
           printf '/usr/lib/postgresql/17/bin\n' >> "$GITHUB_PATH"
-      - run: npm install -g pnpm@11.0.3
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:setup
       - run: pnpm api:generate
+      - run: pnpm format:check
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build

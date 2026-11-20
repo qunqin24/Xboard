@@ -20,7 +20,7 @@ curl --fail-with-body --max-time 20 \
   "${XBOARD_OPS_BASE_URL%/}/users?page=1&pageSize=20"
 ```
 
-后台也负责吊销令牌。过期、吊销和签发账户失去管理员权限都会使令牌失效。来源限制使用明确的 IPv4 或 IPv6 地址，比较 `TRUSTED_PROXY` 配置下的客户端地址。反向代理配置见 [部署指南](typescript-deployment.md)。
+后台也负责吊销令牌。过期、吊销和签发账户失去管理员权限都会使令牌失效。来源限制使用明确的 IPv4 或 IPv6 地址，比较 `TRUSTED_PROXY` 配置下的客户端地址。反向代理配置见 [部署指南](typescript-deployment.md#反向代理)。
 
 ## 迁移旧站账户
 

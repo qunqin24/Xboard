@@ -59,6 +59,11 @@ export function getConfig() {
         origin: origin.origin,
         databaseUrl,
         trustProxy: parseTrustProxy(process.env.TRUSTED_PROXY),
+        // The built web app (apps/user/dist). The image sets it; local
+        // development leaves it unset and Vite serves the frontend.
+        webDirectory: process.env.APP_WEB_DIR
+            ? resolve(process.env.APP_WEB_DIR)
+            : undefined,
     };
 }
 
@@ -66,7 +71,9 @@ export type Config = ReturnType<typeof getConfig>;
 
 /**
  * Express "trust proxy": unset means the socket address is the client.
- * Production sets the reverse proxy's address, e.g. TRUSTED_PROXY=172.30.56.2.
+ * Production sets the reverse proxy's address; compose.production.yaml uses
+ * the Docker network gateway, which is where the published port's traffic
+ * comes from.
  */
 function parseTrustProxy(value: string | undefined): boolean | number | string {
     if (!value || value === "false") return false;

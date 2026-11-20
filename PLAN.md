@@ -62,16 +62,18 @@
 
 ### 环境变量（做完第 5 项后的最终状态）
 
-| 名字                                               | 谁来设               | 说明                                                                                                                                                                                                |
-| -------------------------------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `APP_DOMAIN`                                       | 站长，`ops/.env`     | 面板域名，Caddy 用它申请证书                                                                                                                                                                        |
-| `POSTGRES_PASSWORD`                                | 站长，`ops/.env`     | 数据库密码                                                                                                                                                                                          |
-| `APP_ORIGIN`                                       | compose 自动生成     | 等于 `https://${APP_DOMAIN}`；本地开发写在根目录 `.env`，默认 `http://127.0.0.1:5173`                                                                                                               |
-| `DATABASE_URL`                                     | compose 自动生成     | 本地开发写在根目录 `.env`                                                                                                                                                                           |
-| `TRUSTED_PROXY`                                    | compose 固定         | Caddy 的内网地址                                                                                                                                                                                    |
-| `NODE_ENV`、`API_HOST`、`API_PORT`                 | 镜像固定             | 不变                                                                                                                                                                                                |
-| `APP_DATA_DIR`                                     | 镜像固定为 `/data`   | **新增，站长看不到。** 存放应用密钥文件（`<APP_DATA_DIR>/secrets/app.key`）。本地开发默认 `apps/api/.data`。镜像以 `node` 用户运行，要保证这个目录可写。compose 给 API 容器挂一个数据卷到 `/data`。 |
-| `DEMO_EMAIL`、`DEMO_PASSWORD`、`TEST_DATABASE_URL` | 只在本地开发和测试用 | 不变                                                                                                                                                                                                |
+| 名字                                               | 谁来设                 | 说明                                                                                                                                                                                                |
+| -------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APP_DOMAIN`                                       | 站长，`ops/.env`       | 面板域名，compose 用它生成 `APP_ORIGIN`。证书由站长自己的反向代理申请（2026-11-20 起不再打包 Caddy）                                                                                                |
+| `POSTGRES_PASSWORD`                                | 站长，`ops/.env`       | 数据库密码                                                                                                                                                                                          |
+| `APP_ORIGIN`                                       | compose 自动生成       | 等于 `https://${APP_DOMAIN}`；本地开发写在根目录 `.env`，默认 `http://127.0.0.1:5173`                                                                                                               |
+| `DATABASE_URL`                                     | compose 自动生成       | 本地开发写在根目录 `.env`                                                                                                                                                                           |
+| `TRUSTED_PROXY`                                    | compose 默认           | Docker 网络网关 `172.30.56.1`，经映射端口进来的连接都从这里到达；改了子网才需要在 `ops/.env` 覆盖                                                                                                   |
+| `APP_BIND`、`APP_PORT`、`XBOARD_IMAGE`             | 站长，`ops/.env`，可选 | 应用映射到宿主机的地址和端口（默认 `127.0.0.1:3001`）；使用 GHCR 发布镜像时填镜像名和版本                                                                                                           |
+| `NODE_ENV`、`API_HOST`、`API_PORT`                 | 镜像固定               | 不变                                                                                                                                                                                                |
+| `APP_DATA_DIR`                                     | 镜像固定为 `/data`     | **新增，站长看不到。** 存放应用密钥文件（`<APP_DATA_DIR>/secrets/app.key`）。本地开发默认 `apps/api/.data`。镜像以 `node` 用户运行，要保证这个目录可写。compose 给 API 容器挂一个数据卷到 `/data`。 |
+| `APP_WEB_DIR`                                      | 镜像固定为 `/app/web`  | 前端构建产物目录，设了就由 API 一并提供页面；本地开发不设，由 Vite 提供前端                                                                                                                         |
+| `DEMO_EMAIL`、`DEMO_PASSWORD`、`TEST_DATABASE_URL` | 只在本地开发和测试用   | 不变                                                                                                                                                                                                |
 
 删除：`SMTP_HOST`、`SMTP_PORT`、`SMTP_SECURE`、`SMTP_USER`、`SMTP_PASSWORD`、`MAIL_FROM`、`ALERT_WEBHOOK_URL`、`TOTP_ENCRYPTION_KEY`、`ADMIN_EMAIL`、`ADMIN_PASSWORD`。以后不再新增站长需要填的环境变量。
 
@@ -302,6 +304,8 @@
 19. **许可证**：`LICENSE` 现在是 MIT，版权人是 Tokumeikoi（原 V2Board 作者）。已定（2026-11-18，用户决定）：保留原版权行 `Copyright (c) 2019 Tokumeikoi`，在它下面加一行 `Copyright (c) 2026 qunqin24`（用户的 GitHub 用户名）。
 20. **发布流程**：语义化版本号、`CHANGELOG.md`、打 tag 后自动构建 Docker 镜像并推送到 GHCR、写升级说明（迁移只向前执行）。
     - 第 18 至 20 项的文档、截图、许可证和工作流已补齐。工作流及版本号校验已在本地验证，GHCR 发布等待正式标签。
+    - 2026-11-20 补全 GitHub Actions：PR 和 `main` 跑完整检查（新增 `format:check`）并试构建镜像；`main` 检查通过后推 `edge` 镜像；`v*` 标签发布 amd64/arm64 多架构镜像 `ghcr.io/qunqin24/xboard`（版本号、主次版本、`latest`）、SBOM、来源证明和 GitHub Release。发布步骤见 `docs/releases.md`。
+    - 还没在 GitHub 上真正跑过：要等这批工作流推到 `main` 后看第一次 CI 和 `edge`，再由用户打第一个版本标签。第一次发布后要把 GHCR 上 `xboard` 包的可见性改为 Public。一体化镜像也还没在本地实际构建和启动过（用户选择不开 Docker），以 PR 上的镜像构建为准。
 
 ### P2：体验细节
 
@@ -354,6 +358,17 @@
 - 2026-11-20：原生 SQL 里和时间列比较的值一律写成 `${date.toISOString()}::timestamp(3)`，不要直接传 `Date` 或用 `now()`：列是不带时区的 UTC 时间，数据库会话时区不是 UTC 时会差几个小时。测试连接固定用 Asia/Shanghai 时区来暴露这类问题。
 - 2026-11-20：续费不再叠加流量（用户决定）。有效期内续费同一套餐只延长到期时间，流量额度保持套餐额度，已用流量不清零；原来不重置流量的套餐会把剩余额度叠加上去，相当于白送流量。需要清零用量时购买流量重置包。
 - 2026-11-20：优惠码从套餐页挪到收银台（用户决定）。新增 `PUT /orders/:id/coupon` 给待支付订单使用、更换或移除优惠码；优惠码只在订单支付时才占用名额，所以换码不需要释放名额。订单发起过在线支付后拒绝改码，因为网关那边已经按旧金额收款。
+- 2026-11-20：GitHub Actions 的安排（详见 `docs/releases.md`）：
+    - 拆成两个入口 `ci.yml`（PR、`main`）和 `release.yml`（`v*` 标签），共用 `checks.yml`（检查）和 `images.yml`（镜像）。共用的工作流不声明权限，由调用方按需给：PR 只读，推镜像时才给 `packages`、`id-token`、`attestations` 写权限，建 Release 时才给 `contents: write`。
+    - 检查不再按路径过滤，每个 PR 都跑，以后可以直接设为合并前必须通过的检查。
+    - 镜像名是 `ghcr.io/<仓库所有者，小写>/xboard`，只有这一个（见下一条一体化部署）。原工作流用仓库名拼接，会得到带大写的 `qunqin24/Xboard-api`，GHCR 不接受。
+    - arm64 在 GitHub 的原生 arm 机器（`ubuntu-24.04-arm`，公开仓库免费）上构建，再按摘要合并成多架构镜像，不用 QEMU 模拟。Prisma 6 的查询引擎是按平台下载的二进制，构建阶段不能在 amd64 上交叉生成。
+    - 标签：`1.2.3`、`1.2`、`1`、`latest`；0.x 不打 `0`；预发布版只打完整版本号，不动 `latest`；`main` 只推 `edge`，不按提交哈希打标签。
+    - 证明：BuildKit 的 SBOM 和来源证明（`mode=max`）随镜像推送，另用 `actions/attest` 生成 GitHub 签名的来源证明，可以用 `gh attestation verify` 核对。不另做 cosign 签名。
+    - 正式版必须在 `CHANGELOG.md` 有 `## 1.2.3 - YYYY-MM-DD` 条目，否则发布在构建前就失败；预发布版可以没有。Release 正文是这一条目加镜像拉取命令，后面附 GitHub 自动生成的提交与 PR 列表。
+    - 第三方 action 一律固定到提交哈希，注释里写版本号。
+- 2026-11-20：一体化部署（用户决定，原话“不要把前后端分为 2 个 Docker 容器，我要一体化部署”）。生产只构建一个镜像，Express 在 `APP_WEB_DIR` 设置时托管 `apps/user/dist`：`/assets/` 下带哈希的文件缓存一年，其他文件和 `index.html` 每次重新校验，前端路由回落到 `index.html`，`/assets/` 下找不到的文件返回 404。原来 `ops/Caddyfile` 里的 CSP、HSTS 等安全响应头挪到 `apps/api/src/http/security-headers.ts`，对页面和接口都生效，`ops/Caddyfile` 删除。PostgreSQL 仍是单独的容器，compose 服务从 `api`、`web` 改为 `app`。
+- 2026-11-20：HTTPS 证书交给站长自己的反向代理（用户在“保留官方 Caddy 只做反代”和“交给自己的反向代理”里选了后者）。应用默认只映射到宿主机 `127.0.0.1:3001`；`TRUSTED_PROXY` 默认是 Docker 网络网关 `172.30.56.1`，因为经映射端口进来的连接都从网关到达容器。部署文档给出 Caddy 和 Nginx 示例，并写明不要把端口直接开放到公网。使用发布镜像改为在 `ops/.env` 设置 `XBOARD_IMAGE`，不再需要 `compose.release.yaml` 覆盖文件。
 
 ## 已完成
 
@@ -384,3 +399,4 @@
 | 2026-11-19 | aa01b8e | R10 待人工处理收款的处理入口，Stripe 会话随订单过期，补支付测试                                    |
 | 2026-11-19 | 7cfad4b | R11 文档和签发页写明运维令牌等于完全控制面板                                                       |
 | 2026-11-19 | 7546355 | R3 跟进：集成测试改为 VLESS 套餐不生成 Surfboard 配置                                              |
+| 2026-11-20 | 待补    | 第 20 项：一体化镜像（API 托管前端）、CI、`edge` 镜像、多架构版本镜像和 GitHub Release 工作流      |

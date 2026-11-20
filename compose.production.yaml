@@ -1,4 +1,7 @@
 name: xboard-production
+# One application container (API and web app) plus PostgreSQL. HTTPS is
+# terminated by your own reverse proxy, which forwards to APP_BIND:APP_PORT.
+# See docs/typescript-deployment.md.
 services:
   postgres:
     image: postgres:17-alpine
@@ -17,29 +20,37 @@ services:
     networks: [backend]
 
   migrate:
+    # XBOARD_IMAGE selects a published image, e.g. ghcr.io/qunqin24/xboard:1.2.3;
+    # unset, Compose builds the image from this checkout.
+    image: ${XBOARD_IMAGE:-xboard:local}
     build:
       context: .
       dockerfile: apps/Dockerfile
-      target: api
+      target: app
     command: ["node_modules/.bin/prisma", "migrate", "deploy"]
-    environment: &api-environment
+    environment: &app-environment
       NODE_ENV: production
       API_HOST: 0.0.0.0
       APP_ORIGIN: https://${APP_DOMAIN:?Set APP_DOMAIN}
       DATABASE_URL: postgresql://xboard:${POSTGRES_PASSWORD}@postgres:5432/xboard
-      TRUSTED_PROXY: 172.30.56.2
+      # Connections through the published port arrive from the network
+      # gateway, so X-Forwarded-For is trusted only from there.
+      TRUSTED_PROXY: ${TRUSTED_PROXY:-172.30.56.1}
     depends_on:
       postgres:
         condition: service_healthy
     networks: [backend]
 
-  api:
+  app:
+    image: ${XBOARD_IMAGE:-xboard:local}
     build:
       context: .
       dockerfile: apps/Dockerfile
-      target: api
+      target: app
     restart: unless-stopped
-    environment: *api-environment
+    environment: *app-environment
+    ports:
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-3001}:3001"
     volumes:
       - application-data:/data
     depends_on:
@@ -52,36 +63,12 @@ services:
       retries: 3
     networks: [backend]
 
-  web:
-    build:
-      context: .
-      dockerfile: apps/Dockerfile
-      target: web
-    restart: unless-stopped
-    environment:
-      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN}
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - caddy-data:/data
-      - caddy-config:/config
-    depends_on:
-      api:
-        condition: service_healthy
-    networks:
-      backend:
-        ipv4_address: 172.30.56.2
-
 networks:
   backend:
     ipam:
       config:
         - subnet: 172.30.56.0/24
-          ip_range: 172.30.56.128/25
+          gateway: 172.30.56.1
 volumes:
   application-data:
   database:
-  caddy-data:
-  caddy-config:
