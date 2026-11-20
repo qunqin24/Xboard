@@ -1,6 +1,15 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
-import { Eye, EyeOff, Megaphone, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+    CircleCheck,
+    Eye,
+    EyeOff,
+    Megaphone,
+    Pencil,
+    Plus,
+    Trash2,
+    type LucideIcon,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -19,6 +28,7 @@ import { CheckRow } from "@/components/check-row";
 import { EmptyState } from "@/components/empty-state";
 import { Page } from "@/components/layout/page";
 import { LongText } from "@/components/long-text";
+import { IconBlock } from "@/components/ui/icon-block";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +45,12 @@ import { useEditorSearch } from "./editor-search";
 import { EditorSheet } from "./editor-sheet";
 import { PUBLISH_TONE } from "./status";
 import type { NoticeRow } from "./types";
+
+/** Keyed by the labels in PUBLISH_TONE. */
+const PUBLISH_ICON: Record<string, LucideIcon> = {
+    已发布: CircleCheck,
+    草稿: Pencil,
+};
 
 const schema = z.object({
     title: z.string().trim().min(1, "请输入标题").max(120, "标题最多 120 个字"),
@@ -158,11 +174,19 @@ export function AdminNotices() {
                 <DataTableColumnHeader column={column} title="标题" />
             ),
             cell: ({ row }) => (
-                <div className="max-w-xl">
-                    <p className="font-medium">{row.original.title}</p>
-                    <LongText className="text-xs text-muted-foreground">
-                        {row.original.content}
-                    </LongText>
+                <div className="flex max-w-xl items-center gap-3">
+                    <IconBlock
+                        size="sm"
+                        tone={row.original.published ? "brand" : "neutral"}
+                    >
+                        <Megaphone />
+                    </IconBlock>
+                    <div className="min-w-0">
+                        <p className="font-medium">{row.original.title}</p>
+                        <LongText className="text-xs text-muted-foreground">
+                            {row.original.content}
+                        </LongText>
+                    </div>
                 </div>
             ),
             enableHiding: false,
@@ -174,17 +198,21 @@ export function AdminNotices() {
             header: ({ column }) => (
                 <DataTableColumnHeader column={column} title="状态" />
             ),
-            cell: ({ row, getValue }) => (
-                <div className="flex items-center gap-inline">
-                    <Badge variant={PUBLISH_TONE[getValue<string>()]}>
-                        {getValue<string>()}
-                    </Badge>
-                    <SaveStatus
-                        state={optimistic.status(row.original.id)}
-                        onRetry={() => optimistic.retry(row.original.id)}
-                    />
-                </div>
-            ),
+            cell: ({ row, getValue }) => {
+                const Icon = PUBLISH_ICON[getValue<string>()] ?? Pencil;
+                return (
+                    <div className="flex items-center gap-inline">
+                        <Badge variant={PUBLISH_TONE[getValue<string>()]}>
+                            <Icon />
+                            {getValue<string>()}
+                        </Badge>
+                        <SaveStatus
+                            state={optimistic.status(row.original.id)}
+                            onRetry={() => optimistic.retry(row.original.id)}
+                        />
+                    </div>
+                );
+            },
             filterFn: inFilter,
             meta: { title: "状态" },
         },

@@ -3,6 +3,17 @@
 // success = working/done, warning = needs attention soon, danger = failed or
 // blocked, info = in progress, secondary = neutral/inactive.
 
+import {
+    CircleCheck,
+    CircleDashed,
+    CircleX,
+    Clock,
+    PowerOff,
+    Wifi,
+    WifiOff,
+    type LucideIcon,
+} from "lucide-react";
+
 export type StatusTone =
     "success" | "warning" | "danger" | "info" | "secondary";
 
@@ -11,6 +22,21 @@ export const ORDER_STATUS = {
     pending: { label: "待支付", tone: "warning" },
     cancelled: { label: "已取消", tone: "secondary" },
 } as const satisfies Record<string, { label: string; tone: StatusTone }>;
+
+export const ORDER_STATUS_ICON: Record<keyof typeof ORDER_STATUS, LucideIcon> =
+    {
+        paid: CircleCheck,
+        pending: Clock,
+        cancelled: CircleX,
+    };
+
+/** Keyed by the labels nodeState() returns. */
+export const NODE_STATE_ICON = {
+    在线: Wifi,
+    离线: WifiOff,
+    未连接: CircleDashed,
+    已停用: PowerOff,
+} as const satisfies Record<keyof typeof NODE_STATE_TONE, LucideIcon>;
 
 /** Keyed by the labels nodeState() returns. */
 export const NODE_STATE_TONE = {

@@ -4,6 +4,7 @@ import {
     CircleDashed,
     Clock,
     Copy,
+    Gauge,
     Globe,
     KeyRound,
     Network,
@@ -52,19 +53,12 @@ import { formatDateTime } from "@/lib/format";
 import { useEditorSearch } from "./editor-search";
 import { NodeSheet } from "./node-form";
 import { nodeSummary, PROTOCOL_LABEL } from "./node-options";
-import { NODE_STATE_TONE } from "./status";
+import { NODE_STATE_ICON, NODE_STATE_TONE } from "./status";
 import type { NodeRow, PlanRow } from "./types";
 import { nodeState } from "./units";
 
 /** The API takes at most this many nodes in one bulk request. */
 const BULK_NODE_LIMIT = 200;
-
-const STATE_ICON = {
-    在线: Wifi,
-    离线: WifiOff,
-    未连接: CircleDashed,
-    已停用: PowerOff,
-} satisfies Record<keyof typeof NODE_STATE_TONE, unknown>;
 
 function TokenDialog({
     value,
@@ -246,7 +240,7 @@ export function AdminNodes() {
             ),
             cell: ({ row, getValue }) => {
                 const value = getValue<keyof typeof NODE_STATE_TONE>();
-                const Icon = STATE_ICON[value];
+                const Icon = NODE_STATE_ICON[value];
                 return (
                     <div className="flex items-center gap-inline">
                         <Badge variant={NODE_STATE_TONE[value]}>
@@ -316,12 +310,12 @@ export function AdminNodes() {
                         ? row.original
                         : byId.get(row.original.parentId);
                 return (
-                    <span className="numeric">
+                    <IconText icon={Gauge}>
                         ×{getValue<number>()}
                         {source?.rateRanges.length ? (
                             <span className="text-muted-foreground"> 分时</span>
                         ) : null}
-                    </span>
+                    </IconText>
                 );
             },
             meta: { title: "倍率" },

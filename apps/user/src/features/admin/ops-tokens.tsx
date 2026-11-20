@@ -1,11 +1,22 @@
 import { useState, type FormEvent } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { CreatedOpsToken, OpsTokenInfo } from "@xboard/contracts";
-import { Plus, ShieldOff } from "lucide-react";
+import {
+    CircleCheck,
+    Clock,
+    Globe,
+    KeyRound,
+    Plus,
+    ShieldCheck,
+    ShieldOff,
+    TimerOff,
+} from "lucide-react";
 import { useCommand, usePanel } from "@/api/panel";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DataTable, DataTableColumnHeader } from "@/components/data-table";
 import { Page } from "@/components/layout/page";
+import { IconText } from "@/components/icon-text";
+import { IconBlock } from "@/components/ui/icon-block";
 import { LongText } from "@/components/long-text";
 import { SecretDialog } from "@/components/secret-dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -156,6 +167,23 @@ export function AdminOpsTokens() {
             header: ({ column }) => (
                 <DataTableColumnHeader column={column} title="名称" />
             ),
+            cell: ({ row }) => {
+                const token = row.original;
+                const inactive =
+                    token.revokedAt ||
+                    Date.parse(token.expiresAt) <= Date.now();
+                return (
+                    <div className="flex items-center gap-3">
+                        <IconBlock
+                            size="sm"
+                            tone={inactive ? "neutral" : "brand"}
+                        >
+                            <KeyRound />
+                        </IconBlock>
+                        <span className="font-medium">{token.name}</span>
+                    </div>
+                );
+            },
             meta: { title: "名称" },
             enableHiding: false,
         },
@@ -165,10 +193,25 @@ export function AdminOpsTokens() {
             cell: ({ row }) => {
                 const token = row.original;
                 if (token.revokedAt)
-                    return <Badge variant="secondary">已吊销</Badge>;
+                    return (
+                        <Badge variant="secondary">
+                            <ShieldOff />
+                            已吊销
+                        </Badge>
+                    );
                 if (Date.parse(token.expiresAt) <= Date.now())
-                    return <Badge variant="warning">已过期</Badge>;
-                return <Badge variant="success">有效</Badge>;
+                    return (
+                        <Badge variant="warning">
+                            <TimerOff />
+                            已过期
+                        </Badge>
+                    );
+                return (
+                    <Badge variant="success">
+                        <CircleCheck />
+                        有效
+                    </Badge>
+                );
             },
             meta: { title: "状态" },
         },
@@ -177,6 +220,11 @@ export function AdminOpsTokens() {
             header: "权限",
             accessorFn: (token) =>
                 token.scopes.map((scope) => SCOPE_LABELS[scope]).join("、"),
+            cell: ({ getValue }) => (
+                <IconText icon={ShieldCheck} className="font-sans">
+                    {getValue<string>()}
+                </IconText>
+            ),
             meta: { title: "权限" },
         },
         {
@@ -184,7 +232,15 @@ export function AdminOpsTokens() {
             header: "来源 IP",
             accessorFn: (token) => token.allowedIps.join("、") || "任意来源",
             cell: ({ getValue }) => (
-                <LongText className="max-w-56">{getValue<string>()}</LongText>
+                <span className="inline-flex items-center gap-inline">
+                    <Globe
+                        aria-hidden="true"
+                        className="size-4 shrink-0 text-muted-foreground"
+                    />
+                    <LongText className="max-w-56">
+                        {getValue<string>()}
+                    </LongText>
+                </span>
             ),
             meta: { title: "来源 IP" },
         },
@@ -194,9 +250,9 @@ export function AdminOpsTokens() {
                 <DataTableColumnHeader column={column} title="过期时间" />
             ),
             cell: ({ row }) => (
-                <span className="numeric">
+                <IconText icon={Clock} className="text-muted-foreground">
                     {formatDateTime(row.original.expiresAt)}
-                </span>
+                </IconText>
             ),
             meta: { title: "过期时间" },
         },

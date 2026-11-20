@@ -1,5 +1,14 @@
 import { useState, type FormEvent } from "react";
-import { Gift as GiftIcon, Plus, TicketPercent } from "lucide-react";
+import {
+    CircleCheck,
+    Gift as GiftIcon,
+    PackageCheck,
+    Plus,
+    PowerOff,
+    TicketPercent,
+    TimerOff,
+    type LucideIcon,
+} from "lucide-react";
 import type {
     Coupon,
     CouponCreated,
@@ -293,6 +302,15 @@ function PromotionEditor({
     );
 }
 
+/** Keyed by the status labels computed in the list rows. */
+const STATUS_ICON: Record<string, LucideIcon> = {
+    已用完: PackageCheck,
+    已兑换: PackageCheck,
+    已到期: TimerOff,
+    可使用: CircleCheck,
+    已停用: PowerOff,
+};
+
 export function AdminPromotions() {
     const [tab, setTab] = useState<Tab>("coupons");
     const [editing, setEditing] = useState<Tab | null>(null);
@@ -336,6 +354,7 @@ export function AdminPromotions() {
                   : row.enabled
                     ? "可使用"
                     : "已停用";
+            const StatusIcon = STATUS_ICON[status] ?? CircleCheck;
             return (
                 <Tile key={row.id} className="flex-wrap">
                     <IconBlock>
@@ -371,6 +390,7 @@ export function AdminPromotions() {
                                     : "secondary"
                         }
                     >
+                        <StatusIcon />
                         {status}
                     </Badge>
                     {!consumed && !expired && (

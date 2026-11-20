@@ -1675,5 +1675,18 @@
     "未保存的修改": "Unsaved changes",
     "未保存的修改：{0}": "Unsaved changes: {0}",
     "放弃修改": "Discard changes",
-    "去支付": "Pay"
+    "去支付": "Pay",
+    "追回佣金": "Commission clawback",
+    "发放佣金": "Commission reward",
+    "佣金设置": "Commission settings",
+    "佣金转入余额": "Commission to balance",
+    "审核提现": "Withdrawal review",
+    "收到在线支付": "Online payment received",
+    "处理支付回执": "Payment receipt resolved",
+    "修改默认语言": "Default language changed",
+    "绑定 Telegram": "Telegram linked",
+    "解绑 Telegram": "Telegram unlinked",
+    "Telegram 设置": "Telegram settings",
+    "赠送试用": "Trial granted",
+    "创建用户": "User created"
 }

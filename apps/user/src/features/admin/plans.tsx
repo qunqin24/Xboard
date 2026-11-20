@@ -7,6 +7,7 @@ import {
     Eye,
     EyeOff,
     Gauge,
+    ListOrdered,
     MonitorSmartphone,
     Package,
     Pencil,
@@ -514,9 +515,9 @@ export function AdminPlans() {
                 <DataTableColumnHeader column={column} title="排序" />
             ),
             cell: ({ row }) => (
-                <span className="numeric text-muted-foreground">
+                <IconText icon={ListOrdered} className="text-muted-foreground">
                     {row.original.sort}
-                </span>
+                </IconText>
             ),
             meta: { title: "排序" },
         },

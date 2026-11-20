@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { BookOpen, Pencil, Plus, Trash2 } from "lucide-react";
+import { BookOpen, CircleCheck, Pencil, Plus, Trash2 } from "lucide-react";
 import type { HelpArticle } from "@xboard/contracts";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -155,6 +155,7 @@ export function AdminHelp() {
                                 article.published ? "success" : "secondary"
                             }
                         >
+                            {article.published ? <CircleCheck /> : <Pencil />}
                             {article.published ? "已发布" : "草稿"}
                         </Badge>
                         <Button

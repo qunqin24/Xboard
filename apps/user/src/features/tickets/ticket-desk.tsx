@@ -1,5 +1,11 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { MessageSquarePlus, Search as SearchIcon, Send } from "lucide-react";
+import {
+    CircleCheck,
+    Loader,
+    MessageSquarePlus,
+    Search as SearchIcon,
+    Send,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -258,10 +264,12 @@ export function TicketDesk({ staff = false }: { staff?: boolean }) {
                                             </span>
                                             {ticket.closed ? (
                                                 <Badge variant="secondary">
+                                                    <CircleCheck />
                                                     已关闭
                                                 </Badge>
                                             ) : filter === "all" ? (
                                                 <Badge variant="info">
+                                                    <Loader />
                                                     处理中
                                                 </Badge>
                                             ) : null}

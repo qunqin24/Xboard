@@ -1,5 +1,14 @@
 import { type ColumnDef } from "@tanstack/react-table";
 import type { LedgerItem, TrafficItem } from "@xboard/contracts";
+import {
+    ArrowDown,
+    ArrowDownLeft,
+    ArrowUp,
+    ArrowUpRight,
+    Banknote,
+    Clock,
+    Server,
+} from "lucide-react";
 import { usePanel } from "@/api/panel";
 import {
     DataTable,
@@ -7,6 +16,8 @@ import {
     inFilter,
 } from "@/components/data-table";
 import { Page } from "@/components/layout/page";
+import { IconBlock } from "@/components/ui/icon-block";
+import { IconText } from "@/components/icon-text";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDateTime, formatMinor, formatTraffic } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -18,6 +29,17 @@ const ledgerColumns: ColumnDef<LedgerItem>[] = [
         header: ({ column }) => (
             <DataTableColumnHeader column={column} title="说明" />
         ),
+        cell: ({ row, getValue }) => {
+            const income = row.original.amountMinor > 0;
+            return (
+                <div className="flex items-center gap-3">
+                    <IconBlock size="sm" tone={income ? "brand" : "neutral"}>
+                        {income ? <ArrowDownLeft /> : <ArrowUpRight />}
+                    </IconBlock>
+                    <span className="font-medium">{getValue<string>()}</span>
+                </div>
+            );
+        },
         meta: { title: "说明" },
     },
     {
@@ -26,15 +48,13 @@ const ledgerColumns: ColumnDef<LedgerItem>[] = [
             <DataTableColumnHeader column={column} title="金额" />
         ),
         cell: ({ row }) => (
-            <span
-                className={cn(
-                    "numeric",
-                    row.original.amountMinor > 0 && "text-success",
-                )}
+            <IconText
+                icon={Banknote}
+                className={cn(row.original.amountMinor > 0 && "text-success")}
             >
                 {row.original.amountMinor > 0 ? "+" : ""}
                 {formatMinor(row.original.amountMinor)}
-            </span>
+            </IconText>
         ),
         meta: {
             title: "金额",
@@ -47,9 +67,9 @@ const ledgerColumns: ColumnDef<LedgerItem>[] = [
             <DataTableColumnHeader column={column} title="时间" />
         ),
         cell: ({ row }) => (
-            <span className="numeric text-muted-foreground">
+            <IconText icon={Clock} className="text-muted-foreground">
                 {formatDateTime(row.original.createdAt)}
-            </span>
+            </IconText>
         ),
         meta: { title: "时间" },
     },
@@ -62,6 +82,14 @@ const trafficColumns: ColumnDef<TrafficItem>[] = [
         header: ({ column }) => (
             <DataTableColumnHeader column={column} title="节点" />
         ),
+        cell: ({ getValue }) => (
+            <div className="flex items-center gap-3">
+                <IconBlock size="sm">
+                    <Server />
+                </IconBlock>
+                <span className="font-medium">{getValue<string>()}</span>
+            </div>
+        ),
         meta: { title: "节点" },
         filterFn: inFilter,
     },
@@ -72,9 +100,9 @@ const trafficColumns: ColumnDef<TrafficItem>[] = [
             <DataTableColumnHeader column={column} title="上传" />
         ),
         cell: ({ row }) => (
-            <span className="numeric">
+            <IconText icon={ArrowUp}>
                 {formatTraffic(row.original.upload)}
-            </span>
+            </IconText>
         ),
         meta: { title: "上传", exportValue: (item) => item.upload },
     },
@@ -85,9 +113,9 @@ const trafficColumns: ColumnDef<TrafficItem>[] = [
             <DataTableColumnHeader column={column} title="下载" />
         ),
         cell: ({ row }) => (
-            <span className="numeric">
+            <IconText icon={ArrowDown}>
                 {formatTraffic(row.original.download)}
-            </span>
+            </IconText>
         ),
         meta: { title: "下载", exportValue: (item) => item.download },
     },
@@ -97,9 +125,9 @@ const trafficColumns: ColumnDef<TrafficItem>[] = [
             <DataTableColumnHeader column={column} title="上报时间" />
         ),
         cell: ({ row }) => (
-            <span className="numeric text-muted-foreground">
+            <IconText icon={Clock} className="text-muted-foreground">
                 {formatDateTime(row.original.createdAt)}
-            </span>
+            </IconText>
         ),
         meta: { title: "上报时间" },
     },

@@ -52,7 +52,12 @@ import type {
     StatsDay,
 } from "./types";
 import { PROTOCOL_LABEL } from "./node-options";
-import { NODE_STATE_TONE, ORDER_STATUS } from "./status";
+import {
+    NODE_STATE_ICON,
+    NODE_STATE_TONE,
+    ORDER_STATUS,
+    ORDER_STATUS_ICON,
+} from "./status";
 import { GIB, nodeState } from "./units";
 import { TrafficRankings } from "./traffic-rankings";
 
@@ -591,6 +596,13 @@ export function AdminDashboard() {
                                                 ORDER_STATUS[order.status].tone
                                             }
                                         >
+                                            {(() => {
+                                                const Icon =
+                                                    ORDER_STATUS_ICON[
+                                                        order.status
+                                                    ];
+                                                return <Icon />;
+                                            })()}
                                             {ORDER_STATUS[order.status].label}
                                         </Badge>
                                         <span className="numeric min-w-16 text-end text-sm">
@@ -639,6 +651,11 @@ export function AdminDashboard() {
                                             </p>
                                         </div>
                                         <Badge variant={NODE_STATE_TONE[state]}>
+                                            {(() => {
+                                                const Icon =
+                                                    NODE_STATE_ICON[state];
+                                                return <Icon />;
+                                            })()}
                                             {state}
                                         </Badge>
                                     </div>

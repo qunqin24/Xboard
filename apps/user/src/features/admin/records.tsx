@@ -2,10 +2,34 @@ import { type ColumnDef } from "@tanstack/react-table";
 import { useState } from "react";
 import {
     Banknote,
+    BookOpen,
+    Bot,
     CircleCheck,
     CircleX,
     Clock,
+    Coins,
+    CreditCard,
+    Crosshair,
+    FileCode,
+    Gauge,
+    Gift,
+    History,
+    KeyRound,
+    Mail,
+    Megaphone,
     Package,
+    Receipt,
+    RotateCw,
+    Send,
+    Server,
+    Settings,
+    ShieldCheck,
+    ShoppingCart,
+    Terminal,
+    Ticket,
+    User,
+    UserCog,
+    Wallet,
     type LucideIcon,
 } from "lucide-react";
 import { queryString } from "@/api/client";
@@ -27,7 +51,7 @@ import { Button } from "@/components/ui/button";
 import { LongText } from "@/components/long-text";
 import { formatDateTime, formatMinor, periodLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { MAIL_STATUS_TONE, ORDER_STATUS } from "./status";
+import { MAIL_STATUS_TONE, ORDER_STATUS, ORDER_STATUS_ICON } from "./status";
 import type { AuditRow, LedgerRow, MailRow, OrderRow, Paged } from "./types";
 import { OfflinePaymentDialog } from "./offline-payment-dialog";
 
@@ -51,12 +75,6 @@ const timeColumn = <T extends object>(
     sortUndefined: "last",
     meta: { title, exportValue: (row) => (row[key] as string | null) ?? "" },
 });
-
-const ORDER_ICON: Record<OrderRow["status"], LucideIcon> = {
-    paid: CircleCheck,
-    pending: Clock,
-    cancelled: CircleX,
-};
 
 export function AdminOrders() {
     const table = useServerTable();
@@ -112,7 +130,7 @@ export function AdminOrders() {
                 <DataTableColumnHeader column={column} title="状态" />
             ),
             cell: ({ row }) => {
-                const Icon = ORDER_ICON[row.original.status];
+                const Icon = ORDER_STATUS_ICON[row.original.status];
                 return (
                     <Badge variant={ORDER_STATUS[row.original.status].tone}>
                         <Icon />
@@ -147,9 +165,12 @@ export function AdminOrders() {
             accessorKey: "id",
             header: "订单号",
             cell: ({ row }) => (
-                <span className="numeric text-xs text-muted-foreground">
+                <IconText
+                    icon={Receipt}
+                    className="text-xs text-muted-foreground"
+                >
                     {row.original.id}
-                </span>
+                </IconText>
             ),
             enableSorting: false,
             meta: { title: "订单号" },
@@ -233,13 +254,18 @@ export function AdminLedger() {
                 <DataTableColumnHeader column={column} title="用户" />
             ),
             cell: ({ row }) => (
-                <div>
-                    <LongText className="max-w-52">
-                        {row.original.user.email}
-                    </LongText>
-                    <p className="numeric text-xs text-muted-foreground">
-                        #{row.original.userId}
-                    </p>
+                <div className="flex items-center gap-3">
+                    <IconBlock size="sm" tone="neutral">
+                        {row.original.user.email.slice(0, 1).toUpperCase()}
+                    </IconBlock>
+                    <div className="min-w-0">
+                        <LongText className="max-w-52">
+                            {row.original.user.email}
+                        </LongText>
+                        <p className="numeric text-xs text-muted-foreground">
+                            #{row.original.userId}
+                        </p>
+                    </div>
                 </div>
             ),
             enableHiding: false,
@@ -251,9 +277,16 @@ export function AdminLedger() {
             header: ({ column }) => (
                 <DataTableColumnHeader column={column} title="类型" />
             ),
-            cell: ({ getValue }) => (
-                <Badge variant="outline">{getValue<string>()}</Badge>
-            ),
+            cell: ({ getValue }) => {
+                const Icon =
+                    getValue<string>() === "订单扣款" ? ShoppingCart : Wallet;
+                return (
+                    <Badge variant="outline">
+                        <Icon />
+                        {getValue<string>()}
+                    </Badge>
+                );
+            },
             filterFn: inFilter,
             meta: { title: "类型" },
         },
@@ -281,15 +314,15 @@ export function AdminLedger() {
                 <DataTableColumnHeader column={column} title="金额" />
             ),
             cell: ({ row }) => (
-                <span
+                <IconText
+                    icon={Banknote}
                     className={cn(
-                        "numeric",
                         row.original.amountMinor > 0 && "text-success",
                     )}
                 >
                     {row.original.amountMinor > 0 ? "+" : ""}
                     {formatMinor(row.original.amountMinor)}
-                </span>
+                </IconText>
             ),
             meta: {
                 title: "金额",
@@ -349,6 +382,7 @@ export const AUDIT_LABELS: Record<string, string> = {
     "traffic.paid_reset": "购买流量重置",
     "order.create": "管理员开单",
     "order.offline_payment": "确认线下收款",
+    "order.cancel": "取消订单",
     "coupon.create": "创建优惠券",
     "coupon.enabled": "变更优惠券状态",
     "gift.create": "创建兑换码",
@@ -380,6 +414,50 @@ export const AUDIT_LABELS: Record<string, string> = {
     "ops.request": "运维接口调用",
     "ops.token_create": "签发运维令牌",
     "ops.token_revoke": "吊销运维令牌",
+    "commission.clawback": "追回佣金",
+    "commission.recipient_access": "查看收款信息",
+    "commission.reward": "发放佣金",
+    "commission.settings": "佣金设置",
+    "commission.transfer": "佣金转入余额",
+    "commission.withdrawal_request": "申请提现",
+    "commission.withdrawal_review": "审核提现",
+    "payment.gateway_save": "保存支付网关",
+    "payment.received": "收到在线支付",
+    "payment.review_resolved": "处理支付回执",
+    "settings.backup_queued": "立即备份",
+    "settings.locale_update": "修改默认语言",
+    "settings.mail_test": "发送测试邮件",
+    "telegram.connect": "绑定 Telegram",
+    "telegram.disconnect": "解绑 Telegram",
+    "telegram.settings": "Telegram 设置",
+    "trial.grant": "赠送试用",
+    "user.create": "创建用户",
+    "user.two_factor_reset": "重置两步验证",
+};
+
+/** Keyed by the part of the action before the dot. */
+const AUDIT_AREA_ICON: Record<string, LucideIcon> = {
+    balance: Wallet,
+    user: User,
+    node: Server,
+    plan: Package,
+    order: Receipt,
+    coupon: Ticket,
+    gift: Gift,
+    help: BookOpen,
+    mail: Mail,
+    session: ShieldCheck,
+    totp: KeyRound,
+    template: FileCode,
+    notice: Megaphone,
+    settings: Settings,
+    ops: Terminal,
+    traffic: Gauge,
+    admin: UserCog,
+    commission: Coins,
+    payment: CreditCard,
+    telegram: Send,
+    trial: Gift,
 };
 
 export function AdminAudit() {
@@ -396,17 +474,27 @@ export function AdminAudit() {
             header: ({ column }) => (
                 <DataTableColumnHeader column={column} title="操作" />
             ),
-            cell: ({ row }) => (
-                <div>
-                    <p>
-                        {AUDIT_LABELS[row.original.action] ??
-                            row.original.action}
-                    </p>
-                    <code className="numeric text-xs text-muted-foreground">
-                        {row.original.action}
-                    </code>
-                </div>
-            ),
+            cell: ({ row }) => {
+                const AreaIcon =
+                    AUDIT_AREA_ICON[row.original.action.split(".")[0] ?? ""] ??
+                    History;
+                return (
+                    <div className="flex items-center gap-3">
+                        <IconBlock size="sm" tone="neutral">
+                            <AreaIcon />
+                        </IconBlock>
+                        <div>
+                            <p>
+                                {AUDIT_LABELS[row.original.action] ??
+                                    row.original.action}
+                            </p>
+                            <code className="numeric text-xs text-muted-foreground">
+                                {row.original.action}
+                            </code>
+                        </div>
+                    </div>
+                );
+            },
             filterFn: inFilter,
             enableHiding: false,
             meta: {
@@ -420,11 +508,14 @@ export function AdminAudit() {
                 <DataTableColumnHeader column={column} title="操作人" />
             ),
             cell: ({ row }) => (
-                <span className="numeric text-muted-foreground">
+                <IconText
+                    icon={row.original.actorId === 0 ? Bot : User}
+                    className="text-muted-foreground"
+                >
                     {row.original.actorId === 0
                         ? "系统"
                         : `#${row.original.actorId}`}
-                </span>
+                </IconText>
             ),
             meta: { title: "操作人" },
         },
@@ -434,9 +525,15 @@ export function AdminAudit() {
             cell: ({ row }) => {
                 const id = row.original.opsTokenId;
                 return id ? (
-                    <LongText className="max-w-48">
-                        {tokenNames.get(id) ?? id}
-                    </LongText>
+                    <span className="inline-flex items-center gap-inline">
+                        <KeyRound
+                            aria-hidden="true"
+                            className="size-4 shrink-0 text-muted-foreground"
+                        />
+                        <LongText className="max-w-48">
+                            {tokenNames.get(id) ?? id}
+                        </LongText>
+                    </span>
                 ) : (
                     "—"
                 );
@@ -453,7 +550,7 @@ export function AdminAudit() {
                 <DataTableColumnHeader column={column} title="对象" />
             ),
             cell: ({ row }) => (
-                <span className="numeric">{row.original.target}</span>
+                <IconText icon={Crosshair}>{row.original.target}</IconText>
             ),
             meta: { title: "对象" },
         },
@@ -520,6 +617,14 @@ export function AdminAudit() {
 /** Still in the queue: not sent and not given up on (see MAX_MAIL_ATTEMPTS). */
 const waiting = (mail: MailRow) => !mail.sentAt && mail.attempts < 5;
 
+/** Keyed by the labels mailStatus() returns. */
+const MAIL_STATUS_ICON: Record<string, LucideIcon> = {
+    已发送: CircleCheck,
+    排队中: Clock,
+    重试中: RotateCw,
+    已放弃: CircleX,
+};
+
 function mailStatus(mail: MailRow) {
     if (mail.sentAt) return "已发送";
     if (mail.attempts >= 5) return "已放弃";
@@ -540,6 +645,14 @@ export function AdminMail() {
             header: ({ column }) => (
                 <DataTableColumnHeader column={column} title="收件人" />
             ),
+            cell: ({ row }) => (
+                <div className="flex items-center gap-3">
+                    <IconBlock size="sm">
+                        <Mail />
+                    </IconBlock>
+                    <span className="font-medium">{row.original.to}</span>
+                </div>
+            ),
             enableHiding: false,
             meta: { title: "收件人" },
         },
@@ -558,8 +671,10 @@ export function AdminMail() {
             ),
             cell: ({ getValue }) => {
                 const value = getValue<string>();
+                const Icon = MAIL_STATUS_ICON[value] ?? Clock;
                 return (
                     <Badge variant={MAIL_STATUS_TONE[value] ?? "secondary"}>
+                        <Icon />
                         {value}
                     </Badge>
                 );
@@ -601,11 +716,11 @@ export function AdminMail() {
                 />
             ),
             cell: ({ row }) => (
-                <span className="numeric text-muted-foreground">
+                <IconText icon={Clock} className="text-muted-foreground">
                     {formatDateTime(
                         row.original.sentAt ?? row.original.nextAttempt,
                     )}
-                </span>
+                </IconText>
             ),
             meta: {
                 title: "发送 / 下次尝试",
