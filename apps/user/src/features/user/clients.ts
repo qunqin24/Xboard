@@ -1,4 +1,16 @@
 import type { SubscriptionLinks } from "@xboard/contracts";
+import clashMeta from "@/assets/clients/clash-meta.png";
+import clashVergeRev from "@/assets/clients/clash-verge-rev.png";
+import flclash from "@/assets/clients/flclash.png";
+import hiddify from "@/assets/clients/hiddify.png";
+import karing from "@/assets/clients/karing.png";
+import loon from "@/assets/clients/loon.png";
+import quantumultX from "@/assets/clients/quantumult-x.png";
+import shadowrocket from "@/assets/clients/shadowrocket.png";
+import singBox from "@/assets/clients/sing-box.png";
+import stash from "@/assets/clients/stash.png";
+import surfboard from "@/assets/clients/surfboard.png";
+import surge from "@/assets/clients/surge.png";
 
 // Proxy clients the subscription link can be imported into. The link is the
 // same for all of them: the API picks Mihomo, sing-box, Shadowrocket share
@@ -20,6 +32,8 @@ export type Client = {
     name: string;
     /** What the app reads: Mihomo (Clash) YAML, sing-box JSON, share links or its own node list. */
     core: "Mihomo" | "sing-box" | "分享链接" | "节点列表" | "配置文件";
+    /** The app's own icon (assets/clients); the first letter shows when absent. */
+    icon?: string;
     platforms: Platform[];
     importUrl: (links: SubscriptionLinks, name: string) => string;
     /** A second link that adds the panel's rules, for apps that import them apart from the nodes. */
@@ -41,6 +55,7 @@ const clash = ({ url }: SubscriptionLinks) =>
 export const CLIENTS: Client[] = [
     {
         id: "verge",
+        icon: clashVergeRev,
         name: "Clash Verge Rev",
         core: "Mihomo",
         platforms: ["windows", "mac", "linux"],
@@ -48,6 +63,7 @@ export const CLIENTS: Client[] = [
     },
     {
         id: "cmfa",
+        icon: clashMeta,
         name: "Clash Meta",
         core: "Mihomo",
         platforms: ["android"],
@@ -55,6 +71,7 @@ export const CLIENTS: Client[] = [
     },
     {
         id: "flclash",
+        icon: flclash,
         name: "FlClash",
         core: "Mihomo",
         platforms: ["android", "windows", "mac", "linux"],
@@ -62,6 +79,7 @@ export const CLIENTS: Client[] = [
     },
     {
         id: "stash",
+        icon: stash,
         name: "Stash",
         core: "Mihomo",
         platforms: ["ios", "mac"],
@@ -69,6 +87,7 @@ export const CLIENTS: Client[] = [
     },
     {
         id: "hiddify",
+        icon: hiddify,
         name: "Hiddify",
         core: "sing-box",
         platforms: ["ios", "android", "windows", "mac", "linux"],
@@ -76,6 +95,7 @@ export const CLIENTS: Client[] = [
     },
     {
         id: "singbox",
+        icon: singBox,
         name: "sing-box",
         core: "sing-box",
         platforms: ["ios", "android", "mac"],
@@ -84,6 +104,7 @@ export const CLIENTS: Client[] = [
     },
     {
         id: "karing",
+        icon: karing,
         name: "Karing",
         core: "sing-box",
         platforms: ["ios", "android", "windows", "mac"],
@@ -92,6 +113,7 @@ export const CLIENTS: Client[] = [
     },
     {
         id: "shadowrocket",
+        icon: shadowrocket,
         name: "Shadowrocket",
         core: "分享链接",
         // Paid. On a Mac it runs as the iPad app (Apple silicon only).
@@ -104,6 +126,7 @@ export const CLIENTS: Client[] = [
     },
     {
         id: "quantumultx",
+        icon: quantumultX,
         name: "Quantumult X",
         core: "节点列表",
         // Paid; on a Mac it runs as the iPad app (Apple silicon only).
@@ -115,6 +138,7 @@ export const CLIENTS: Client[] = [
     },
     {
         id: "surge",
+        icon: surge,
         name: "Surge",
         core: "配置文件",
         platforms: ["ios", "mac"],
@@ -122,6 +146,7 @@ export const CLIENTS: Client[] = [
     },
     {
         id: "surfboard",
+        icon: surfboard,
         name: "Surfboard",
         core: "配置文件",
         platforms: ["android"],
@@ -129,6 +154,7 @@ export const CLIENTS: Client[] = [
     },
     {
         id: "loon",
+        icon: loon,
         name: "Loon",
         core: "配置文件",
         // Paid; on a Mac it runs as the iPad app (Apple silicon only).

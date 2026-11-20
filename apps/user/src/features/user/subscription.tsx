@@ -220,8 +220,21 @@ function ClientPicker({ links }: { links: SubscriptionLinks | undefined }) {
                             <Tile tone={suggested ? "highlight" : "default"}>
                                 <IconBlock
                                     tone={suggested ? "brand" : "neutral"}
+                                    className={
+                                        client.icon
+                                            ? "overflow-hidden bg-transparent ring-1 ring-border"
+                                            : undefined
+                                    }
                                 >
-                                    {client.name.slice(0, 1).toUpperCase()}
+                                    {client.icon ? (
+                                        <img
+                                            src={client.icon}
+                                            alt=""
+                                            className="size-full object-cover"
+                                        />
+                                    ) : (
+                                        client.name.slice(0, 1).toUpperCase()
+                                    )}
                                 </IconBlock>
                                 <div className="min-w-0 flex-1">
                                     <p className="truncate text-sm font-medium">
