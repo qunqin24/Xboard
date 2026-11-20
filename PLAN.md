@@ -349,6 +349,7 @@
 - 2026-11-18：首批支付网关是易支付和 Stripe；语言只做简体中文和英文；不做旧版迁移工具；LICENSE 保留原版权行并加 `Copyright (c) 2026 qunqin24`。
 - 2026-11-18：两步验证密钥加密存储；订阅令牌明文存储，以便用户随时查看链接（代理 UUID 本来就是明文）。
 - 2026-11-20：本地开发的 `.env` 和 `.env.example` 放在仓库根目录（用户决定），API、脚本和 Prisma CLI（`apps/api/prisma.config.ts`）都读这一个文件。生产镜像不读 `.env`，照旧用环境变量。`pnpm api` 启动前自动运行 `prisma generate`，避免拉代码后 Prisma Client 过期；迁移仍要手动运行 `pnpm db:setup`。
+- 2026-11-20：原生 SQL 里和时间列比较的值一律写成 `${date.toISOString()}::timestamp(3)`，不要直接传 `Date` 或用 `now()`：列是不带时区的 UTC 时间，数据库会话时区不是 UTC 时会差几个小时。测试连接固定用 Asia/Shanghai 时区来暴露这类问题。
 
 ## 已完成
 

@@ -899,6 +899,21 @@ describe("P1 integrations", () => {
             sent.filter((text) => text.startsWith("节点 #")).length,
             1,
         );
+        // A notice waiting for its retry time stays queued, whatever the
+        // database session's time zone.
+        const notice = await db.telegramNotice.findFirstOrThrow({
+            select: { chatId: true },
+        });
+        await db.telegramNotice.create({
+            data: {
+                chatId: notice.chatId,
+                eventKey: "fixture:later",
+                message: "稍后重试",
+                nextAt: new Date(Date.now() + 60_000),
+            },
+        });
+        await flushTelegram();
+        assert.ok(!sent.includes("稍后重试"));
         // A user who blocked the bot still gets a 200 so Telegram stops retrying.
         failing.add("sendMessage");
         assert.equal((await update("/status")).status, 200);

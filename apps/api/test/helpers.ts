@@ -25,6 +25,10 @@ export async function startTestApp() {
         process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL!,
     );
     url.searchParams.set("schema", schema);
+    // Columns are UTC timestamps without zone. Run every test session in a
+    // non-UTC zone so a raw query that compares them with a zoned value (a
+    // Date parameter or now()) fails here instead of only on some servers.
+    url.searchParams.set("options", "-c TimeZone=Asia/Shanghai");
     process.env.DATABASE_URL = url.toString();
     const migrate = spawnSync("pnpm", ["exec", "prisma", "migrate", "deploy"], {
         cwd: appDirectory,

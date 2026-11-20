@@ -341,7 +341,7 @@ export async function flushTelegram(now = new Date()) {
                     }[]
                 >`
                 SELECT id, "chatId", message, attempts FROM "TelegramNotice"
-                WHERE "sentAt" IS NULL AND "nextAt" <= ${now} AND attempts < 6
+                WHERE "sentAt" IS NULL AND "nextAt" <= ${now.toISOString()}::timestamp(3) AND attempts < 6
                 ORDER BY "nextAt" LIMIT 1 FOR UPDATE SKIP LOCKED
             `;
                 if (!entry) return false;

@@ -229,7 +229,7 @@ export async function dailyTraffic(
                    SUM(upload) AS upload, SUM(download) AS download
             FROM "TrafficRecord"
             WHERE "userId" = ${userId}
-              AND "createdAt" >= (now() - make_interval(days => ${days}::int + 1))
+              AND "createdAt" >= ((now() AT TIME ZONE 'UTC') - make_interval(days => ${days}::int + 1))
             GROUP BY 1
         )
         SELECT to_char(day.d, 'YYYY-MM-DD') AS date,

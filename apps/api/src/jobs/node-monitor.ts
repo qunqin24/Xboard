@@ -24,7 +24,7 @@ export async function checkOfflineNodes(now = new Date()) {
                 SELECT "id", "lastSeenAt"
                 FROM "Node"
                 WHERE "enabled" AND "deletedAt" IS NULL AND "parentId" IS NULL
-                  AND COALESCE("lastSeenAt", "createdAt") <= ${cutoff}
+                  AND COALESCE("lastSeenAt", "createdAt") <= ${cutoff.toISOString()}::timestamp(3)
                   AND ("offlineAlertedAt" IS NULL OR "lastSeenAt" > "offlineAlertedAt")
                 ORDER BY "id"
                 LIMIT 100
