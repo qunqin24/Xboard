@@ -330,7 +330,8 @@ describe("development API slice", () => {
             renewed.expiredAt!.getTime(),
             updated.expiredAt!.getTime() + 30 * 86_400_000,
         );
-        assert.equal(renewed.transferEnable, plan.transferEnable * 2n);
+        // Renewing extends the term; the quota stays the plan's.
+        assert.equal(renewed.transferEnable, plan.transferEnable);
         assert.equal(renewed.balance, 5510);
     });
 

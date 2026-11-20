@@ -554,14 +554,15 @@ describe("billing", () => {
         });
     });
 
-    it("lets the 80% reminder fire again after a renewal stacks quota", async () => {
+    it("renews by extending the term without stacking quota", async () => {
         await withReminders(async () => {
-            const email = "stacked-reminder@example.test";
+            const email = "renewal-quota@example.test";
             const now = new Date();
+            const expiredAt = offset(20, now.getTime());
             const user = await app.createUser(email, PASSWORD, {
                 planId: smallId,
                 balance: 5_000,
-                expiredAt: offset(20, now.getTime()),
+                expiredAt,
                 transferEnable: 100n,
                 download: 85n,
                 trafficReminderMask: 1,
@@ -580,19 +581,25 @@ describe("billing", () => {
             const renewed = await db.user.findUniqueOrThrow({
                 where: { id: user.id },
             });
-            assert.equal(renewed.transferEnable, 200n);
+            // Only the expiry moves; unused traffic is not added on top.
+            assert.equal(renewed.transferEnable, 100n);
             assert.equal(renewed.download, 85n);
-            assert.equal(renewed.trafficReminderMask, 0);
+            assert.equal(
+                renewed.expiredAt!.getTime(),
+                expiredAt.getTime() + 30 * 86_400_000,
+            );
+            // The 80% mail was already sent for this usage; only 95% is left.
+            assert.equal(renewed.trafficReminderMask, 1);
             await db.user.update({
                 where: { id: user.id },
-                data: { download: 170n },
+                data: { download: 96n },
             });
             await queueBillingReminders(new Date());
             assert.deepEqual(
                 (await db.mail.findMany({ where: { to: email } })).map(
                     (m) => m.subject,
                 ),
-                ["Xboard 流量已使用 80%"],
+                ["Xboard 流量已使用 95%"],
             );
         });
     });

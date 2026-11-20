@@ -105,14 +105,9 @@ export async function applyTerm(
             ? null
             : new Date(start + term.durationDays * DAY_MS);
     const entitlementVersion = user.entitlementVersion + (renewal ? 0 : 1);
-    const transferEnable =
-        renewal &&
-        term.trafficResetMode === "none" &&
-        user.trafficResetMode === "none"
-            ? user.transferEnable + term.transferBytes
-            : term.transferBytes;
-    if (transferEnable > 9_223_372_036_854_775_807n)
-        throw conflict("续费后流量超过上限，请联系管理员。");
+    // A renewal only extends the term: the quota stays the plan's, and the
+    // traffic already used carries over. Unused traffic is not added on top.
+    const transferEnable = term.transferBytes;
     await tx.user.update({
         where: { id: user.id },
         data: {
@@ -123,8 +118,8 @@ export async function applyTerm(
             expiryReminderMask: 0,
             ...(renewal
                 ? {
-                      // Stacked quota lowers the usage share; the 80% / 95%
-                      // mails must be able to fire again from the new total.
+                      // The plan's quota may have changed since the last
+                      // purchase; re-derive which usage mails were sent.
                       trafficReminderMask: trafficReminderMask(
                           user.upload + user.download,
                           transferEnable,

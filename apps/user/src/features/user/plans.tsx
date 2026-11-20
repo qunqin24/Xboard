@@ -91,7 +91,7 @@ function PlanCard({
         plan.prices.find((p) => p.period === period) ?? plan.prices[0];
 
     const quotaPeriod = {
-        none: price?.period === "onetime" ? "总计" : "每周期",
+        none: "总计",
         month_start: "每月",
         activation_day: "每月",
         year_start: "每年",
