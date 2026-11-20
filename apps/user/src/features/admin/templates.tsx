@@ -35,7 +35,7 @@ const LABEL: Record<TemplateFormat, string> = {
 
 /** What the panel adds to each format, shown next to the editor. */
 const INJECTION: Record<TemplateFormat, string> = {
-    mihomo: "YAML。面板把节点写入 proxies，并把全部节点名加入带有 include-all-proxies: true 的分组。用于 Clash Verge Rev、FlClash、Clash Meta 与 Stash（Stash 自动改用 .yaml 规则集）。",
+    mihomo: "YAML。面板把节点写入 proxies，并把全部节点名加入带有 include-all-proxies: true 的分组。用于 Clash Verge Rev、Clash Party、FlClash、Clash Meta 与 Stash（Stash 自动改用 .yaml 规则集）。",
     singbox:
         'JSON。面板把节点追加到 outbounds，并把分组 outbounds 中的 "{{nodes}}" 换成全部节点。用于 sing-box、Hiddify、Karing，需 sing-box 1.13 及以上。',
     quantumultx:

@@ -367,13 +367,41 @@ function ClientImport() {
                 </p>
             ) : (
                 <div className="flex flex-wrap gap-inline">
-                    {[recommended, ...others].map((client, index) => (
+                    <Button
+                        asChild={Boolean(links.data)}
+                        disabled={!links.data}
+                        size="sm"
+                        variant="soft"
+                    >
+                        {links.data ? (
+                            <a
+                                href={recommended.importUrl(
+                                    links.data,
+                                    site.data?.siteName ?? "Xboard",
+                                )}
+                            >
+                                <Download />
+                                {`导入 ${recommended.name}`}
+                            </a>
+                        ) : (
+                            <span>{recommended.name}</span>
+                        )}
+                    </Button>
+                    {links.data && recommended.rulesUrl ? (
+                        // Shadowrocket takes the rules as a second import.
+                        <Button asChild size="sm" variant="ghost">
+                            <a href={recommended.rulesUrl(links.data)}>
+                                {`导入 ${recommended.name} 规则`}
+                            </a>
+                        </Button>
+                    ) : null}
+                    {others.map((client) => (
                         <Button
                             key={client.id}
                             asChild={Boolean(links.data)}
                             disabled={!links.data}
                             size="sm"
-                            variant={index === 0 ? "soft" : "outline"}
+                            variant="outline"
                         >
                             {links.data ? (
                                 <a
@@ -382,10 +410,7 @@ function ClientImport() {
                                         site.data?.siteName ?? "Xboard",
                                     )}
                                 >
-                                    {index === 0 ? <Download /> : null}
-                                    {index === 0
-                                        ? `导入 ${client.name}`
-                                        : client.name}
+                                    {client.name}
                                 </a>
                             ) : (
                                 <span>{client.name}</span>

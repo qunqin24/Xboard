@@ -62,6 +62,7 @@ describe("subscription format detection", () => {
             assert.equal(formatForUserAgent(ua), "singbox", ua);
         for (const ua of [
             "clash-verge/v2.0.3",
+            "mihomo.party/v1.8.1 (clash.meta)",
             "FlClash/v0.8.80 clash-verge Platform/android",
             "Stash/2.7.6 Clash/1.11.0",
             "ClashMetaForAndroid/2.11.1.Meta",

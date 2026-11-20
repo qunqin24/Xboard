@@ -38,8 +38,8 @@ type Format = (typeof FORMATS)[number];
 /**
  * The format a client expects, from its User-Agent: Shadowrocket gets base64
  * share links, Quantumult X and Loon their own node lines; sing-box based apps (sing-box, SFA/SFI/SFM, Hiddify, Karing)
- * get sing-box JSON; Surge and Surfboard get INI profiles. All other apps, including Clash Verge Rev, FlClash,
- * Clash Meta and Stash, gets Mihomo.
+ * get sing-box JSON; Surge and Surfboard get INI profiles. All other apps, including Clash Verge Rev, Clash Party,
+ * FlClash, Clash Meta and Stash, get Mihomo.
  */
 export function formatForUserAgent(userAgent: string | undefined): Format {
     const agent = userAgent ?? "";

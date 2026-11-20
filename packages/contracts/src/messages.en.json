@@ -63,7 +63,7 @@
     "Xboard 运维 API": "Xboard ops API",
     "YAML 格式错误{0}：{1}": "Invalid YAML {0}: {1}",
     "YAML 格式错误：{0}": "Invalid YAML: {0}",
-    "YAML。面板把节点写入 proxies，并把全部节点名加入带有 include-all-proxies: true 的分组。用于 Clash Verge Rev、FlClash、Clash Meta 与 Stash（Stash 自动改用 .yaml 规则集）。": "YAML. The panel writes nodes into proxies and adds all node names to groups that have include-all-proxies: true. Used for Clash Verge Rev, FlClash, Clash Meta and Stash (Stash automatically switches to .yaml rule sets).",
+    "YAML。面板把节点写入 proxies，并把全部节点名加入带有 include-all-proxies: true 的分组。用于 Clash Verge Rev、Clash Party、FlClash、Clash Meta 与 Stash（Stash 自动改用 .yaml 规则集）。": "YAML. The panel writes nodes into proxies and adds all node names to groups that have include-all-proxies: true. Used for Clash Verge Rev, Clash Party, FlClash, Clash Meta and Stash (Stash automatically switches to .yaml rule sets).",
     "[Proxy Group] 第 {0} 行格式应为“名称 = 类型,成员…”": "[Proxy Group] line {0} must use the format “name = type,members…”",
     "[Rule] 的最后一条需为 FINAL": "The last [Rule] entry must be FINAL",
     "age 公钥": "age public key",
@@ -1726,5 +1726,6 @@
     "修改优惠码": "Change coupon",
     "该订单无需扣款，无需使用优惠码。": "Nothing is charged for this order, so no coupon is needed.",
     "流量重置包不能使用优惠码。": "Coupons cannot be used on traffic reset packs.",
-    "已发起在线支付，不能再修改优惠码。如需修改，请取消订单后重新下单。": "An online payment has started, so the coupon can no longer be changed. To change it, cancel the order and place a new one."
+    "已发起在线支付，不能再修改优惠码。如需修改，请取消订单后重新下单。": "An online payment has started, so the coupon can no longer be changed. To change it, cancel the order and place a new one.",
+    "导入 {0} 规则": "Import {0} rules"
 }

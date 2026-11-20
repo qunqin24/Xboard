@@ -5,6 +5,7 @@ The icons are the trademarks of their apps and are used only to identify them in
 | File | App | Source |
 | --- | --- | --- |
 | clash-verge-rev.png | Clash Verge Rev | https://raw.githubusercontent.com/clash-verge-rev/clash-verge-rev/dev/src-tauri/icons/128x128@2x.png |
+| clash-party.png | Clash Party | https://raw.githubusercontent.com/mihomo-party-org/clash-party/smart_core/build/icon.png |
 | clash-meta.png | Clash Meta for Android | https://raw.githubusercontent.com/MetaCubeX/ClashMetaForAndroid/main/app/src/main/ic_launcher-playstore.png |
 | flclash.png | FlClash | https://raw.githubusercontent.com/chen08209/FlClash/main/assets/images/icon.png |
 | hiddify.png | Hiddify | https://raw.githubusercontent.com/hiddify/hiddify-app/main/web/icon.png |

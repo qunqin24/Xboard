@@ -88,8 +88,9 @@ describe("client catalogue", () => {
             expect(clientsFor("android")).not.toContain(client);
             expect(clientsFor("windows")).not.toContain(client);
         }
-        // The free Hiddify stays the iOS suggestion.
-        expect(recommendedClient("ios").id).toBe("hiddify");
+        // Shadowrocket is the suggestion on Apple devices.
+        expect(recommendedClient("ios").id).toBe("shadowrocket");
+        expect(recommendedClient("mac").id).toBe("shadowrocket");
     });
 });
 
@@ -103,4 +104,15 @@ it("pins the profile format in Surge and Surfboard import links", () => {
             new URL(link.searchParams.get("url")!).searchParams.get("format"),
         ).toBe(id);
     }
+});
+
+it("sends Clash Party its own scheme with the Mihomo link pinned", () => {
+    const party = CLIENTS.find((client) => client.id === "clash-party")!;
+    const link = new URL(party.importUrl(links, "我的机场"));
+    // mihomo:// rather than clash://, which Clash Verge Rev also claims.
+    expect(link.protocol).toBe("mihomo:");
+    expect(link.host).toBe("install-config");
+    expect(link.searchParams.get("url")).toBe(links.mihomo);
+    expect(link.searchParams.get("name")).toBe("我的机场");
+    expect(party.platforms).toEqual(["windows", "mac", "linux"]);
 });

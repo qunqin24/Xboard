@@ -1,5 +1,6 @@
 import type { SubscriptionLinks } from "@xboard/contracts";
 import clashMeta from "@/assets/clients/clash-meta.png";
+import clashParty from "@/assets/clients/clash-party.png";
 import clashVergeRev from "@/assets/clients/clash-verge-rev.png";
 import flclash from "@/assets/clients/flclash.png";
 import hiddify from "@/assets/clients/hiddify.png";
@@ -60,6 +61,18 @@ export const CLIENTS: Client[] = [
         core: "Mihomo",
         platforms: ["windows", "mac", "linux"],
         importUrl: clash,
+    },
+    {
+        id: "clash-party",
+        icon: clashParty,
+        name: "Clash Party",
+        core: "Mihomo",
+        platforms: ["windows", "mac", "linux"],
+        // Its own mihomo:// scheme, so Clash Verge Rev (which also takes
+        // clash://) does not catch the link; the pinned format keeps Mihomo
+        // YAML even if the user changed the app's User-Agent.
+        importUrl: ({ mihomo }, name) =>
+            `mihomo://install-config?url=${enc(mihomo)}&name=${enc(name)}`,
     },
     {
         id: "cmfa",
@@ -165,12 +178,12 @@ export const CLIENTS: Client[] = [
     },
 ];
 
-/** The free, cross-platform default offered first on each platform. */
+/** The app offered first on each platform (Shadowrocket on Apple devices). */
 const RECOMMENDED: Record<Platform, string> = {
-    ios: "hiddify",
+    ios: "shadowrocket",
     android: "cmfa",
     windows: "verge",
-    mac: "verge",
+    mac: "shadowrocket",
     linux: "verge",
 };
 
