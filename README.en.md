@@ -20,17 +20,86 @@ pnpm dev
 
 The web app runs at <http://127.0.0.1:5173>, the admin console at `/admin`, and the development API reference at <http://127.0.0.1:3001/api/docs>. See [Architecture](ARCHITECTURE.md) for account provisioning and business rules.
 
-## Deploy or upgrade
+## Deploy
 
-Point the panel domain at your server and follow the [Docker deployment guide](docs/typescript-deployment.md). Set the values in `ops/.env` using the example file and start Compose with `docker compose --env-file ops/.env -f compose.production.yaml up -d --build`. The [release guide](docs/releases.md) covers published images, upgrading, and database recovery.
+Deploy the image published on GitHub. The server needs neither the source nor a build.
 
-One image serves both the API and the web app, so Compose runs just the application and PostgreSQL. The application listens on `127.0.0.1:3001`; your own reverse proxy (Nginx, Caddy and so on) handles HTTPS. The deployment guide has examples.
+You need:
 
-Instead of building on the server, set `XBOARD_IMAGE=ghcr.io/qunqin24/xboard:1.2.3` in `ops/.env` to use the published image for amd64 and arm64. Pin production to a full version number; `edge` follows `main` and is meant for testing.
+- A Linux server (amd64 or arm64) with Docker Engine and Compose v2.
+- A domain pointing at the server.
+- A reverse proxy that handles HTTPS, such as Caddy, Nginx or 1Panel.
 
-To publish a release, add the version entry to `CHANGELOG.md`, then push a tag such as `v1.2.3` from `main`. GitHub Actions runs the full checks, pushes the multi-arch image and creates the GitHub Release. See [Publishing a release](docs/releases.md#发布新版本).
+**1. Download the deployment files**
 
-On first launch, get the installation code from the API logs and create the administrator at `/setup`. Configure SMTP, alerts, and backups in the admin console.
+```bash
+mkdir -p xboard/ops && cd xboard
+curl -fsSLo compose.production.yaml https://raw.githubusercontent.com/qunqin24/Xboard/v1.0.0/compose.production.yaml
+curl -fsSLo ops/.env https://raw.githubusercontent.com/qunqin24/Xboard/v1.0.0/ops/.env.example
+```
+
+**2. Fill in `ops/.env`**
+
+```bash
+APP_DOMAIN=panel.example.com
+POSTGRES_PASSWORD=replace-with-your-own-long-random-password
+XBOARD_IMAGE=ghcr.io/qunqin24/xboard:1.0.0
+```
+
+Generate the database password with `openssl rand -hex 32`. Pin `XBOARD_IMAGE` to a full version rather than `latest` or `edge`, so you decide when to upgrade. The other settings in the file are optional.
+
+**3. Start**
+
+```bash
+docker compose --env-file ops/.env -f compose.production.yaml up -d --no-build --pull always
+```
+
+This runs two containers, the application and PostgreSQL, and applies database migrations before the application starts. The application listens on `127.0.0.1:3001` only.
+
+**4. Set up the reverse proxy**
+
+Forward every request for the domain to `127.0.0.1:3001`. With Caddy these three lines are enough, and it obtains the certificate itself:
+
+```caddyfile
+panel.example.com {
+	reverse_proxy 127.0.0.1:3001
+}
+```
+
+For Nginx, and for keeping the real client IP behind a CDN, see the [deployment guide](docs/typescript-deployment.md#反向代理).
+
+**5. Create the administrator**
+
+Open `https://your-domain/setup`. The installation code is in the application log, on the `setup.available` line:
+
+```bash
+docker compose --env-file ops/.env -f compose.production.yaml logs app | grep setup.available
+```
+
+The setup page closes once the administrator exists. Configure email, backups, alerts and payments under Settings in the admin console.
+
+### Upgrade
+
+Settings → About in the admin console shows the running version, and the dashboard shows a notice when a newer release is out. To upgrade:
+
+1. Back up the database and the application key; see [releases and upgrades](docs/releases.md#升级与回退).
+2. Read the notes of the new release.
+3. Set `XBOARD_IMAGE` in `ops/.env` to the new version.
+4. Run the start command from step 3 again.
+
+### Build from source
+
+If you change the code, or the server cannot reach GHCR, build on the server instead:
+
+```bash
+git clone https://github.com/qunqin24/Xboard.git && cd Xboard
+cp ops/.env.example ops/.env   # set APP_DOMAIN and POSTGRES_PASSWORD, leave XBOARD_IMAGE unset
+docker compose --env-file ops/.env -f compose.production.yaml up -d --build
+```
+
+### Publish a release
+
+Add the version entry to `CHANGELOG.md`, then push a tag such as `v1.2.3` from `main`. GitHub Actions runs the full checks, pushes the amd64 and arm64 image and creates the GitHub Release. See [publishing a release](docs/releases.md#发布新版本).
 
 The TypeScript edition uses a new database schema. Plan a separate migration for data from the PHP edition, keep a copy of the old database, and rotate node credentials when switching.
 

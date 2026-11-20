@@ -34,23 +34,86 @@ pnpm dev
 
 ![管理后台仪表盘](docs/images/overview.png)
 
-## 部署与升级
+## 部署
 
-把面板域名指向服务器，按 [Docker 部署说明](docs/typescript-deployment.md) 填写 `ops/.env`，然后启动服务。
+用 GitHub 上发布的镜像部署，服务器上不需要源码，也不用构建。
+
+准备：
+
+- 一台 Linux 服务器（amd64 或 arm64），装好 Docker Engine 和 Compose v2。
+- 一个解析到这台服务器的域名。
+- 一个负责 HTTPS 的反向代理，例如 Caddy、Nginx、1Panel 或宝塔。
+
+**1. 下载部署文件**
 
 ```bash
+mkdir -p xboard/ops && cd xboard
+curl -fsSLo compose.production.yaml https://raw.githubusercontent.com/qunqin24/Xboard/v1.0.0/compose.production.yaml
+curl -fsSLo ops/.env https://raw.githubusercontent.com/qunqin24/Xboard/v1.0.0/ops/.env.example
+```
+
+**2. 填写 `ops/.env`**
+
+```bash
+APP_DOMAIN=panel.example.com
+POSTGRES_PASSWORD=换成你自己的长随机密码
+XBOARD_IMAGE=ghcr.io/qunqin24/xboard:1.0.0
+```
+
+数据库密码可以用 `openssl rand -hex 32` 生成。`XBOARD_IMAGE` 写完整版本号，不要用 `latest` 或 `edge`，这样升级的时机由你决定。`.env` 里的其他项都可以不填。
+
+**3. 启动**
+
+```bash
+docker compose --env-file ops/.env -f compose.production.yaml up -d --no-build --pull always
+```
+
+会起两个容器：应用和 PostgreSQL。启动前会先自动执行数据库迁移。应用只监听本机 `127.0.0.1:3001`，不直接对外。
+
+**4. 配置反向代理**
+
+把域名的所有请求转发到 `127.0.0.1:3001`。用 Caddy 时，下面三行就够了，证书会自动申请：
+
+```caddyfile
+panel.example.com {
+	reverse_proxy 127.0.0.1:3001
+}
+```
+
+Nginx 的配置、CDN 后面怎么取真实 IP，见 [部署说明](docs/typescript-deployment.md#反向代理)。
+
+**5. 创建管理员**
+
+打开 `https://你的域名/setup`。安装码在应用日志里，查 `setup.available` 这一行：
+
+```bash
+docker compose --env-file ops/.env -f compose.production.yaml logs app | grep setup.available
+```
+
+建好管理员后，安装页面会自动关闭。邮件、备份、告警、支付都在后台“系统设置”里配置。
+
+### 升级
+
+后台“系统设置 → 关于”会显示当前版本。有新版本时，仪表盘顶部也会出现提示。升级步骤：
+
+1. 备份数据库和应用密钥，方法见 [发布与升级](docs/releases.md#升级与回退)。
+2. 读一遍新版本 Release 里的说明。
+3. 把 `ops/.env` 里的 `XBOARD_IMAGE` 改成新版本号。
+4. 再执行一次第 3 步的启动命令。
+
+### 从源码构建
+
+需要改代码，或者服务器拉不到 GHCR 镜像时，可以在服务器上自己构建：
+
+```bash
+git clone https://github.com/qunqin24/Xboard.git && cd Xboard
+cp ops/.env.example ops/.env   # 填 APP_DOMAIN 和 POSTGRES_PASSWORD，不写 XBOARD_IMAGE
 docker compose --env-file ops/.env -f compose.production.yaml up -d --build
 ```
 
-首次启动后，从 API 日志获取安装码，在 `/setup` 创建管理员。SMTP、备份和告警可在后台配置。
+### 发布新版本
 
-前后端在同一个镜像里，Compose 只起应用和 PostgreSQL 两个容器。应用监听本机 `127.0.0.1:3001`，HTTPS 证书由你自己的反向代理（Nginx、Caddy、1Panel 等）负责，配置示例见部署说明。
-
-也可以不在服务器上构建，在 `ops/.env` 写上 `XBOARD_IMAGE=ghcr.io/qunqin24/xboard:1.2.3`，直接使用 GHCR 上的发布镜像（amd64 和 arm64）。生产环境请固定到完整版本号，`edge` 跟随 `main`，只用于测试。
-
-升级时先备份数据库和应用密钥，按 [发布与升级说明](docs/releases.md) 换到目标版本的镜像，执行前向迁移并核对业务数据。
-
-发布新版本：在 `CHANGELOG.md` 写好版本条目，在 `main` 上打 `v1.2.3` 这样的标签并推送。GitHub Actions 会跑完整检查，推送多架构镜像，并创建 GitHub Release，详见 [发布与升级说明](docs/releases.md#发布新版本)。
+先在 `CHANGELOG.md` 写好新版本的条目，然后在 `main` 上打 `v1.2.3` 这样的标签并推送。GitHub Actions 会跑完整检查，推送 amd64 和 arm64 镜像，并创建 GitHub Release。详见 [发布与升级](docs/releases.md#发布新版本)。
 
 ## 目录与文档
 
