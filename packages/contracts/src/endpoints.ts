@@ -510,6 +510,15 @@ export const endpoints: Endpoint[] = [
         response: orders.orderSchema,
     },
     {
+        method: "put",
+        path: "/orders/:id/coupon",
+        summary: "修改待支付订单的优惠码",
+        tag: "orders",
+        auth: "user",
+        body: orders.orderCouponBody,
+        response: orders.orderSchema,
+    },
+    {
         method: "post",
         path: "/orders/:id/pay",
         summary: "用余额支付",

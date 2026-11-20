@@ -1,13 +1,14 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
-    couponCodeSchema,
     type CreateOrderBody,
     type Period,
+    type Order,
     type Plan,
 } from "@xboard/contracts";
 import { Check, RotateCcw } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import { ApiError, request } from "@/api/client";
 import { useAccount, useCreateOrder, usePlans } from "@/api/hooks";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
@@ -25,8 +26,6 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LoadAnnouncement } from "@/components/load-announcement";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
     formatDateTime,
@@ -34,7 +33,9 @@ import {
     formatTraffic,
     periodLabel,
 } from "@/lib/format";
+import { handleServerError } from "@/lib/handle-server-error";
 import { RedeemGift } from "./redeem-gift";
+import { orderStatus } from "./status";
 
 function useOrderCheckout() {
     const navigate = useNavigate();
@@ -64,6 +65,32 @@ function useOrderCheckout() {
                         params: { id: order.id },
                     });
                 },
+                onError: async (error) => {
+                    if (
+                        !(error instanceof ApiError) ||
+                        error.code !== "pending_order"
+                    ) {
+                        handleServerError(error);
+                        return;
+                    }
+                    // One unpaid order at a time: take the buyer to it.
+                    const orders = await request<Order[]>("/orders").catch(
+                        () => [],
+                    );
+                    const pending = orders.find(
+                        (order) =>
+                            orderStatus(order.status, order.expiresAt).payable,
+                    );
+                    if (!pending) {
+                        handleServerError(error);
+                        return;
+                    }
+                    toast.info("已有一笔待支付订单，请先完成支付或取消。");
+                    void navigate({
+                        to: "/orders/$id",
+                        params: { id: pending.id },
+                    });
+                },
             },
         );
     }
@@ -75,13 +102,11 @@ function PlanCard({
     current,
     switching,
     permanent,
-    couponCode,
 }: {
     plan: Plan;
     current: boolean;
     switching: boolean;
     permanent: boolean;
-    couponCode: string;
 }) {
     const checkout = useOrderCheckout();
     const [period, setPeriod] = useState<Period>(
@@ -160,20 +185,9 @@ function PlanCard({
                     disabled={!price || checkout.pending || permanent}
                     onClick={() => {
                         if (!price) return;
-                        const coupon = couponCode
-                            ? couponCodeSchema.safeParse(couponCode)
-                            : null;
-                        if (coupon && !coupon.success) {
-                            toast.error(
-                                coupon.error.issues[0]?.message ??
-                                    "优惠码格式不正确。",
-                            );
-                            return;
-                        }
                         checkout.submit({
                             planId: plan.id,
                             period: price.period,
-                            ...(coupon?.success && { couponCode: coupon.data }),
                         });
                     }}
                 >
@@ -198,7 +212,6 @@ export function Plans() {
     const account = useAccount();
     const plans = usePlans(account.isSuccess);
     const checkout = useOrderCheckout();
-    const [couponCode, setCouponCode] = useState("");
     const currentId = account.data?.plan?.id;
     const expiry = account.data?.expiredAt ?? null;
     const hasActivePlan =
@@ -275,19 +288,6 @@ export function Plans() {
                 </div>
             ) : plans.data?.length ? (
                 <>
-                    <div className="flex flex-wrap items-center gap-inline">
-                        <Label htmlFor="plan-coupon">优惠码</Label>
-                        <Input
-                            id="plan-coupon"
-                            autoComplete="off"
-                            className="w-48 max-w-full"
-                            value={couponCode}
-                            maxLength={48}
-                            onChange={(event) =>
-                                setCouponCode(event.target.value)
-                            }
-                        />
-                    </div>
                     <div className="grid gap-group md:grid-cols-2 xl:grid-cols-3">
                         {plans.data.map((plan) => (
                             <PlanCard
@@ -302,7 +302,6 @@ export function Plans() {
                                     expiry === null &&
                                     currentId === plan.id
                                 }
-                                couponCode={couponCode.trim()}
                             />
                         ))}
                     </div>

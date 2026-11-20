@@ -94,9 +94,29 @@ export function useOrder(id: string) {
     );
 }
 
+/** Apply, replace or (with null) remove the coupon on a pending order. */
+export function useOrderCoupon(id: string) {
+    const client = useQueryClient();
+    return useMutation({
+        // The checkout shows the error next to the coupon field.
+        meta: { silentError: true },
+        mutationFn: (couponCode: string | null) =>
+            request<Order>(`/orders/${id}/coupon`, "PUT", { couponCode }),
+        onSuccess: (order) => {
+            client.setQueryData(["orders", id], order);
+            void client.invalidateQueries({
+                queryKey: ["orders"],
+                exact: true,
+            });
+        },
+    });
+}
+
 export function useCreateOrder() {
     const client = useQueryClient();
     return useMutation({
+        // The caller reports errors: an existing pending order opens instead.
+        meta: { silentError: true },
         mutationFn: (input: CreateOrderBody) =>
             request<Order>("/orders", "POST", input),
         onSuccess: (order) => {

@@ -21,6 +21,12 @@ export const createOrderBody = z.union([
 ]);
 export type CreateOrderBody = z.infer<typeof createOrderBody>;
 
+/** Apply, replace or (with null) remove the coupon on a pending order. */
+export const orderCouponBody = z.strictObject({
+    couponCode: couponCodeSchema.nullable(),
+});
+export type OrderCouponBody = z.infer<typeof orderCouponBody>;
+
 export const orderStatusSchema = z.enum(["pending", "paid", "cancelled"]);
 export const orderKindSchema = z.enum(["subscription", "traffic_reset"]);
 
@@ -40,5 +46,7 @@ export const orderSchema = z.object({
     durationDays: z.number().int(),
     createdAt: z.string(),
     expiresAt: z.string(),
+    /** The applied coupon; only the single-order endpoints include it. */
+    couponCode: z.string().nullable().optional(),
 });
 export type Order = z.infer<typeof orderSchema>;

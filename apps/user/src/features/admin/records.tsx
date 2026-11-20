@@ -383,6 +383,7 @@ export const AUDIT_LABELS: Record<string, string> = {
     "order.create": "管理员开单",
     "order.offline_payment": "确认线下收款",
     "order.cancel": "取消订单",
+    "order.coupon": "修改优惠码",
     "coupon.create": "创建优惠券",
     "coupon.enabled": "变更优惠券状态",
     "gift.create": "创建兑换码",

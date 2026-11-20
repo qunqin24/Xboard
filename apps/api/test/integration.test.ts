@@ -261,10 +261,14 @@ describe("development API slice", () => {
             (await post("/orders", { ...input, period: "yearly" })).status,
             409,
         );
+        const blocked = await post("/orders", {
+            ...input,
+            requestId: randomUUID(),
+        });
+        assert.equal(blocked.status, 409);
         assert.equal(
-            (await post("/orders", { ...input, requestId: randomUUID() }))
-                .status,
-            409,
+            ((await blocked.json()) as { error: { code?: string } }).error.code,
+            "pending_order",
         );
         const other = await login("new@example.test", "new-account-password");
         const read = (auth: string) =>

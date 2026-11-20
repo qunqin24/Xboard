@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createOrderBody, uuidParam } from "@xboard/contracts";
+import { createOrderBody, orderCouponBody, uuidParam } from "@xboard/contracts";
 import { currentUser, requireUser } from "../../http/session";
 import { parse } from "../../http/validate";
 import {
@@ -8,6 +8,7 @@ import {
     getOrder,
     listOrders,
     payOrder,
+    setOrderCoupon,
 } from "./service";
 
 export const orderRoutes = Router();
@@ -25,6 +26,17 @@ orderRoutes.post("/orders", async (req, res) => {
 orderRoutes.get("/orders/:id", async (req, res) => {
     res.json(
         await getOrder(currentUser(req).id, parse(uuidParam, req.params.id)),
+    );
+});
+
+orderRoutes.put("/orders/:id/coupon", async (req, res) => {
+    const { couponCode } = parse(orderCouponBody, req.body);
+    res.json(
+        await setOrderCoupon(
+            currentUser(req).id,
+            parse(uuidParam, req.params.id),
+            couponCode,
+        ),
     );
 });
 

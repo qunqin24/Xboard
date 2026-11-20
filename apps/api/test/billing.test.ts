@@ -554,6 +554,203 @@ describe("billing", () => {
         });
     });
 
+    it("applies, replaces and removes a coupon at checkout", async () => {
+        const email = "checkout-coupon@example.test";
+        const user = await app.createUser(email, PASSWORD, { balance: 5_000 });
+        const cookie = await app.cookieFor(email, PASSWORD);
+        await db.coupon.createMany({
+            data: [
+                { code: "TAKE300", amountMinor: 300, maxUses: 10 },
+                { code: "TAKE500", amountMinor: 500, maxUses: 10 },
+                { code: "TAKEALL", amountMinor: 5_000, maxUses: 10 },
+                { code: "SPENT", amountMinor: 100, maxUses: 1 },
+            ],
+        });
+        const order = await create(cookie, {
+            planId: smallId,
+            period: "monthly",
+            requestId: randomUUID(),
+        });
+        const setCoupon = (
+            id: string,
+            couponCode: string | null,
+            as = cookie,
+        ) =>
+            app.call(`/orders/${id}/coupon`, {
+                cookie: as,
+                method: "PUT",
+                body: { couponCode },
+            });
+        const read = async (response: Response) => {
+            assert.equal(response.status, 200, await response.clone().text());
+            return orderSchema.parse(await response.json());
+        };
+
+        const applied = await read(await setCoupon(order.id, "take300"));
+        assert.deepEqual(
+            [applied.couponCode, applied.discountMinor, applied.payableMinor],
+            ["TAKE300", 300, 700],
+        );
+        const replaced = await read(await setCoupon(order.id, "TAKE500"));
+        assert.deepEqual(
+            [replaced.couponCode, replaced.payableMinor],
+            ["TAKE500", 500],
+        );
+        // A coupon larger than the price only brings it to zero.
+        const capped = await read(await setCoupon(order.id, "TAKEALL"));
+        assert.deepEqual(
+            [capped.discountMinor, capped.payableMinor],
+            [1_000, 0],
+        );
+        const removed = await read(await setCoupon(order.id, null));
+        assert.deepEqual(
+            [removed.couponCode, removed.discountMinor, removed.payableMinor],
+            [null, 0, 1_000],
+        );
+        const fetched = orderSchema.parse(
+            await (await app.call(`/orders/${order.id}`, { cookie })).json(),
+        );
+        assert.equal(fetched.couponCode, null);
+
+        assert.equal((await setCoupon(order.id, "NOPE1")).status, 400);
+        const other = await app.createUser(
+            "coupon-other@example.test",
+            PASSWORD,
+        );
+        assert.equal(
+            (
+                await setCoupon(
+                    order.id,
+                    "TAKE300",
+                    await app.cookieFor("coupon-other@example.test", PASSWORD),
+                )
+            ).status,
+            404,
+        );
+        await db.user.update({
+            where: { id: other.id },
+            data: { balance: 0 },
+        });
+
+        // A single-use coupon someone already spent is refused.
+        await db.order.create({
+            data: {
+                userId: other.id,
+                planId: smallId,
+                requestId: randomUUID(),
+                planName: "Monthly",
+                period: "monthly",
+                transferBytes: 100n,
+                durationDays: 30,
+                status: "paid",
+                amountMinor: 1_000,
+                discountMinor: 100,
+                couponId: (
+                    await db.coupon.findUniqueOrThrow({
+                        where: { code: "SPENT" },
+                    })
+                ).id,
+                expiresAt: new Date(),
+            },
+        });
+        assert.equal((await setCoupon(order.id, "SPENT")).status, 409);
+
+        // The paid price is the one shown after the last change.
+        await read(await setCoupon(order.id, "TAKE300"));
+        const paid = await pay(cookie, order.id);
+        assert.equal(paid.payableMinor, 700);
+        assert.equal(
+            (await db.user.findUniqueOrThrow({ where: { id: user.id } }))
+                .balance,
+            4_300,
+        );
+        assert.equal((await setCoupon(order.id, null)).status, 409);
+    });
+
+    it("freezes the coupon once an online payment has started", async () => {
+        const email = "coupon-frozen@example.test";
+        await app.createUser(email, PASSWORD, { balance: 0 });
+        const cookie = await app.cookieFor(email, PASSWORD);
+        await db.coupon.create({
+            data: { code: "FROZEN1", amountMinor: 100, maxUses: 10 },
+        });
+        const order = await create(cookie, {
+            planId: smallId,
+            period: "monthly",
+            requestId: randomUUID(),
+        });
+        const gateway = await db.paymentGateway.create({
+            data: { name: "Fixture", kind: "stripe", config: {}, secrets: "" },
+        });
+        await db.paymentAttempt.create({
+            data: {
+                orderId: order.id,
+                gatewayId: gateway.id,
+                requestId: randomUUID(),
+                amountMinor: 1_000,
+                feeMinor: 0,
+                config: {},
+            },
+        });
+        const response = await app.call(`/orders/${order.id}/coupon`, {
+            cookie,
+            method: "PUT",
+            body: { couponCode: "FROZEN1" },
+        });
+        assert.equal(response.status, 409);
+        const unchanged = await db.order.findUniqueOrThrow({
+            where: { id: order.id },
+        });
+        assert.deepEqual(
+            [unchanged.couponId, unchanged.discountMinor],
+            [null, 0],
+        );
+    });
+
+    it("keeps the coupon and the price consistent under concurrent changes", async () => {
+        const email = "coupon-race@example.test";
+        const user = await app.createUser(email, PASSWORD, { balance: 5_000 });
+        const cookie = await app.cookieFor(email, PASSWORD);
+        await db.coupon.createMany({
+            data: [
+                { code: "RACE200", amountMinor: 200, maxUses: 10 },
+                { code: "RACE400", amountMinor: 400, maxUses: 10 },
+            ],
+        });
+        const order = await create(cookie, {
+            planId: smallId,
+            period: "monthly",
+            requestId: randomUUID(),
+        });
+        const results = await Promise.all([
+            app.call(`/orders/${order.id}/coupon`, {
+                cookie,
+                method: "PUT",
+                body: { couponCode: "RACE200" },
+            }),
+            app.call(`/orders/${order.id}/coupon`, {
+                cookie,
+                method: "PUT",
+                body: { couponCode: "RACE400" },
+            }),
+            app.call(`/orders/${order.id}/pay`, { cookie, method: "POST" }),
+        ]);
+        assert.ok(results.every((r) => [200, 409].includes(r.status)));
+        const final = await db.order.findUniqueOrThrow({
+            where: { id: order.id },
+            include: { coupon: true },
+        });
+        assert.equal(final.status, "paid");
+        // Whatever ran first, the coupon on the order matches its discount and
+        // the balance moved by exactly the price that was paid.
+        assert.equal(final.discountMinor, final.coupon?.amountMinor ?? 0);
+        assert.equal(
+            (await db.user.findUniqueOrThrow({ where: { id: user.id } }))
+                .balance,
+            5_000 - (1_000 - final.discountMinor),
+        );
+    });
+
     it("renews by extending the term without stacking quota", async () => {
         await withReminders(async () => {
             const email = "renewal-quota@example.test";

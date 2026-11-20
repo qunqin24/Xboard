@@ -6,7 +6,7 @@ import type {
     Period,
 } from "@xboard/contracts";
 import { db, type Tx } from "../../db";
-import { badRequest, conflict, notFound } from "../../http/errors";
+import { badRequest, conflict, HttpError, notFound } from "../../http/errors";
 import { hasActivePlan } from "../account/entitlement";
 import { clearUsage, resetDueTraffic } from "../account/traffic-cycle";
 import { audit } from "../admin/shared";
@@ -113,7 +113,12 @@ export async function createOrder(
         const now = new Date();
         await expirePendingOrders(tx, now, userId);
         if (await tx.order.findFirst({ where: { userId, status: "pending" } }))
-            throw conflict("请先支付或取消待支付订单。");
+            // The code lets the web app open that order's checkout instead.
+            throw new HttpError(
+                409,
+                "请先支付或取消待支付订单。",
+                "pending_order",
+            );
         const plan = await orderPlan(tx, input.planId);
         const expiresAt = new Date(now.getTime() + PAYMENT_WINDOW_MS);
         const base = {
@@ -233,10 +238,68 @@ export async function listOrders(userId: number): Promise<Order[]> {
     return orders.map(toOrder);
 }
 
+const withCoupon = { coupon: { select: { code: true } } } as const;
+
 export async function getOrder(userId: number, id: string): Promise<Order> {
-    const order = await db.order.findFirst({ where: { id, userId } });
+    const order = await db.order.findFirst({
+        where: { id, userId },
+        include: withCoupon,
+    });
     if (!order) throw notFound("订单不存在。");
-    return toOrder(order);
+    return { ...toOrder(order), couponCode: order.coupon?.code ?? null };
+}
+
+/**
+ * Apply, replace or remove the coupon on an unpaid order. Coupons only count
+ * as used once an order is paid, so nothing needs releasing here. Once an
+ * online payment has started the gateway holds the old amount, so the price
+ * is frozen.
+ */
+export async function setOrderCoupon(
+    userId: number,
+    id: string,
+    couponCode: string | null,
+): Promise<Order> {
+    return db.$transaction(async (tx) => {
+        await lockBuyer(tx, userId);
+        await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${id}::uuid AND "userId" = ${userId} FOR UPDATE`;
+        const order = await tx.order.findFirst({ where: { id, userId } });
+        if (!order) throw notFound("订单不存在。");
+        if (order.status !== "pending" || order.expiresAt <= new Date())
+            throw conflict("订单状态已改变，请刷新。");
+        if (order.kind === "traffic_reset")
+            throw badRequest("流量重置包不能使用优惠码。");
+        if (await tx.paymentAttempt.count({ where: { orderId: id } }))
+            throw conflict(
+                "已发起在线支付，不能再修改优惠码。如需修改，请取消订单后重新下单。",
+            );
+        const coupon = couponCode
+            ? await availableCoupon(tx, userId, { code: couponCode })
+            : null;
+        const discountMinor = coupon
+            ? Math.min(
+                  coupon.amountMinor,
+                  Math.max(0, order.amountMinor - order.creditMinor),
+              )
+            : 0;
+        if (coupon && discountMinor === 0)
+            throw badRequest("该订单无需扣款，无需使用优惠码。");
+        const updated = await tx.order.update({
+            where: { id },
+            data: { couponId: coupon?.id ?? null, discountMinor },
+            include: withCoupon,
+        });
+        if (updated.couponId !== order.couponId)
+            await audit(tx, userId, "order.coupon", id, {
+                from: order.couponId,
+                to: updated.couponId,
+                discountMinor,
+            });
+        return {
+            ...toOrder(updated),
+            couponCode: updated.coupon?.code ?? null,
+        };
+    });
 }
 
 export async function cancelOrder(userId: number, id: string): Promise<Order> {
