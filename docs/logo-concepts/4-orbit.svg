@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs>
+<mask id="o-p" maskUnits="userSpaceOnUse" x="0" y="0" width="200" height="200"><rect width="200" height="200" fill="#fff"/><path d="M-84,0A84 26 0 0 0 84,0" transform="translate(100 100) rotate(-20)" fill="none" stroke="#000" stroke-width="22"/></mask>
+<mask id="o-r" maskUnits="userSpaceOnUse" x="0" y="0" width="200" height="200"><rect width="200" height="200" fill="#fff"/><circle cx="100" cy="100" r="52" fill="#000"/></mask>
+</defs>
+<circle cx="100" cy="100" r="46" fill="#4F46E5" mask="url(#o-p)"/>
+<path d="M-84,0A84 26 0 0 1 84,0" transform="translate(100 100) rotate(-20)" fill="none" stroke="#4F46E5" stroke-width="10" stroke-linecap="round" mask="url(#o-r)"/>
+<path d="M-84,0A84 26 0 0 0 84,0" transform="translate(100 100) rotate(-20)" fill="none" stroke="#4F46E5" stroke-width="10" stroke-linecap="round"/>
+<circle cx="152" cy="46" r="9" fill="#FF7A45"/></svg>
